@@ -1,0 +1,7 @@
+<?xml version='1.0' encoding='utf-8'?>
+<resources>
+    <string name="app_name">Podologia Fabrícia</string>
+    <string name="title_activity_main">Podologia Fabrícia</string>
+    <string name="package_name">com.podologa.fabricia</string>
+    <string name="custom_url_scheme">com.podologa.fabricia</string>
+</resources>

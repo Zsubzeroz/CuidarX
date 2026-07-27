@@ -1,0 +1,49 @@
+node_modules/
+build/
+dist/
+coverage/
+.DS_Store
+*.log
+*.apk
+.env*
+!.env.example
+clinic_data.json
+
+# Android build artifacts
+android/build/
+android/app/build/
+android/.gradle/
+android/capacitor-cordova-android-plugins/build/
+android/capacitor-android/build/
+android/app/src/main/assets/public/
+
+# Dart/Flutter (legacy)
+.dart_tool/
+.flutter-plugins
+.flutter-plugins-dependencies
+.metadata
+analysis_options.yaml
+lib/
+test/
+pubspec.lock
+pubspec.yaml
+*.iml
+
+# iOS (legacy Flutter)
+ios/
+
+# Linux/Web (legacy Flutter)
+linux/
+web/
+macos/
+windows/
+
+# IDE
+.idea/
+.vscode/
+*.iml
+android/.idea/
+
+# Temporary
+tmp/
+temp/
