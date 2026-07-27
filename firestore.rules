@@ -1,0 +1,83 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // ============================================================
+    // REGRAS GERAIS — LGPD / Dados Medicos
+    // Protege todas as colecoes com autenticacao obrigatoria.
+    // ============================================================
+
+    // Helper: verifica se o usuario esta autenticado
+    function isAuth() {
+      return request.auth != null;
+    }
+
+    // Helper: verifica se o usuario e administrador
+    function isAdmin() {
+      return isAuth() && request.auth.token.admin == true;
+    }
+
+    // ============================================================
+    // PACIENTES — Dados medicos sensiveis (LGPD)
+    // Inclui: prontuarios, fichas de anamnese, assinaturas digitais,
+    // historico de evolucao, patologias dos pes.
+    // ============================================================
+    match /patients/{patientId} {
+      // Leitura: apenas autenticados (clinica)
+      allow read: if isAuth();
+      // Escrita: apenas autenticados (clinica)
+      allow create, update, delete: if isAuth();
+    }
+
+    // ============================================================
+    // AGENDAMENTOS
+    // ============================================================
+    match /appointments/{appointmentId} {
+      allow read: if isAuth();
+      allow create, update, delete: if isAuth();
+    }
+
+    // ============================================================
+    // FINANCAS — Dados financeiros sensiveis
+    // ============================================================
+    match /finances/{financeId} {
+      allow read: if isAuth();
+      allow create, update, delete: if isAuth();
+    }
+
+    // ============================================================
+    // SERVICOS — Catalogo de procedimentos
+    // ============================================================
+    match /services/{serviceId} {
+      allow read: if isAuth();
+      allow create, update, delete: if isAuth();
+    }
+
+    // ============================================================
+    // BLOCKED DAYS — Bloqueios de horarios (Painel Web Admin)
+    // Estrutura: appData/blockedDays { items: [...] }
+    // ============================================================
+    match /appData/{document} {
+      allow read: if isAuth();
+      allow write: if isAuth();
+    }
+
+    // ============================================================
+    // BLOQUEIOS NATIVOS (colecao scheduleBlocks)
+    // ============================================================
+    match /scheduleBlocks/{blockId} {
+      allow read: if isAuth();
+      allow create, update, delete: if isAuth();
+    }
+
+    // ============================================================
+    // PORTAL PUBLICO DE AGENDAMENTO
+    // Permite que clientes nao autenticados enviem agendamentos
+    // e leiam servicos disponiveis.
+    // ============================================================
+    // NOTA: O portal publico escreve diretamente no frontend
+    // usando as mesmas regras acima. Para um portal totalmente
+    // publico, crie uma regra separada para a colecao
+    // 'portal_bookings' com allow create sem auth.
+  }
+}
