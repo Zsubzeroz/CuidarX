@@ -1,8 +1,317 @@
-@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;700&family=Space+Grotesk:wght@400;500;600;700&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=Playfair+Display:ital,wght@0,500;0,600;0,700;1,500&family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap');
 @import "tailwindcss";
 
 @theme {
-  --font-sans: "Inter", ui-sans-serif, system-ui, sans-serif;
-  --font-display: "Space Grotesk", sans-serif;
+  --font-sans: "Plus Jakarta Sans", "Inter", ui-sans-serif, system-ui, sans-serif;
+  --font-serif: "Playfair Display", Georgia, serif;
+  --font-display: "Playfair Display", "Plus Jakarta Sans", sans-serif;
   --font-mono: "JetBrains Mono", ui-monospace, SFMono-Regular, monospace;
+
+  /* Verde Esmeralda Profundo (#0F3B2E) */
+  --color-brand: #0F3B2E;
+  --color-brand-50: #F2F7F5;
+  --color-brand-100: #D8E6E0;
+  --color-brand-200: #B2CCC1;
+  --color-brand-300: #88B09F;
+  --color-brand-400: #578D78;
+  --color-brand-500: #2C6E56;
+  --color-brand-600: #1B523E;
+  --color-brand-700: #0F3B2E;
+  --color-brand-800: #0A2B21;
+  --color-brand-900: #061D16;
+  --color-brand-950: #03110D;
+
+  /* Dourado Ouro Velho (#C8A45A) */
+  --color-gold: #C8A45A;
+  --color-gold-50: #FBF8EE;
+  --color-gold-100: #F4ECCF;
+  --color-gold-200: #E9D79E;
+  --color-gold-300: #DCBD6D;
+  --color-gold-400: #D0A74F;
+  --color-gold-500: #C8A45A;
+  --color-gold-600: #A8833C;
+  --color-gold-700: #82622A;
+  --color-gold-800: #624820;
+  --color-gold-900: #463319;
+}
+
+/* =====================================================
+   BASE
+   ===================================================== */
+html {
+  scroll-behavior: smooth;
+}
+
+body {
+  background-color: #F8FAFC;
+  background-image:
+    radial-gradient(ellipse at 20% 0%, rgba(15,59,46,0.04) 0%, transparent 60%),
+    radial-gradient(ellipse at 80% 100%, rgba(200,164,90,0.04) 0%, transparent 60%);
+  color: #1E293B;
+  font-family: var(--font-sans);
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+/* =====================================================
+   COLOR UTILITIES
+   ===================================================== */
+.bg-emerald-deep { background-color: #0F3B2E; }
+.text-emerald-deep { color: #0F3B2E; }
+.border-gold { border-color: #C8A45A; }
+.border-gold-subtle { border-color: rgba(200, 164, 90, 0.3); }
+.text-gold { color: #C8A45A; }
+.bg-gold-subtle { background-color: rgba(200, 164, 90, 0.08); }
+.ring-gold { --tw-ring-color: #C8A45A; }
+
+/* =====================================================
+   SHADOW UTILITIES
+   ===================================================== */
+@utility shadow-luxury {
+  box-shadow:
+    0 1px 3px 0 rgba(15, 59, 46, 0.05),
+    0 10px 30px -5px rgba(15, 59, 46, 0.07),
+    0 4px 12px -2px rgba(200, 164, 90, 0.06);
+}
+
+@utility shadow-gold {
+  box-shadow: 0 4px 14px 0 rgba(200, 164, 90, 0.25);
+}
+
+@utility shadow-card {
+  box-shadow:
+    0 1px 2px 0 rgba(0,0,0,0.04),
+    0 4px 16px -4px rgba(15, 59, 46, 0.06);
+}
+
+/* =====================================================
+   BUTTON SYSTEM
+   ===================================================== */
+.btn-primary {
+  @apply inline-flex items-center gap-2 px-4 py-2.5 rounded-xl text-xs font-bold
+    bg-[#0F3B2E] text-white border border-[#C8A45A]/30
+    hover:bg-[#1B523E] hover:border-[#C8A45A]/60
+    active:scale-[0.97] shadow-md
+    transition-all duration-200 cursor-pointer;
+}
+
+.btn-secondary {
+  @apply inline-flex items-center gap-2 px-4 py-2.5 rounded-xl text-xs font-bold
+    bg-white text-slate-700 border border-slate-200
+    hover:border-[#C8A45A]/50 hover:bg-slate-50 hover:text-slate-900
+    active:scale-[0.97]
+    transition-all duration-200 cursor-pointer;
+}
+
+.btn-gold {
+  @apply inline-flex items-center gap-2 px-4 py-2.5 rounded-xl text-xs font-bold
+    bg-[#C8A45A] text-white border border-[#A8833C]
+    hover:bg-[#D0A74F]
+    active:scale-[0.97] shadow-gold
+    transition-all duration-200 cursor-pointer;
+}
+
+.btn-ghost {
+  @apply inline-flex items-center gap-2 px-3.5 py-2 rounded-xl text-xs font-bold
+    bg-transparent text-slate-600
+    hover:bg-slate-100 hover:text-slate-900
+    active:scale-[0.97]
+    transition-all duration-200 cursor-pointer;
+}
+
+/* =====================================================
+   CARD SYSTEM
+   ===================================================== */
+@utility card-luxury {
+  @apply bg-white rounded-2xl border border-slate-100 shadow-card;
+}
+
+@utility card-luxury-hover {
+  @apply card-luxury hover:border-[#C8A45A]/25 hover:shadow-luxury transition-all duration-200;
+}
+
+@utility card-stat {
+  @apply bg-white p-5 rounded-2xl border border-[#C8A45A]/15 shadow-card
+    hover:border-[#C8A45A]/40 hover:shadow-luxury transition-all duration-200
+    flex items-center justify-between gap-4;
+}
+
+/* =====================================================
+   FORM ELEMENTS
+   ===================================================== */
+.input-luxury {
+  @apply w-full text-xs bg-white border border-slate-200 p-2.5 rounded-xl
+    focus:outline-none focus:ring-2 focus:ring-[#C8A45A]/40 focus:border-[#C8A45A]/60
+    placeholder:text-slate-400 transition-all duration-200;
+}
+
+.focus-ring-gold {
+  @apply focus:outline-none focus:ring-2 focus:ring-[#C8A45A]/40 focus:border-[#C8A45A]/60;
+}
+
+/* =====================================================
+   BADGE SYSTEM
+   ===================================================== */
+.badge-gold {
+  @apply inline-flex items-center gap-1 text-[10px] font-bold px-2.5 py-0.5 rounded-full
+    bg-[#FBF8EE] text-[#82622A] border border-[#E9D79E];
+}
+
+.badge-emerald {
+  @apply inline-flex items-center gap-1 text-[10px] font-bold px-2.5 py-0.5 rounded-full
+    bg-emerald-50 text-emerald-700 border border-emerald-100;
+}
+
+.badge-status-scheduled {
+  @apply inline-flex items-center gap-1 text-[10px] font-bold px-2 py-0.5 rounded-full
+    bg-sky-50 text-sky-700 border border-sky-100;
+}
+
+.badge-status-completed {
+  @apply inline-flex items-center gap-1 text-[10px] font-bold px-2 py-0.5 rounded-full
+    bg-emerald-50 text-emerald-700 border border-emerald-100;
+}
+
+.badge-status-cancelled {
+  @apply inline-flex items-center gap-1 text-[10px] font-bold px-2 py-0.5 rounded-full
+    bg-rose-50 text-rose-600 border border-rose-100;
+}
+
+/* =====================================================
+   GRADIENT UTILITIES
+   ===================================================== */
+.bg-luxury-gradient {
+  background: linear-gradient(135deg, #0F3B2E 0%, #0A2B21 100%);
+}
+
+.bg-hero-gradient {
+  background: linear-gradient(135deg, #0F3B2E 0%, #1B523E 50%, #0A2B21 100%);
+}
+
+.bg-gold-gradient {
+  background: linear-gradient(135deg, #C8A45A 0%, #D0A74F 100%);
+}
+
+/* =====================================================
+   DIVIDERS
+   ===================================================== */
+.divider-gold {
+  height: 1px;
+  background: linear-gradient(90deg, transparent, rgba(200, 164, 90, 0.4), transparent);
+  border: none;
+}
+
+.divider-subtle {
+  height: 1px;
+  background: linear-gradient(90deg, transparent, rgba(15, 59, 46, 0.08), transparent);
+  border: none;
+}
+
+/* =====================================================
+   ANIMATIONS
+   ===================================================== */
+/* Page transition */
+.page-enter {
+  animation: fadeInUp 0.28s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+@keyframes fadeInUp {
+  from { opacity: 0; transform: translateY(10px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+/* Gentle pulse for status indicators */
+@keyframes gentle-pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.5; }
+}
+
+.animate-gentle-pulse { animation: gentle-pulse 2s ease-in-out infinite; }
+
+/* Gold shimmer for loading states */
+@keyframes shimmer {
+  0%   { background-position: -200% 0; }
+  100% { background-position: 200% 0; }
+}
+
+.skeleton {
+  background: linear-gradient(90deg, #f1f5f9 25%, #e8edf3 50%, #f1f5f9 75%);
+  background-size: 200% 100%;
+  animation: shimmer 1.5s ease-in-out infinite;
+  border-radius: 8px;
+}
+
+.shimmer {
+  background: linear-gradient(90deg, rgba(200, 164, 90, 0.03) 25%, rgba(200, 164, 90, 0.1) 50%, rgba(200, 164, 90, 0.03) 75%);
+  background-size: 200% 100%;
+  animation: shimmer 1.8s ease-in-out infinite;
+  border-radius: 8px;
+}
+
+/* Slide-in for mobile drawer */
+@keyframes slideInLeft {
+  from { transform: translateX(-100%); opacity: 0; }
+  to   { transform: translateX(0);    opacity: 1; }
+}
+
+.drawer-enter { animation: slideInLeft 0.22s cubic-bezier(0.4, 0, 0.2, 1); }
+
+/* Scale-in for modals / cards */
+@keyframes scaleIn {
+  from { opacity: 0; transform: scale(0.97) translateY(4px); }
+  to   { opacity: 1; transform: scale(1) translateY(0); }
+}
+
+.modal-enter { animation: scaleIn 0.2s cubic-bezier(0.4, 0, 0.2, 1); }
+
+/* Floating for the gold dot decorations */
+@keyframes float {
+  0%, 100% { transform: translateY(0px); }
+  50% { transform: translateY(-4px); }
+}
+
+.animate-float { animation: float 3s ease-in-out infinite; }
+
+/* =====================================================
+   TRANSITIONS
+   ===================================================== */
+button, a, input, select, textarea {
+  transition-property: color, background-color, border-color, text-decoration-color,
+    fill, stroke, opacity, box-shadow, transform, filter;
+  transition-timing-function: cubic-bezier(0.4, 0, 0.2, 1);
+  transition-duration: 200ms;
+}
+
+/* =====================================================
+   SCROLLBARS
+   ===================================================== */
+::-webkit-scrollbar { width: 5px; height: 5px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb {
+  background: rgba(148, 163, 184, 0.5);
+  border-radius: 9999px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: rgba(100, 116, 139, 0.7);
+}
+
+/* =====================================================
+   SELECTION
+   ===================================================== */
+::selection {
+  background-color: rgba(200, 164, 90, 0.2);
+  color: #0F3B2E;
+}
+
+/* =====================================================
+   DECORATIVE PATTERNS
+   ===================================================== */
+.bg-dots-gold {
+  background-image: radial-gradient(rgba(200, 164, 90, 0.12) 1px, transparent 1px);
+  background-size: 24px 24px;
+}
+
+.bg-dots-brand {
+  background-image: radial-gradient(rgba(15, 59, 46, 0.08) 1px, transparent 1px);
+  background-size: 24px 24px;
 }

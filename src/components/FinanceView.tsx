@@ -93,9 +93,10 @@ export default function FinanceView({ finances, onAddFinanceRecord }: FinanceVie
   const COLORS = ["#0f766e", "#0d9488", "#14b8a6", "#2dd4bf", "#99f6e4", "#ccfbf1", "#115e59"];
 
   // Bar Chart Data: Incomes & Expenses by day for the last 15 days
+  const todayStr = new Date().toISOString().split("T")[0];
   const last15Days = Array.from({ length: 15 })
     .map((_, i) => {
-      const d = new Date();
+      const d = new Date(todayStr + "T00:00:00");
       d.setDate(d.getDate() - (14 - i));
       const dStr = d.toISOString().split("T")[0];
 
@@ -121,7 +122,7 @@ export default function FinanceView({ finances, onAddFinanceRecord }: FinanceVie
       const matchesCategory = filterCategory === "all" || f.category === filterCategory;
       return matchesSearch && matchesCategory;
     })
-    .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
+    .sort((a, b) => new Date(b.date + "T00:00:00").getTime() - new Date(a.date + "T00:00:00").getTime());
 
   // Distinct categories list for filter dropdown
   const allUsedCategories = Array.from(new Set(finances.map((f) => f.category)));
@@ -143,7 +144,7 @@ export default function FinanceView({ finances, onAddFinanceRecord }: FinanceVie
                   R$ {totalIncome.toLocaleString("pt-BR", { minimumFractionDigits: 2 })}
                 </p>
               </div>
-              <div className="bg-emerald-50 p-2 rounded-lg text-emerald-600">
+              <div className="bg-emerald-50 p-2 rounded-lg text-gold">
                 <ArrowUpRight className="w-5 h-5" />
               </div>
             </div>
@@ -163,7 +164,7 @@ export default function FinanceView({ finances, onAddFinanceRecord }: FinanceVie
 
             {/* Balance Card */}
             <div className={`p-4 rounded-xl border flex items-center justify-between ${
-              netBalance >= 0 ? "bg-teal-50/50 border-teal-100 text-teal-900" : "bg-rose-50/50 border-rose-100 text-rose-900"
+              netBalance >= 0 ? "bg-emerald-50/50 border-emerald-100 text-emerald-900" : "bg-rose-50/50 border-rose-100 text-rose-900"
             }`}>
               <div>
                 <span className="text-[10px] font-bold uppercase opacity-75">Saldo Líquido</span>
@@ -171,7 +172,7 @@ export default function FinanceView({ finances, onAddFinanceRecord }: FinanceVie
                   R$ {netBalance.toLocaleString("pt-BR", { minimumFractionDigits: 2 })}
                 </p>
               </div>
-              <div className={`p-2.5 rounded-lg ${netBalance >= 0 ? "bg-teal-600 text-white" : "bg-rose-600 text-white"}`}>
+              <div className={`p-2.5 rounded-lg ${netBalance >= 0 ? "bg-gold text-white" : "bg-rose-600 text-white"}`}>
                 <DollarSign className="w-5 h-5" />
               </div>
             </div>
@@ -181,7 +182,7 @@ export default function FinanceView({ finances, onAddFinanceRecord }: FinanceVie
         {/* Add Entry Form */}
         <div className="bg-white p-5 rounded-2xl border border-slate-100 shadow-sm text-left">
           <h3 className="text-xs font-bold text-slate-800 uppercase tracking-wider mb-4 flex items-center gap-1.5">
-            <PlusCircle className="w-5 h-5 text-teal-600" />
+            <PlusCircle className="w-5 h-5 text-gold" />
             Lançar Fluxo de Caixa
           </h3>
 
@@ -192,7 +193,7 @@ export default function FinanceView({ finances, onAddFinanceRecord }: FinanceVie
                 type="button"
                 onClick={() => handleTypeChange("income")}
                 className={`py-1.5 text-xs font-bold rounded-lg transition-all cursor-pointer ${
-                  type === "income" ? "bg-white text-teal-700 shadow-sm" : "text-slate-400"
+                  type === "income" ? "bg-white text-emerald-700 shadow-sm" : "text-slate-400"
                 }`}
               >
                 Receita (+)
@@ -213,7 +214,7 @@ export default function FinanceView({ finances, onAddFinanceRecord }: FinanceVie
               <select
                 value={category}
                 onChange={(e) => setCategory(e.target.value)}
-                className="w-full text-xs bg-slate-50 border border-slate-200 p-2.5 rounded-xl focus:outline-none focus:ring-1 focus:ring-teal-500"
+                className="w-full text-xs bg-slate-50 border border-slate-200 p-2.5 rounded-xl focus:outline-none focus:ring-1 focus:ring-gold"
               >
                 {categories[type].map((cat) => (
                   <option key={cat} value={cat}>
@@ -232,7 +233,7 @@ export default function FinanceView({ finances, onAddFinanceRecord }: FinanceVie
                   value={amount}
                   onChange={(e) => setAmount(e.target.value)}
                   placeholder="0.00"
-                  className="w-full text-xs bg-slate-50 border border-slate-200 p-2.5 rounded-xl focus:outline-none focus:ring-1 focus:ring-teal-500"
+                  className="w-full text-xs bg-slate-50 border border-slate-200 p-2.5 rounded-xl focus:outline-none focus:ring-1 focus:ring-gold"
                 />
               </div>
 
@@ -243,7 +244,7 @@ export default function FinanceView({ finances, onAddFinanceRecord }: FinanceVie
                   required
                   value={date}
                   onChange={(e) => setDate(e.target.value)}
-                  className="w-full text-xs bg-slate-50 border border-slate-200 p-2.5 rounded-xl focus:outline-none focus:ring-1 focus:ring-teal-500"
+                  className="w-full text-xs bg-slate-50 border border-slate-200 p-2.5 rounded-xl focus:outline-none focus:ring-1 focus:ring-gold"
                 />
               </div>
             </div>
@@ -256,13 +257,13 @@ export default function FinanceView({ finances, onAddFinanceRecord }: FinanceVie
                 value={description}
                 onChange={(e) => setDescription(e.target.value)}
                 placeholder="Ex: Creme cicatrizante com Ureia 20%"
-                className="w-full text-xs bg-slate-50 border border-slate-200 p-2.5 rounded-xl focus:outline-none focus:ring-1 focus:ring-teal-500"
+                className="w-full text-xs bg-slate-50 border border-slate-200 p-2.5 rounded-xl focus:outline-none focus:ring-1 focus:ring-gold"
               />
             </div>
 
             <button
               type="submit"
-              className="w-full text-center text-xs font-bold text-white bg-teal-600 hover:bg-teal-700 py-2.5 rounded-xl shadow-sm transition-colors cursor-pointer"
+              className="w-full text-center text-xs font-bold text-white bg-brand hover:bg-brand-700 py-2.5 rounded-xl shadow-sm transition-colors cursor-pointer"
             >
               Registrar Lançamento
             </button>
@@ -347,7 +348,7 @@ export default function FinanceView({ finances, onAddFinanceRecord }: FinanceVie
                   placeholder="Pesquisar..."
                   value={searchQuery}
                   onChange={(e) => setSearchQuery(e.target.value)}
-                  className="text-[11px] pl-8 pr-3 py-1.5 bg-slate-50 border border-slate-200 rounded-lg focus:outline-none focus:ring-1 focus:ring-teal-500"
+                  className="text-[11px] pl-8 pr-3 py-1.5 bg-slate-50 border border-slate-200 rounded-lg focus:outline-none focus:ring-1 focus:ring-gold"
                 />
               </div>
 
@@ -355,7 +356,7 @@ export default function FinanceView({ finances, onAddFinanceRecord }: FinanceVie
               <select
                 value={filterCategory}
                 onChange={(e) => setFilterCategory(e.target.value)}
-                className="text-[11px] bg-slate-50 border border-slate-200 px-2 py-1.5 rounded-lg focus:outline-none focus:ring-1 focus:ring-teal-500"
+                className="text-[11px] bg-slate-50 border border-slate-200 px-2 py-1.5 rounded-lg focus:outline-none focus:ring-1 focus:ring-gold"
               >
                 <option value="all">Todas Categorias</option>
                 {allUsedCategories.map((c) => (
@@ -405,7 +406,7 @@ export default function FinanceView({ finances, onAddFinanceRecord }: FinanceVie
                         {record.description}
                       </td>
                       <td className={`p-3 text-right font-bold ${
-                        record.type === "income" ? "text-emerald-600" : "text-rose-600"
+                        record.type === "income" ? "text-gold" : "text-rose-600"
                       }`}>
                         {record.type === "income" ? "+" : "-"} R$ {record.amount.toFixed(2)}
                       </td>

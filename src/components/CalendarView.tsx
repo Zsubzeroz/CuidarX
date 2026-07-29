@@ -1,5 +1,5 @@
-import React, { useState, useEffect } from "react";
-import { Patient, Appointment, ClinicService, ScheduleBlock } from "../types";
+import React, { useState, useEffect, useRef } from "react";
+import { Patient, Appointment, ClinicService } from "../types";
 import { GoogleCalendarEvent } from "../services/googleCalendar";
 import {
   Calendar,
@@ -17,6 +17,11 @@ import {
   RefreshCw,
   ChevronLeft,
   ChevronRight,
+  Check,
+  Save,
+  Bell,
+  Send,
+  ExternalLink,
 } from "lucide-react";
 
 interface CalendarViewProps {
@@ -27,18 +32,20 @@ interface CalendarViewProps {
   onUpdateAppointment: (appointment: Appointment) => void;
   onUpdateAppointmentStatus: (id: string, status: Appointment["status"]) => void;
   onDeleteAppointment: (id: string) => void;
+  onAddPatient?: (patient: Omit<Patient, "id">) => Promise<void>;
   googleEvents: GoogleCalendarEvent[];
   isGoogleConnected: boolean;
   isGoogleConfigured: boolean;
+  isSyncingGoogle?: boolean;
+  isConnectingGoogle?: boolean;
+  googlePermissionError?: boolean;
   onConnectGoogle: () => void;
+  onGoogleLoginBrowser?: () => void;
   onDisconnectGoogle: () => void;
   onSyncGoogleEvents: (date: string) => void;
   onCreateGoogleEvent: (summary: string, description: string, startTime: string, endTime: string) => Promise<string | null>;
   onDeleteGoogleEvent: (eventId: string) => Promise<void>;
   onSelectPatientForAnamnese?: (patientId: string) => void;
-  scheduleBlocks: ScheduleBlock[];
-  onAddScheduleBlock: (block: Omit<ScheduleBlock, "id" | "createdAt">) => void;
-  onDeleteScheduleBlock: (id: string) => void;
 }
 
 export default function CalendarView({
@@ -49,18 +56,20 @@ export default function CalendarView({
   onUpdateAppointment,
   onUpdateAppointmentStatus,
   onDeleteAppointment,
+  onAddPatient,
   googleEvents,
   isGoogleConnected,
   isGoogleConfigured,
+  isSyncingGoogle = false,
+  isConnectingGoogle = false,
+  googlePermissionError = false,
   onConnectGoogle,
+  onGoogleLoginBrowser,
   onDisconnectGoogle,
   onSyncGoogleEvents,
   onCreateGoogleEvent,
   onDeleteGoogleEvent,
   onSelectPatientForAnamnese,
-  scheduleBlocks,
-  onAddScheduleBlock,
-  onDeleteScheduleBlock,
 }: CalendarViewProps) {
   const [selectedDate, setSelectedDate] = useState(new Date().toISOString().split("T")[0]);
   const [showAddForm, setShowAddForm] = useState(false);
@@ -72,10 +81,29 @@ export default function CalendarView({
   const [price, setPrice] = useState(0);
   const [notes, setNotes] = useState("");
 
-  const [showBlockForm, setShowBlockForm] = useState(false);
-  const [blockStartTime, setBlockStartTime] = useState("12:00");
-  const [blockEndTime, setBlockEndTime] = useState("14:00");
-  const [blockReason, setBlockReason] = useState("Almoço");
+  const [editingGoogleEvent, setEditingGoogleEvent] = useState<GoogleCalendarEvent | null>(null);
+  const [geEditSummary, setGeEditSummary] = useState("");
+  const [geEditDescription, setGeEditDescription] = useState("");
+  const [showNewPatient, setShowNewPatient] = useState(false);
+  const [newPatientName, setNewPatientName] = useState("");
+  const [newPatientPhone, setNewPatientPhone] = useState("");
+  const [showTomorrowReminders, setShowTomorrowReminders] = useState(false);
+
+  // Local safety timeout for Google connect spinner (3s max)
+  const [localConnecting, setLocalConnecting] = useState(false);
+  const connectingTimerRef = useRef<ReturnType<typeof setTimeout>>();
+  const effectiveConnecting = isConnectingGoogle || localConnecting;
+
+  const handleConnectClick = () => {
+    setLocalConnecting(true);
+    clearTimeout(connectingTimerRef.current);
+    connectingTimerRef.current = setTimeout(() => setLocalConnecting(false), 3000);
+    onConnectGoogle();
+  };
+
+  useEffect(() => {
+    return () => clearTimeout(connectingTimerRef.current);
+  }, []);
 
   const defaultServicePrices: Record<string, number> = {
     "Podopatia Preventiva Geral": 150,
@@ -102,7 +130,6 @@ export default function CalendarView({
     }
   }, [services]);
 
-  // Sync Google Calendar events when date changes
   useEffect(() => {
     if (isGoogleConnected) {
       onSyncGoogleEvents(selectedDate);
@@ -121,6 +148,9 @@ export default function CalendarView({
     setTime("09:00");
     setNotes("");
     setEditingAppt(null);
+    setShowNewPatient(false);
+    setNewPatientName("");
+    setNewPatientPhone("");
     if (services.length > 0) {
       const activeSrvs = services.filter((s) => s.isActive);
       const firstSrv = activeSrvs[0] || services[0];
@@ -131,15 +161,45 @@ export default function CalendarView({
 
   const handleScheduleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    const patientObj = patients.find((p) => p.id === patientId);
-    if (!patientObj) return;
+    let resolvedPatientId = patientId;
+    let resolvedPatientName = "";
+
+    if (showNewPatient) {
+      if (!newPatientName.trim()) { alert("Informe o nome do novo paciente."); return; }
+      const newId = `pat-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`;
+      const patientData: Omit<Patient, "id"> = {
+        name: newPatientName.trim(),
+        phone: newPatientPhone.trim(),
+        dob: "",
+        gender: "Feminino",
+        isDiabetic: false,
+        hasCirculatoryIssues: false,
+        isSmoker: false,
+        hasAllergies: "Nenhuma",
+        observations: "Paciente cadastrado durante agendamento.",
+        footIssues: [],
+        evolutions: [],
+        createdAt: new Date().toISOString(),
+      };
+      if (onAddPatient) {
+        await onAddPatient(patientData);
+        resolvedPatientId = newId;
+        resolvedPatientName = newPatientName.trim();
+      } else {
+        resolvedPatientId = newId;
+        resolvedPatientName = newPatientName.trim();
+      }
+    } else {
+      const patientObj = patients.find((p) => p.id === patientId);
+      if (!patientObj) return;
+      resolvedPatientName = patientObj.name;
+    }
 
     if (editingAppt) {
-      // UPDATE existing appointment
       const updatedAppt: Appointment = {
         ...editingAppt,
-        patientId,
-        patientName: patientObj.name,
+        patientId: resolvedPatientId,
+        patientName: resolvedPatientName,
         time,
         service,
         price,
@@ -147,26 +207,22 @@ export default function CalendarView({
       };
       await onUpdateAppointment(updatedAppt);
 
-      // Update Google Calendar event if linked
       if (editingAppt.calendarEventId && isGoogleConnected) {
         const dtStart = `${selectedDate}T${time}:00-03:00`;
-        const [h, m] = time.split(":").map(Number);
         const endDate = new Date(new Date(`${selectedDate}T${time}:00`).getTime() + (price > 150 ? 60 : 45) * 60000);
         const dtEnd = endDate.toISOString().slice(0, 19) + "-03:00";
-        await onEditGoogleEvent(editingAppt.calendarEventId, `${service} - ${patientObj.name}`, notes || "", dtStart, dtEnd);
+        await onEditGoogleEvent(editingAppt.calendarEventId, `${service} - ${resolvedPatientName}`, notes || "", dtStart, dtEnd);
       }
     } else {
-      // CREATE new appointment
       const dtStart = `${selectedDate}T${time}:00-03:00`;
-      const [h, m] = time.split(":").map(Number);
       const endDate = new Date(new Date(`${selectedDate}T${time}:00`).getTime() + (price > 150 ? 60 : 45) * 60000);
       const dtEnd = endDate.toISOString().slice(0, 19) + "-03:00";
 
       let calendarEventId: string | undefined = undefined;
       if (isGoogleConnected) {
         const result = await onCreateGoogleEvent(
-          `${service} - ${patientObj.name}`,
-          notes || `Agendamento via Podologia Fabrícia - ${patientObj.name}`,
+          `${service} - ${resolvedPatientName}`,
+          notes || `Agendamento via Podologia Fabrícia - ${resolvedPatientName}`,
           dtStart,
           dtEnd
         );
@@ -174,8 +230,8 @@ export default function CalendarView({
       }
 
       await onAddAppointment({
-        patientId,
-        patientName: patientObj.name,
+        patientId: resolvedPatientId,
+        patientName: resolvedPatientName,
         date: selectedDate,
         time,
         service,
@@ -208,11 +264,39 @@ export default function CalendarView({
     }
   };
 
+  const handleDeleteGoogleEventFn = async (ge: GoogleCalendarEvent) => {
+    if (!confirm(`Excluir evento "${ge.summary}" do Google Agenda?`)) return;
+    await onDeleteGoogleEvent(ge.id);
+    onSyncGoogleEvents(selectedDate);
+  };
+
+  const handleStartEditGoogleEvent = (ge: GoogleCalendarEvent) => {
+    setEditingGoogleEvent(ge);
+    setGeEditSummary(ge.summary);
+    setGeEditDescription(ge.description || "");
+  };
+
+  const handleSaveGoogleEvent = async () => {
+    if (!editingGoogleEvent) return;
+    await onEditGoogleEvent(
+      editingGoogleEvent.id,
+      geEditSummary,
+      geEditDescription,
+      editingGoogleEvent.startTimeRaw,
+      editingGoogleEvent.endTimeRaw
+    );
+    setEditingGoogleEvent(null);
+    onSyncGoogleEvents(selectedDate);
+  };
+
+  const handleCancelEditGoogleEvent = () => {
+    setEditingGoogleEvent(null);
+  };
+
   const handleStatusChange = async (appt: Appointment, newStatus: Appointment["status"]) => {
     await onUpdateAppointmentStatus(appt.id, newStatus);
   };
 
-  // Helper: format Google event time for display
   const formatGoogleTime = (isoString: string) => {
     if (!isoString) return "";
     try {
@@ -233,10 +317,47 @@ export default function CalendarView({
   const dailyAppointments = appointments.filter((a) => a.date === selectedDate);
 
   const changeDate = (days: number) => {
-    const current = new Date(selectedDate);
+    const current = new Date(selectedDate + "T12:00:00-03:00");
     current.setDate(current.getDate() + days);
-    setSelectedDate(current.toISOString().split("T")[0]);
+    const y = current.getFullYear();
+    const m = String(current.getMonth() + 1).padStart(2, "0");
+    const d = String(current.getDate()).padStart(2, "0");
+    setSelectedDate(`${y}-${m}-${d}`);
   };
+
+  const formatDateBR = (dateStr: string) => {
+    try {
+      return new Date(dateStr + "T00:00:00").toLocaleDateString("pt-BR");
+    } catch { return dateStr; }
+  };
+
+  const formatPhoneForWa = (phone: string) => {
+    const digits = phone.replace(/\D/g, "");
+    if (digits.startsWith("55")) return digits;
+    return `55${digits}`;
+  };
+
+  const buildWhatsAppConfirmUrl = (name: string, phone: string, date: string, time: string) => {
+    const msg = `Olá ${name}! Confirmando sua consulta de Podologia com a Dra. Fabrícia Rodrigues amanhã, ${formatDateBR(date)} às ${time}. Podemos confirmar? Responda com SIM.`;
+    return `https://wa.me/${formatPhoneForWa(phone)}?text=${encodeURIComponent(msg)}`;
+  };
+
+  const buildWhatsAppDetailsUrl = (name: string, phone: string, date: string, time: string, service: string, price: number) => {
+    const msg = `*Clínica Dra. Fabrícia Rodrigues* 🐾\n\nOlá *${name}*! Aqui estão os detalhes da sua consulta:\n\n📅 *Data:* ${formatDateBR(date)}\n🕒 *Horário:* ${time}\n📍 *Procedimento:* ${service}\n💰 *Valor:* R$ ${price}\n\n_Qualquer dúvida, estamos à disposição!_ 😊`;
+    return `https://wa.me/${formatPhoneForWa(phone)}?text=${encodeURIComponent(msg)}`;
+  };
+
+  const getTomorrowDateStr = () => {
+    const d = new Date();
+    d.setDate(d.getDate() + 1);
+    return d.toISOString().split("T")[0];
+  };
+
+  const tomorrowAppointments = appointments.filter((a) => a.date === getTomorrowDateStr() && a.status !== "canceled");
+  const tomorrowPatientsWithPhone = tomorrowAppointments.filter((a) => {
+    const p = patients.find((pt) => pt.id === a.patientId);
+    return p?.phone;
+  });
 
   const onEditGoogleEvent = async (eventId: string, summary: string, description: string, start: string, end: string) => {
     try {
@@ -250,13 +371,26 @@ export default function CalendarView({
   const getApptForHour = (hour: string) => {
     const [sh, sm] = hour.split(":").map(Number);
     const slotMinutes = sh * 60 + sm;
-    const matchedAppt = dailyAppointments.find((a) => {
+    return dailyAppointments.find((a) => {
       if (!a.time) return false;
       const [ah, am] = a.time.split(":").map(Number);
       const apptMinutes = ah * 60 + am;
       return apptMinutes >= slotMinutes && apptMinutes < slotMinutes + 30;
     });
-    return matchedAppt;
+  };
+
+  const getGoogleEventForHour = (hour: string) => {
+    if (!isGoogleConnected) return undefined;
+    const [sh, sm] = hour.split(":").map(Number);
+    const slotMinutes = sh * 60 + sm;
+    const dayGoogleEvents = googleEvents.filter((ge) => ge.start?.slice(0, 10) === selectedDate);
+    return dayGoogleEvents.find((ge) => {
+      const geTime = formatGoogleTime(ge.start);
+      if (!geTime) return false;
+      const [geh, gem] = geTime.split(":").map(Number);
+      const geMin = geh * 60 + gem;
+      return geMin >= slotMinutes && geMin < slotMinutes + 30;
+    });
   };
 
   const matchedApptIds = new Set<string>();
@@ -273,18 +407,12 @@ export default function CalendarView({
   });
   const overflowAppointments = dailyAppointments.filter((a) => !matchedApptIds.has(a.id));
 
-  const isSlotBlocked = (hour: string): ScheduleBlock | undefined => {
-    const [sh, sm] = hour.split(":").map(Number);
-    const slotMin = sh * 60 + sm;
-    return scheduleBlocks.find((b) => {
-      if (b.date !== selectedDate) return false;
-      const [bsh, bsm] = b.startTime.split(":").map(Number);
-      const [beh, bem] = b.endTime.split(":").map(Number);
-      const blockStart = bsh * 60 + bsm;
-      const blockEnd = beh * 60 + bem;
-      return slotMin >= blockStart && slotMin < blockEnd;
-    });
-  };
+  const dayGoogleEventCount = googleEvents.filter((ge) => ge.start?.slice(0, 10) === selectedDate).length
+    + dailyAppointments.filter((a) => a.source === "google").length;
+  const dayGoogleEventIds = new Set(
+    googleEvents.filter((ge) => ge.start?.slice(0, 10) === selectedDate).map((ge) => ge.id)
+  );
+  const unlinkedAppts = dailyAppointments.filter((a) => !a.calendarEventId || !dayGoogleEventIds.size);
 
   const ScheduleForm = ({ isMobile = false }: { isMobile?: boolean }) => (
     <form onSubmit={handleScheduleSubmit} className="space-y-3">
@@ -296,17 +424,54 @@ export default function CalendarView({
 
       <div>
         <label className="block text-[10px] font-bold text-slate-500 uppercase mb-1">Paciente:</label>
-        <select
-          value={patientId}
-          onChange={(e) => setPatientId(e.target.value)}
-          className="w-full text-xs bg-slate-50 border border-slate-200 p-2.5 rounded-xl focus:outline-none focus:ring-1 focus:ring-teal-500"
-        >
-          {patients.map((p) => (
-            <option key={p.id} value={p.id}>
-              {p.name} {p.isDiabetic ? " (Diabético)" : ""}
-            </option>
-          ))}
-        </select>
+        {showNewPatient ? (
+          <div className="space-y-2">
+            <input
+              type="text"
+              value={newPatientName}
+              onChange={(e) => setNewPatientName(e.target.value)}
+              placeholder="Nome completo do novo paciente"
+              className="w-full text-xs bg-slate-50 border border-slate-200 p-2.5 rounded-xl focus:outline-none focus:ring-1 focus:ring-gold"
+              autoFocus
+            />
+            <input
+              type="tel"
+              value={newPatientPhone}
+              onChange={(e) => setNewPatientPhone(e.target.value)}
+              placeholder="WhatsApp (opcional)"
+              className="w-full text-xs bg-slate-50 border border-slate-200 p-2.5 rounded-xl focus:outline-none focus:ring-1 focus:ring-gold"
+            />
+            <button
+              type="button"
+              onClick={() => setShowNewPatient(false)}
+              className="text-[9px] font-bold text-slate-500 hover:text-slate-700 underline cursor-pointer"
+            >
+              Selecionar paciente existente
+            </button>
+          </div>
+        ) : (
+          <div className="flex gap-2">
+            <select
+              value={patientId}
+              onChange={(e) => setPatientId(e.target.value)}
+              className="flex-1 text-xs bg-slate-50 border border-slate-200 p-2.5 rounded-xl focus:outline-none focus:ring-1 focus:ring-gold"
+            >
+              {patients.map((p) => (
+                <option key={p.id} value={p.id}>
+                  {p.name} {p.isDiabetic ? " (Diabético)" : ""}
+                </option>
+              ))}
+            </select>
+            <button
+              type="button"
+              onClick={() => { setShowNewPatient(true); setNewPatientName(""); setNewPatientPhone(""); }}
+              className="shrink-0 text-[9px] font-bold text-emerald-700 bg-emerald-50 hover:bg-emerald-100 px-2.5 py-1.5 rounded-xl border border-emerald-100 transition-all cursor-pointer"
+              title="Cadastrar novo paciente"
+            >
+              + Novo
+            </button>
+          </div>
+        )}
       </div>
 
       <div className="grid grid-cols-2 gap-2">
@@ -315,7 +480,7 @@ export default function CalendarView({
           <select
             value={time}
             onChange={(e) => setTime(e.target.value)}
-            className="w-full text-xs bg-slate-50 border border-slate-200 p-2.5 rounded-xl focus:outline-none focus:ring-1 focus:ring-teal-500"
+            className="w-full text-xs bg-slate-50 border border-slate-200 p-2.5 rounded-xl focus:outline-none focus:ring-1 focus:ring-gold"
           >
             {dayHours.map((h) => (
               <option key={h} value={h}>{h}</option>
@@ -328,7 +493,7 @@ export default function CalendarView({
             type="number"
             value={price}
             onChange={(e) => setPrice(Number(e.target.value))}
-            className="w-full text-xs bg-slate-50 border border-slate-200 p-2.5 rounded-xl focus:outline-none focus:ring-1 focus:ring-teal-500"
+            className="w-full text-xs bg-slate-50 border border-slate-200 p-2.5 rounded-xl focus:outline-none focus:ring-1 focus:ring-gold"
           />
         </div>
       </div>
@@ -338,7 +503,7 @@ export default function CalendarView({
         <select
           value={service}
           onChange={(e) => handleServiceChange(e.target.value)}
-          className="w-full text-xs bg-slate-50 border border-slate-200 p-2.5 rounded-xl focus:outline-none focus:ring-1 focus:ring-teal-500"
+          className="w-full text-xs bg-slate-50 border border-slate-200 p-2.5 rounded-xl focus:outline-none focus:ring-1 focus:ring-gold"
         >
           {services.length > 0 ? (
             services.filter((s) => s.isActive || s.name === service).map((s) => (
@@ -359,13 +524,13 @@ export default function CalendarView({
           onChange={(e) => setNotes(e.target.value)}
           placeholder="Ex: Primeira consulta de espiculotomia..."
           rows={2}
-          className="w-full text-xs bg-slate-50 border border-slate-200 p-2.5 rounded-xl focus:outline-none focus:ring-1 focus:ring-teal-500"
+          className="w-full text-xs bg-slate-50 border border-slate-200 p-2.5 rounded-xl focus:outline-none focus:ring-1 focus:ring-gold"
         />
       </div>
 
       <button
         type="submit"
-        className="w-full text-center text-xs font-bold text-white bg-teal-600 hover:bg-teal-700 py-2.5 rounded-xl shadow-sm transition-colors cursor-pointer"
+        className="w-full text-center text-xs font-bold text-white bg-brand hover:bg-brand-700 py-2.5 rounded-xl shadow-sm transition-colors cursor-pointer"
       >
         {editingAppt ? "Atualizar Agendamento" : "Confirmar Agendamento"}
       </button>
@@ -373,10 +538,10 @@ export default function CalendarView({
   );
 
   return (
-    <div id="calendar-tab" className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
-      {/* LEFT: Date selector + Schedule form (desktop) */}
-      <div className="hidden lg:block lg:col-span-4 space-y-6 order-2 lg:order-1">
-        <div className="bg-white p-4 rounded-2xl border border-slate-100 shadow-sm flex flex-col gap-3">
+    <div id="calendar-tab" className="grid grid-cols-1 md:grid-cols-12 gap-6 items-start">
+      {/* LEFT: Date selector + Schedule form (desktop & tablet) */}
+        <div className="hidden md:block md:col-span-5 lg:col-span-4 space-y-6 order-2 lg:order-1">
+          <div className="bg-white p-6 rounded-2xl border border-slate-100 shadow-sm flex flex-col gap-4">
           <span className="text-[10px] uppercase font-bold text-slate-400 tracking-wider text-left">Data</span>
           <div className="flex justify-between items-center bg-slate-50 border border-slate-100 p-2 rounded-xl">
             <button
@@ -404,35 +569,68 @@ export default function CalendarView({
             type="date"
             value={selectedDate}
             onChange={(e) => setSelectedDate(e.target.value)}
-            className="w-full text-xs bg-slate-50 border border-slate-200 p-2.5 rounded-xl focus:outline-none focus:ring-1 focus:ring-teal-500"
+            className="w-full text-xs bg-slate-50 border border-slate-200 p-2.5 rounded-xl focus:outline-none focus:ring-1 focus:ring-gold"
           />
         </div>
 
         {/* Google Calendar Status */}
-        <div className="bg-white p-4 rounded-2xl border border-slate-100 shadow-sm space-y-3">
+        <div className="bg-white p-6 rounded-2xl border border-slate-100 shadow-sm space-y-4">
           <div className="flex items-center justify-between">
             <span className="text-[10px] uppercase font-bold text-slate-400 tracking-wider">Google Agenda</span>
             {isGoogleConnected ? (
-              <span className="text-[9px] font-bold text-emerald-600 bg-emerald-50 px-2 py-0.5 rounded-full flex items-center gap-1">
-                <span className="w-1.5 h-1.5 bg-emerald-500 rounded-full animate-pulse" />
+              <span className="text-[9px] font-bold text-gold bg-emerald-50 px-2 py-0.5 rounded-full flex items-center gap-1">
+                <span className="w-1.5 h-1.5 bg-gold rounded-full animate-pulse" />
                 Conectado
               </span>
             ) : (
-              <span className="text-[9px] font-bold text-slate-400 bg-slate-50 px-2 py-0.5 rounded-full">Desconectado</span>
+              <span className="text-[9px] font-bold text-amber-600 bg-amber-50 px-2 py-0.5 rounded-full flex items-center gap-1">
+                <span className="w-1.5 h-1.5 bg-amber-400 rounded-full" />
+                Desconectado
+              </span>
             )}
           </div>
 
           {isGoogleConfigured ? (
             isGoogleConnected ? (
+              googlePermissionError ? (
+                <div className="space-y-3">
+                  <div className="bg-amber-50 border border-amber-200 rounded-xl p-4 space-y-3">
+                    <div className="flex items-start gap-2.5">
+                      <AlertCircle className="w-5 h-5 text-amber-600 shrink-0 mt-0.5" />
+                      <div className="space-y-1.5">
+                        <p className="text-xs font-bold text-amber-900">Conta sem permissão</p>
+                        <p className="text-[10px] text-amber-800 leading-relaxed">
+                          A conta conectada não tem permissão para acessar a agenda oficial da clínica.
+                          Conecte com a conta <strong className="text-amber-950">fabriciapodologa@gmail.com</strong>.
+                        </p>
+                      </div>
+                    </div>
+                    <button
+                      onClick={onGoogleLoginBrowser}
+                      className="w-full text-[10px] font-bold text-white bg-amber-600 hover:bg-amber-700 py-2 rounded-xl transition-all flex items-center justify-center gap-1.5 cursor-pointer shadow-sm"
+                    >
+                      <ExternalLink className="w-3.5 h-3.5" /> Alternar Conta do Google
+                    </button>
+                    <button
+                      onClick={onDisconnectGoogle}
+                      className="w-full text-[10px] font-bold text-rose-600 bg-rose-50 hover:bg-rose-100 py-2 rounded-xl border border-rose-100 cursor-pointer transition-all flex items-center justify-center gap-1"
+                    >
+                      <Unlink className="w-3 h-3" /> Desconectar Conta Atual
+                    </button>
+                  </div>
+                </div>
+              ) : (
               <div className="space-y-2">
                 <p className="text-[10px] text-slate-500">
-                  {googleEvents.length} evento(s) externo(s) sincronizado(s) para este dia.
+                  {dayGoogleEventCount} evento(s) para este dia.
                 </p>
                 <button
                   onClick={() => onSyncGoogleEvents(selectedDate)}
-                  className="w-full text-[10px] font-bold text-teal-600 bg-teal-50 hover:bg-teal-100 py-2 rounded-xl border border-teal-100 cursor-pointer transition-all flex items-center justify-center gap-1"
+                  disabled={isSyncingGoogle}
+                  className="w-full text-[10px] font-bold text-gold bg-emerald-50 hover:bg-gold/10 py-2 rounded-xl border border-emerald-100 cursor-pointer transition-all flex items-center justify-center gap-1 disabled:opacity-50"
                 >
-                  <RefreshCw className="w-3 h-3" /> Sincronizar Agenda
+                  <RefreshCw className={`w-3 h-3 ${isSyncingGoogle ? "animate-spin" : ""}`} />
+                  {isSyncingGoogle ? "Sincronizando..." : "Sincronizar Mês"}
                 </button>
                 <button
                   onClick={onDisconnectGoogle}
@@ -441,25 +639,122 @@ export default function CalendarView({
                   <Unlink className="w-3 h-3" /> Desconectar Google
                 </button>
               </div>
+              )
             ) : (
-              <button
-                onClick={onConnectGoogle}
-                className="w-full text-[10px] font-bold text-white bg-blue-600 hover:bg-blue-700 py-2.5 rounded-xl shadow-sm cursor-pointer transition-all flex items-center justify-center gap-1.5"
-              >
-                <Link2 className="w-3.5 h-3.5" /> Conectar Google Agenda
-              </button>
+              <div className="space-y-2">
+                <button
+                  onClick={handleConnectClick}
+                  disabled={effectiveConnecting}
+                  className="w-full text-[10px] font-bold text-white bg-blue-600 hover:bg-blue-700 py-2.5 rounded-xl shadow-sm transition-all flex items-center justify-center gap-1.5 disabled:opacity-60 disabled:cursor-not-allowed"
+                >
+                  {effectiveConnecting ? (
+                    <><RefreshCw className="w-3.5 h-3.5 animate-spin" /> Conectando...</>
+                  ) : (
+                    <><Link2 className="w-3.5 h-3.5" /> Conectar Google Agenda</>
+                  )}
+                </button>
+                <button
+                  onClick={onGoogleLoginBrowser}
+                  className="w-full text-[10px] font-bold text-amber-700 bg-amber-50 hover:bg-amber-100 py-2 rounded-xl border border-amber-200 transition-all flex items-center justify-center gap-1.5"
+                >
+                  <ExternalLink className="w-3.5 h-3.5" /> Login via Navegador Chrome
+                </button>
+                <p className="text-[9px] text-slate-400 text-center leading-tight">
+                  Conecte para importar seus eventos do Google Agenda
+                </p>
+              </div>
             )
           ) : (
             <p className="text-[10px] text-slate-400 text-center">
               Configure VITE_GOOGLE_CALENDAR_CLIENT_ID no .env
             </p>
           )}
+
+          {/* Always show sync button for refreshing Firestore data */}
+          <div className="pt-2 border-t border-slate-100">
+            <button
+              onClick={() => onSyncGoogleEvents(selectedDate)}
+              disabled={isSyncingGoogle}
+              className="w-full text-[10px] font-bold text-slate-600 bg-slate-50 hover:bg-slate-100 py-2 rounded-xl border border-slate-100 cursor-pointer transition-all flex items-center justify-center gap-1 disabled:opacity-50"
+            >
+              <RefreshCw className={`w-3 h-3 ${isSyncingGoogle ? "animate-spin" : ""}`} />
+              {isSyncingGoogle ? "Sincronizando..." : "Atualizar Dados"}
+            </button>
+          </div>
         </div>
 
-        <div className="bg-white p-5 rounded-2xl border border-slate-100 shadow-sm text-left">
+        {(() => {
+          const googleApptCount = appointments.filter((a) => a.source === "google").length;
+          const showMiniCalendar = (isGoogleConnected && googleEvents.length > 0) || googleApptCount > 0;
+          if (!showMiniCalendar) return null;
+          return (
+              <div className="bg-white p-6 rounded-2xl border border-gold/30 shadow-md shadow-gold/5">
+            <h3 className="text-[10px] uppercase font-bold text-gold tracking-wider mb-3 flex items-center gap-1">
+              <Calendar className="w-3.5 h-3.5 text-gold" /> Agenda do Mês
+            </h3>
+            {(() => {
+              const d = new Date(selectedDate + "T12:00:00-03:00");
+              const year = d.getFullYear();
+              const month = d.getMonth();
+              const firstDay = new Date(year, month, 1).getDay();
+              const daysInMonth = new Date(year, month + 1, 0).getDate();
+              const monthName = d.toLocaleDateString("pt-BR", { month: "long", year: "numeric" });
+              const eventDates = new Set([
+                ...googleEvents.map((ge) => ge.start?.slice(0, 10)),
+                ...appointments.filter((a) => a.source === "google").map((a) => a.date),
+              ]);
+              const dayNames = ["D", "S", "T", "Q", "Q", "S", "S"];
+              return (
+                <div>
+                  <div className="bg-[#0F3B2E]/5 rounded-xl px-3 py-1.5 mb-3 border border-[#C8A45A]/20">
+                    <p className="text-[11px] font-bold text-[#0F3B2E] capitalize text-center font-display">{monthName}</p>
+                  </div>
+                  <div className="grid grid-cols-7 gap-0.5 text-center">
+                    {dayNames.map((dn, i) => (
+                      <div key={i} className="text-[8px] font-bold text-slate-400 py-0.5">{dn}</div>
+                    ))}
+                    {Array.from({ length: firstDay }).map((_, i) => (
+                      <div key={`empty-${i}`} />
+                    ))}
+                    {Array.from({ length: daysInMonth }).map((_, i) => {
+                      const day = i + 1;
+                      const dateStr = `${year}-${String(month + 1).padStart(2, "0")}-${String(day).padStart(2, "0")}`;
+                      const hasEvents = eventDates.has(dateStr);
+                      const isSelected = dateStr === selectedDate;
+                      const isToday = dateStr === new Date().toISOString().slice(0, 10);
+                      return (
+                        <button
+                          key={day}
+                          onClick={() => setSelectedDate(dateStr)}
+                          className={`relative text-[10px] py-1 rounded-md font-medium cursor-pointer transition-all ${
+                            isSelected
+                              ? "bg-brand text-white font-bold"
+                              : isToday
+                              ? "bg-emerald-50 text-emerald-700 font-bold ring-1 ring-gold/60"
+                              : hasEvents
+                              ? "text-emerald-700 hover:bg-emerald-50"
+                              : "text-slate-500 hover:bg-slate-50"
+                          }`}
+                        >
+                          {day}
+                          {hasEvents && !isSelected && (
+                            <span className="absolute -bottom-0 left-1/2 -translate-x-1/2 w-1 h-1 bg-gold rounded-full" />
+                          )}
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+              );
+            })()}
+          </div>
+        );
+        })()}
+
+        <div className="bg-white p-6 rounded-2xl border border-slate-100 shadow-sm text-left">
           <div className="flex justify-between items-center mb-4">
             <h3 className="text-xs font-bold text-slate-800 uppercase tracking-wider flex items-center gap-1">
-              <Calendar className="w-4 h-4 text-teal-600" />
+              <Calendar className="w-4 h-4 text-gold" />
               {editingAppt ? "Editar Agendamento" : "Novo Agendamento"}
             </h3>
             {patients.length === 0 && (
@@ -478,125 +773,171 @@ export default function CalendarView({
             <ScheduleForm />
           )}
         </div>
-
-        {/* Block Schedule Section */}
-        <div className="bg-white p-5 rounded-2xl border border-slate-100 shadow-sm text-left">
-          <div className="flex items-center justify-between mb-4">
-            <h3 className="text-xs font-bold text-slate-800 uppercase tracking-wider flex items-center gap-1">
-              <AlertCircle className="w-4 h-4 text-amber-500" />
-              Bloquear Horário
-            </h3>
-            <button
-              onClick={() => setShowBlockForm(!showBlockForm)}
-              className={`text-[10px] font-bold px-3 py-1.5 rounded-lg transition-all cursor-pointer ${
-                showBlockForm
-                  ? "bg-amber-100 text-amber-700 border border-amber-200"
-                  : "bg-amber-500 text-white hover:bg-amber-600"
-              }`}
-            >
-              {showBlockForm ? "Cancelar" : "+ Bloquear"}
-            </button>
-          </div>
-
-          {showBlockForm && (
-            <form
-              onSubmit={(e) => {
-                e.preventDefault();
-                onAddScheduleBlock({
-                  date: selectedDate,
-                  startTime: blockStartTime,
-                  endTime: blockEndTime,
-                  reason: blockReason,
-                });
-                setShowBlockForm(false);
-                setBlockStartTime("12:00");
-                setBlockEndTime("14:00");
-                setBlockReason("Almoço");
-              }}
-              className="space-y-3"
-            >
-              <div className="grid grid-cols-2 gap-2">
-                <div>
-                  <label className="block text-[10px] font-bold text-slate-500 uppercase mb-1">Início:</label>
-                  <input
-                    type="time"
-                    value={blockStartTime}
-                    onChange={(e) => setBlockStartTime(e.target.value)}
-                    className="w-full text-xs bg-slate-50 border border-slate-200 p-2.5 rounded-xl focus:outline-none focus:ring-1 focus:ring-amber-500"
-                  />
-                </div>
-                <div>
-                  <label className="block text-[10px] font-bold text-slate-500 uppercase mb-1">Fim:</label>
-                  <input
-                    type="time"
-                    value={blockEndTime}
-                    onChange={(e) => setBlockEndTime(e.target.value)}
-                    className="w-full text-xs bg-slate-50 border border-slate-200 p-2.5 rounded-xl focus:outline-none focus:ring-1 focus:ring-amber-500"
-                  />
-                </div>
-              </div>
-              <div>
-                <label className="block text-[10px] font-bold text-slate-500 uppercase mb-1">Motivo:</label>
-                <input
-                  type="text"
-                  value={blockReason}
-                  onChange={(e) => setBlockReason(e.target.value)}
-                  placeholder="Ex: Almoço, Férias, Reunião..."
-                  className="w-full text-xs bg-slate-50 border border-slate-200 p-2.5 rounded-xl focus:outline-none focus:ring-1 focus:ring-amber-500"
-                />
-              </div>
-              <button
-                type="submit"
-                className="w-full text-center text-xs font-bold text-white bg-amber-500 hover:bg-amber-600 py-2.5 rounded-xl shadow-sm transition-colors cursor-pointer"
-              >
-                Confirmar Bloqueio
-              </button>
-            </form>
-          )}
-
-          {!showBlockForm && scheduleBlocks.filter((b) => b.date === selectedDate).length > 0 && (
-            <div className="space-y-2">
-              {scheduleBlocks
-                .filter((b) => b.date === selectedDate)
-                .map((block) => (
-                  <div key={block.id} className="flex items-center justify-between p-2.5 bg-amber-50 rounded-xl border border-amber-100">
-                    <div className="flex items-center gap-2">
-                      <span className="text-[10px] font-bold text-amber-700">{block.startTime} - {block.endTime}</span>
-                      <span className="text-[10px] text-amber-600">{block.reason}</span>
-                    </div>
-                    <button
-                      onClick={() => onDeleteScheduleBlock(block.id)}
-                      className="text-[9px] font-bold text-amber-600 hover:text-amber-800 cursor-pointer"
-                    >
-                      <Trash2 className="w-3 h-3" />
-                    </button>
-                  </div>
-                ))}
-            </div>
-          )}
-        </div>
       </div>
 
       {/* RIGHT: Hourly agenda */}
-      <div className="lg:col-span-8 bg-white p-5 rounded-2xl border border-slate-100 shadow-sm text-left order-1 lg:order-2">
+      <div className="md:col-span-7 lg:col-span-8 bg-white p-6 rounded-2xl border border-slate-100 shadow-sm text-left order-1 lg:order-2">
+        {/* Mobile Google status bar */}
+        <div className="md:hidden mb-4">
+          {isGoogleConnected && googlePermissionError ? (
+            <div className="bg-amber-50 border border-amber-200 rounded-xl p-3 space-y-2">
+              <div className="flex items-start gap-2">
+                <AlertCircle className="w-4 h-4 text-amber-600 shrink-0 mt-0.5" />
+                <p className="text-[10px] text-amber-800 leading-relaxed">
+                  Conta sem permissão. Use <strong>fabriciapodologa@gmail.com</strong>.
+                </p>
+              </div>
+              <div className="flex gap-2">
+                <button
+                  onClick={onGoogleLoginBrowser}
+                  className="flex-1 text-[9px] font-bold text-white bg-amber-600 hover:bg-amber-700 py-1.5 rounded-lg transition-all cursor-pointer"
+                >
+                  Alternar Conta
+                </button>
+                <button
+                  onClick={onDisconnectGoogle}
+                  className="text-[9px] font-bold text-rose-600 bg-rose-50 hover:bg-rose-100 px-2 py-1.5 rounded-lg border border-rose-100 cursor-pointer transition-all"
+                >
+                  Desconectar
+                </button>
+              </div>
+            </div>
+          ) : isGoogleConnected ? (
+            <div className="flex items-center justify-between bg-emerald-50 border border-emerald-100 rounded-xl p-2.5">
+              <div className="flex items-center gap-1.5">
+                <span className="w-1.5 h-1.5 rounded-full bg-gold animate-pulse" />
+                <span className="text-[10px] font-bold text-emerald-700">Google Agenda Conectado</span>
+              </div>
+              <button
+                onClick={() => onSyncGoogleEvents(selectedDate)}
+                disabled={isSyncingGoogle}
+                className="text-[9px] font-bold text-gold bg-white px-2 py-1 rounded-lg border border-emerald-200 cursor-pointer flex items-center gap-1 disabled:opacity-50"
+              >
+                <RefreshCw className={`w-3 h-3 ${isSyncingGoogle ? "animate-spin" : ""}`} />
+                Sync
+              </button>
+            </div>
+          ) : (
+            <div className="flex items-center justify-between bg-amber-50 border border-amber-100 rounded-xl p-2.5">
+              <div className="flex flex-col gap-1">
+                <span className="text-[10px] font-bold text-amber-700">Google Desconectado</span>
+                <button
+                  onClick={onGoogleLoginBrowser}
+                  className="text-[8px] font-bold text-amber-600 bg-white px-2 py-0.5 rounded border border-amber-200 flex items-center gap-1 w-fit"
+                >
+                  <ExternalLink className="w-2.5 h-2.5" /> Login via Chrome
+                </button>
+              </div>
+              <button
+                onClick={handleConnectClick}
+                disabled={effectiveConnecting}
+                className="text-[9px] font-bold text-white bg-blue-600 px-2 py-1 rounded-lg cursor-pointer flex items-center gap-1 disabled:opacity-60"
+              >
+                {effectiveConnecting ? (
+                  <><RefreshCw className="w-3 h-3 animate-spin" /> ...</>
+                ) : (
+                  <><Link2 className="w-3 h-3" /> Conectar</>
+                )}
+              </button>
+            </div>
+          )}
+        </div>
+
         <div className="flex items-center justify-between gap-2 mb-4">
           <h3 className="text-sm font-bold text-slate-800 uppercase tracking-wider">
             Agenda do Dia
           </h3>
           <div className="flex items-center gap-2">
-            {googleEvents.length > 0 && (
-              <span className="text-[9px] text-purple-600 bg-purple-50 px-2 py-0.5 rounded-full font-bold border border-purple-100">
-                +{googleEvents.length} Google
+            {isGoogleConnected && dayGoogleEventCount > 0 && (
+              <span className="text-[9px] text-gold bg-gold-subtle px-2 py-0.5 rounded-full font-bold border border-gold/20">
+                {dayGoogleEventCount} Google
               </span>
             )}
-            <span className="text-xs text-teal-600 bg-teal-50 px-2 py-0.5 rounded-full font-bold">
+            <span className="text-xs text-gold bg-emerald-50 px-2 py-0.5 rounded-full font-bold">
               {dailyAppointments.length} local(is)
             </span>
           </div>
         </div>
 
+        {/* Lembretes de Amanhã */}
+        <div className="mb-4">
+          <button
+            onClick={() => setShowTomorrowReminders(true)}
+            className="w-full flex items-center justify-center gap-2 bg-gradient-to-r from-[#0F3B2E]/5 to-[#0A2B21]/5 hover:from-[#0F3B2E] hover:to-[#0A2B21] text-emerald-800 hover:text-white font-bold text-xs py-3 rounded-xl border border-[#C8A45A]/20 hover:border-[#C8A45A]/50 transition-all shadow-sm hover:shadow-md cursor-pointer group"
+          >
+            <Bell className="w-4 h-4 text-[#C8A45A] group-hover:text-[#C8A45A]" />
+            Lembretes de Amanhã ({tomorrowAppointments.length} pacientes)
+          </button>
+        </div>
+
+        {/* Tomorrow Reminders Modal */}
+        {showTomorrowReminders && (
+          <>
+            <div className="fixed inset-0 z-50 bg-slate-900/40 backdrop-blur-sm" onClick={() => setShowTomorrowReminders(false)} />
+            <div className="fixed inset-0 z-50 flex items-center justify-center p-4" onClick={() => setShowTomorrowReminders(false)}>
+              <div className="bg-white rounded-3xl shadow-2xl max-w-lg w-full max-h-[80vh] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
+                <div className="bg-brand text-white p-5 rounded-t-3xl flex items-center justify-between">
+                  <div className="flex items-center gap-2.5">
+                    <Bell className="w-5 h-5 text-gold" />
+                    <div>
+                      <h3 className="text-sm font-bold">Lembretes de Amanhã</h3>
+                      <p className="text-[10px] text-gold/70">{formatDateBR(getTomorrowDateStr())}</p>
+                    </div>
+                  </div>
+                  <button onClick={() => setShowTomorrowReminders(false)} className="text-white/70 hover:text-white p-1 cursor-pointer">
+                    <XCircle className="w-5 h-5" />
+                  </button>
+                </div>
+                <div className="p-5 space-y-3">
+                  {tomorrowPatientsWithPhone.length === 0 ? (
+                    <div className="text-center py-8 text-slate-400">
+                      <MessageCircle className="w-10 h-10 mx-auto mb-2 text-slate-300" />
+                      <p className="text-xs font-bold">Nenhum paciente com WhatsApp cadastrado para amanhã</p>
+                      <p className="text-[10px] mt-1">Cadastre os telefones dos pacientes para enviar lembretes.</p>
+                    </div>
+                  ) : (
+                    tomorrowPatientsWithPhone.map((appt) => {
+                      const p = patients.find((pt) => pt.id === appt.patientId);
+                      if (!p?.phone) return null;
+                      return (
+                        <div key={appt.id} className="flex items-center justify-between p-3 bg-slate-50 rounded-xl border border-slate-100">
+                          <div className="min-w-0 flex-1">
+                            <p className="text-xs font-bold text-slate-800 truncate">{appt.patientName}</p>
+                            <p className="text-[10px] text-slate-500">{appt.time} — {appt.service}</p>
+                          </div>
+                          <div className="flex gap-1.5 shrink-0 ml-3">
+                            <a
+                              href={buildWhatsAppConfirmUrl(appt.patientName, p.phone, appt.date, appt.time)}
+                              target="_blank"
+                              rel="noreferrer"
+                              className="text-[9px] font-bold text-white bg-brand hover:bg-brand-700 px-3 py-2 rounded-lg transition-all flex items-center gap-1 shadow-sm"
+                            >
+                              <Send className="w-3 h-3" /> Confirmar
+                            </a>
+                            <a
+                              href={buildWhatsAppDetailsUrl(appt.patientName, p.phone, appt.date, appt.time, appt.service, appt.price)}
+                              target="_blank"
+                              rel="noreferrer"
+                              className="text-[9px] font-bold text-slate-600 bg-white hover:bg-slate-50 px-2 py-2 rounded-lg border border-slate-200 transition-all flex items-center gap-1"
+                            >
+                              <MessageCircle className="w-3 h-3" /> Detalhes
+                            </a>
+                          </div>
+                        </div>
+                      );
+                    })
+                  )}
+                  <p className="text-[9px] text-slate-400 text-center pt-2">
+                    Os links abrem o WhatsApp com a mensagem pré-preenchida. Envie um por um.
+                  </p>
+                </div>
+              </div>
+            </div>
+          </>
+        )}
+
         {/* Mobile date nav */}
-        <div className="lg:hidden flex items-center justify-between bg-slate-50 border border-slate-100 p-2 rounded-xl mb-4">
+        <div className="md:hidden flex items-center justify-between bg-slate-50 border border-slate-100 p-2 rounded-xl mb-4">
           <button onClick={() => changeDate(-1)} className="p-1.5 rounded-lg hover:bg-white text-slate-600 cursor-pointer">
             <ChevronLeft className="w-4 h-4" />
           </button>
@@ -613,33 +954,40 @@ export default function CalendarView({
         </div>
 
         <div className="space-y-3">
+          {/* Empty state message */}
+          {dailyAppointments.length === 0 && !isGoogleConnected && (
+            <div className="bg-amber-50 border border-amber-200 rounded-xl p-3 text-center">
+              <p className="text-[10px] font-bold text-amber-700 mb-1">Nenhum agendamento para este dia</p>
+              <p className="text-[9px] text-amber-600">
+                Conecte o Google Agenda para importar seus compromissos, ou clique em "Nova Consulta" para agendar.
+              </p>
+            </div>
+          )}
+
           {dayHours.map((hour) => {
+            const googleEvt = getGoogleEventForHour(hour);
             const appt = getApptForHour(hour);
             const patientObj = appt ? patients.find((p) => p.id === appt.patientId) : null;
-            const blocked = isSlotBlocked(hour);
-
-            // Find Google event at this time slot
-            const googleEvt = googleEvents.find((ge) => {
-              const geTime = formatGoogleTime(ge.start);
-              return geTime === hour;
-            });
+            const isDuplicate = appt?.calendarEventId && googleEvt;
 
             return (
               <div
                 key={hour}
                 className={`flex gap-3 items-start p-3 rounded-xl border transition-all ${
-                  blocked
-                    ? "bg-amber-50/30 border-amber-200/70"
+                  googleEvt
+                    ? isDuplicate
+                      ? "bg-emerald-50/10 border-emerald-100/70"
+                      : "bg-gold/5 border-gold/20"
                     : appt
-                    ? appt.status === "completed"
+                    ? appt.source === "google"
+                      ? "bg-gold/5 border-gold/20"
+                      : appt.status === "completed"
                       ? "bg-emerald-50/10 border-emerald-100/70"
                       : appt.status === "confirmed"
-                      ? "bg-teal-50/10 border-teal-100/70"
-                      : appt.status === "canceled"
-                      ? "bg-slate-50 border-slate-100 opacity-60"
-                      : "bg-blue-50/10 border-blue-100/70"
-                    : googleEvt
-                    ? "bg-purple-50/10 border-purple-100/70"
+                      ? "bg-emerald-50/10 border-emerald-100/70"
+                    : appt.status === "canceled"
+                    ? "bg-slate-50 border-slate-100 opacity-60"
+                    : "bg-[#0F3B2E]/5 border-[#0F3B2E]/15"
                     : "border-slate-50 bg-slate-50/20"
                 }`}
               >
@@ -649,11 +997,166 @@ export default function CalendarView({
                 </div>
 
                 <div className="flex-1 min-w-0">
-                  {appt ? (
+                  {googleEvt ? (
                     <div className="space-y-1.5 text-xs">
                       <div className="flex justify-between items-start gap-2">
                         <div className="min-w-0">
                           <div className="flex items-center gap-1.5 flex-wrap">
+                            <span className="text-[8px] font-bold text-gold bg-gold-subtle px-1.5 py-0.5 rounded uppercase border border-gold/10">
+                              Google
+                            </span>
+                            <span className="font-bold text-slate-800 truncate">{googleEvt.summary}</span>
+                          </div>
+                          <p className="text-[9px] text-gold/70 mt-0.5">
+                            {formatGoogleTime(googleEvt.start)} - {formatGoogleTime(googleEvt.end)}
+                          </p>
+                          {googleEvt.description && (
+                            <p className="text-[9px] text-slate-500 italic mt-0.5">{googleEvt.description}</p>
+                          )}
+                        </div>
+
+                        {isDuplicate ? (
+                          <span className="text-[8px] px-2 py-0.5 rounded-full font-bold uppercase tracking-wide border shrink-0 bg-emerald-50 text-emerald-700 border-emerald-200">
+                            Sincronizado
+                          </span>
+                        ) : (
+                          <span className="text-[8px] px-2 py-0.5 rounded-full font-bold uppercase tracking-wide border shrink-0 bg-gold-subtle text-gold border-gold/30">
+                            Google
+                          </span>
+                        )}
+                      </div>
+
+                      {!isDuplicate && editingGoogleEvent?.id === googleEvt.id && (
+                        <div className="mt-2 p-2.5 bg-white rounded-xl border border-gold/20 space-y-2 shadow-sm">
+                          <input
+                            type="text"
+                            value={geEditSummary}
+                            onChange={(e) => setGeEditSummary(e.target.value)}
+                            className="w-full text-xs p-2 border border-slate-200 rounded-lg focus:outline-none focus:ring-1 focus:ring-gold"
+                            placeholder="Título do evento"
+                          />
+                          <textarea
+                            value={geEditDescription}
+                            onChange={(e) => setGeEditDescription(e.target.value)}
+                            className="w-full text-xs p-2 border border-slate-200 rounded-lg focus:outline-none focus:ring-1 focus:ring-gold resize-none"
+                            rows={2}
+                            placeholder="Descrição..."
+                          />
+                          <div className="flex gap-1.5">
+                            <button
+                              onClick={handleSaveGoogleEvent}
+                              className="flex-1 text-[9px] font-bold text-white bg-brand hover:bg-brand-700 px-2 py-1.5 rounded-lg transition-colors flex items-center justify-center gap-1 cursor-pointer"
+                            >
+                              <Save className="w-3 h-3" /> Salvar
+                            </button>
+                            <button
+                              onClick={handleCancelEditGoogleEvent}
+                              className="flex-1 text-[9px] font-bold text-slate-600 bg-slate-100 hover:bg-slate-200 px-2 py-1.5 rounded-lg transition-colors cursor-pointer"
+                            >
+                              Cancelar
+                            </button>
+                          </div>
+                        </div>
+                      )}
+
+                      {!isDuplicate && editingGoogleEvent?.id !== googleEvt.id && (
+                        <div className="flex flex-wrap gap-1 pt-1.5 border-t border-gold/10">
+                          <button
+                            onClick={() => handleStartEditGoogleEvent(googleEvt)}
+                            className="text-[9px] font-bold text-blue-600 bg-blue-50 hover:bg-blue-500 hover:text-white px-2 py-1 rounded transition-colors cursor-pointer"
+                          >
+                            <Pencil className="w-3 h-3 inline" /> Editar
+                          </button>
+                          <button
+                            onClick={() => handleDeleteGoogleEventFn(googleEvt)}
+                            className="text-[9px] font-bold text-rose-600 bg-rose-50 hover:bg-rose-600 hover:text-white px-2 py-1 rounded transition-colors ml-auto cursor-pointer"
+                          >
+                            <Trash2 className="w-3 h-3 inline" /> Excluir
+                          </button>
+                        </div>
+                      )}
+
+                      {isDuplicate && patientObj && (
+                        <div className="flex flex-wrap gap-1 items-center">
+                          <span className="text-[9px] text-slate-500 bg-white border border-slate-100 px-1.5 py-0.5 rounded font-medium">
+                            {appt.service}
+                          </span>
+                          <span className="text-[9px] font-bold text-slate-700 bg-slate-50 px-1.5 py-0.5 rounded border border-slate-100">
+                            R$ {appt.price}
+                          </span>
+                          {patientObj.isDiabetic && (
+                            <span className="bg-amber-100 text-amber-800 text-[7px] px-1 rounded font-bold uppercase">
+                              Diabético(a)
+                            </span>
+                          )}
+                        </div>
+                      )}
+
+                      {isDuplicate && appt && (
+                        <div className="flex flex-wrap gap-1 pt-1.5 border-t border-slate-100/40">
+                          {patientObj?.phone && (
+                            <>
+                              <a
+                                href={buildWhatsAppConfirmUrl(appt.patientName, patientObj.phone, appt.date, appt.time)}
+                                target="_blank"
+                                rel="noreferrer"
+                                className="text-[9px] font-bold text-emerald-700 bg-emerald-50 hover:bg-brand hover:text-white px-2 py-1 rounded transition-colors flex items-center gap-0.5"
+                              >
+                                <Send className="w-3 h-3" /> WhatsApp Confirmar
+                              </a>
+                              <a
+                                href={buildWhatsAppDetailsUrl(appt.patientName, patientObj.phone, appt.date, appt.time, appt.service, appt.price)}
+                                target="_blank"
+                                rel="noreferrer"
+                                className="text-[9px] font-bold text-slate-600 bg-white border border-slate-200 hover:bg-slate-50 px-2 py-1 rounded transition-colors flex items-center gap-0.5"
+                              >
+                                <MessageCircle className="w-3 h-3" /> Detalhes
+                              </a>
+                            </>
+                          )}
+                          {appt.status !== "completed" && appt.status !== "canceled" && (
+                            <>
+                              <button
+                                onClick={() => handleStatusChange(appt, "confirmed")}
+                                className="text-[9px] font-bold text-emerald-700 bg-emerald-50/50 hover:bg-brand hover:text-white px-2 py-1 rounded transition-colors cursor-pointer"
+                              >
+                                Confirmar
+                              </button>
+                              <button
+                                onClick={() => handleStatusChange(appt, "completed")}
+                                className="text-[9px] font-bold text-emerald-700 bg-emerald-50/50 hover:bg-brand hover:text-white px-2 py-1 rounded transition-colors flex items-center gap-0.5 cursor-pointer"
+                              >
+                                <CheckCircle2 className="w-3 h-3" /> Concluir
+                              </button>
+                            </>
+                          )}
+                          <button
+                            onClick={() => startEdit(appt)}
+                            className="text-[9px] font-bold text-blue-600 bg-blue-50 hover:bg-blue-500 hover:text-white px-2 py-1 rounded transition-colors cursor-pointer"
+                          >
+                            <Pencil className="w-3 h-3 inline" /> Editar
+                          </button>
+                          <button
+                            onClick={() => handleDelete(appt)}
+                            className="text-[9px] font-bold text-rose-600 bg-rose-50 hover:bg-rose-600 hover:text-white px-2 py-1 rounded transition-colors ml-auto cursor-pointer"
+                          >
+                            <Trash2 className="w-3 h-3 inline" /> Excluir
+                          </button>
+                        </div>
+                      )}
+                    </div>
+                  ) : appt ? (
+                    <div className="space-y-1.5 text-xs">
+                      <div className="flex justify-between items-start gap-2">
+                        <div className="min-w-0">
+                          <div className="flex items-center gap-1.5 flex-wrap">
+                            <span className={`text-[8px] font-bold px-1.5 py-0.5 rounded uppercase ${
+                              appt.source === "google"
+                                ? "text-gold bg-gold-subtle border border-gold/10"
+                                : "text-brand bg-brand-50 border border-brand-100"
+                            }`}>
+                              {appt.source === "google" ? "Google" : "Local"}
+                            </span>
                             <span className="font-bold text-slate-800 truncate">{appt.patientName}</span>
                             {patientObj?.isDiabetic && (
                               <span className="bg-amber-100 text-amber-800 text-[7px] px-1 rounded font-bold uppercase shrink-0">
@@ -679,10 +1182,10 @@ export default function CalendarView({
                             appt.status === "completed"
                               ? "bg-emerald-50 text-emerald-700 border-emerald-200"
                               : appt.status === "confirmed"
-                              ? "bg-teal-50 text-teal-700 border-teal-200"
+                              ? "bg-emerald-50 text-emerald-700 border-emerald-200"
                               : appt.status === "canceled"
                               ? "bg-slate-100 text-slate-500 border-slate-200"
-                              : "bg-blue-50 text-blue-700 border-blue-200"
+                              : "bg-[#0F3B2E]/10 text-[#0F3B2E] border-[#0F3B2E]/20"
                           }`}
                         >
                           {appt.status === "completed"
@@ -703,26 +1206,36 @@ export default function CalendarView({
 
                       <div className="flex flex-wrap gap-1 pt-1.5 border-t border-slate-100/40">
                         {patientObj?.phone && (
-                          <a
-                            href={`https://wa.me/${patientObj.phone.replace(/\D/g, "")}`}
-                            target="_blank"
-                            rel="noreferrer"
-                            className="text-[9px] font-bold text-emerald-700 bg-emerald-50 hover:bg-emerald-500 hover:text-white px-2 py-1 rounded transition-colors flex items-center gap-0.5"
-                          >
-                            <MessageCircle className="w-3 h-3" /> WhatsApp
-                          </a>
+                          <>
+                            <a
+                              href={buildWhatsAppConfirmUrl(appt.patientName, patientObj.phone, appt.date, appt.time)}
+                              target="_blank"
+                              rel="noreferrer"
+                              className="text-[9px] font-bold text-emerald-700 bg-emerald-50 hover:bg-brand hover:text-white px-2 py-1 rounded transition-colors flex items-center gap-0.5"
+                            >
+                              <Send className="w-3 h-3" /> WhatsApp Confirmar
+                            </a>
+                            <a
+                              href={buildWhatsAppDetailsUrl(appt.patientName, patientObj.phone, appt.date, appt.time, appt.service, appt.price)}
+                              target="_blank"
+                              rel="noreferrer"
+                              className="text-[9px] font-bold text-slate-600 bg-white border border-slate-200 hover:bg-slate-50 px-2 py-1 rounded transition-colors flex items-center gap-0.5"
+                            >
+                              <MessageCircle className="w-3 h-3" /> Detalhes
+                            </a>
+                          </>
                         )}
                         {appt.status !== "completed" && appt.status !== "canceled" && (
                           <>
                             <button
                               onClick={() => handleStatusChange(appt, "confirmed")}
-                              className="text-[9px] font-bold text-teal-700 bg-teal-50/50 hover:bg-teal-500 hover:text-white px-2 py-1 rounded transition-colors cursor-pointer"
+                              className="text-[9px] font-bold text-emerald-700 bg-emerald-50/50 hover:bg-brand hover:text-white px-2 py-1 rounded transition-colors cursor-pointer"
                             >
                               Confirmar
                             </button>
                             <button
                               onClick={() => handleStatusChange(appt, "completed")}
-                              className="text-[9px] font-bold text-emerald-700 bg-emerald-50/50 hover:bg-emerald-500 hover:text-white px-2 py-1 rounded transition-colors flex items-center gap-0.5 cursor-pointer"
+                              className="text-[9px] font-bold text-emerald-700 bg-emerald-50/50 hover:bg-brand hover:text-white px-2 py-1 rounded transition-colors flex items-center gap-0.5 cursor-pointer"
                             >
                               <CheckCircle2 className="w-3 h-3" /> Concluir
                             </button>
@@ -750,35 +1263,6 @@ export default function CalendarView({
                         </button>
                       </div>
                     </div>
-                  ) : googleEvt ? (
-                    <div className="space-y-1">
-                      <div className="flex items-center gap-1.5">
-                        <span className="text-[8px] font-bold text-purple-600 bg-purple-100 px-1.5 py-0.5 rounded uppercase">
-                          Google
-                        </span>
-                        <span className="font-bold text-purple-800 text-xs">{googleEvt.summary}</span>
-                      </div>
-                      <p className="text-[9px] text-purple-500">
-                        {formatGoogleTime(googleEvt.start)} - {formatGoogleTime(googleEvt.end)}
-                      </p>
-                      {googleEvt.description && (
-                        <p className="text-[9px] text-slate-500 italic">{googleEvt.description}</p>
-                      )}
-                    </div>
-                  ) : blocked ? (
-                    <div className="flex items-center justify-between gap-2">
-                      <div className="flex items-center gap-1.5">
-                        <AlertCircle className="w-3.5 h-3.5 text-amber-500" />
-                        <span className="text-[10px] font-bold text-amber-700 uppercase">BLOQUEADO</span>
-                        <span className="text-[9px] text-amber-600">- {blocked.reason}</span>
-                      </div>
-                      <button
-                        onClick={() => onDeleteScheduleBlock(blocked.id)}
-                        className="text-[9px] font-bold text-amber-600 bg-amber-100 hover:bg-amber-600 hover:text-white px-2 py-1 rounded transition-colors cursor-pointer"
-                      >
-                        <Trash2 className="w-3 h-3 inline" /> Remover
-                      </button>
-                    </div>
                   ) : (
                     <div className="flex items-center justify-center py-2 text-slate-300 text-[11px] font-medium border-2 border-dashed border-slate-50/40 rounded-xl bg-slate-50/5">
                       Horário disponível
@@ -788,13 +1272,76 @@ export default function CalendarView({
               </div>
             );
           })}
+
+          {/* Google Calendar events outside grid hours */}
+          {(() => {
+            const dayGoogleEvents = googleEvents.filter((ge) => ge.start?.slice(0, 10) === selectedDate);
+            const matchedGoogleIds = new Set<string>();
+            dayGoogleEvents.forEach((ge) => {
+              const geTime = formatGoogleTime(ge.start);
+              if (!geTime) return;
+              const [geh, gem] = geTime.split(":").map(Number);
+              const geMin = geh * 60 + gem;
+              const inSlot = dayHours.some((h) => {
+                const [sh, sm] = h.split(":").map(Number);
+                const slotMin = sh * 60 + sm;
+                return geMin >= slotMin && geMin < slotMin + 30;
+              });
+              if (inSlot) matchedGoogleIds.add(ge.id);
+            });
+            const overflowGoogle = dayGoogleEvents.filter((ge) => !matchedGoogleIds.has(ge.id));
+            return overflowGoogle.length > 0 ? (
+              <div className="mt-4 pt-4 border-t border-gold/20 space-y-3">
+                <h4 className="text-[10px] font-bold text-gold uppercase tracking-wider">Google Agenda - Fora do Horário</h4>
+                {overflowGoogle.map((ge) => (
+                  <div key={ge.id} className="flex gap-3 items-start p-3 rounded-xl border bg-gold/5 border-gold/20">
+                    <div className="flex items-center gap-1.5 w-14 shrink-0 text-gold font-bold text-[11px] pt-1">
+                      <Clock className="w-3 h-3 text-gold" />
+                      <span>{formatGoogleTime(ge.start)}</span>
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <div className="space-y-1">
+                        <div className="flex items-center gap-1.5">
+                          <span className="text-[8px] font-bold text-gold bg-gold-subtle px-1.5 py-0.5 rounded uppercase border border-gold/10">Google</span>
+                          <span className="font-bold text-slate-800 text-xs">{ge.summary}</span>
+                        </div>
+                        <p className="text-[9px] text-gold/70">
+                          {formatGoogleTime(ge.start)} - {formatGoogleTime(ge.end)}
+                        </p>
+                        {ge.description && (
+                          <p className="text-[9px] text-slate-500 italic">{ge.description}</p>
+                        )}
+                        {editingGoogleEvent?.id === ge.id ? (
+                          <div className="mt-2 p-2 bg-white rounded-lg border border-gold/20 space-y-1.5 shadow-sm">
+                            <input type="text" value={geEditSummary} onChange={(e) => setGeEditSummary(e.target.value)} className="w-full text-xs p-1.5 border border-slate-200 rounded-lg focus:outline-none focus:ring-1 focus:ring-gold" placeholder="Título" />
+                            <textarea value={geEditDescription} onChange={(e) => setGeEditDescription(e.target.value)} className="w-full text-xs p-1.5 border border-slate-200 rounded-lg focus:outline-none focus:ring-1 focus:ring-gold resize-none" rows={1} placeholder="Descrição..." />
+                            <div className="flex gap-1">
+                              <button onClick={handleSaveGoogleEvent} className="flex-1 text-[8px] font-bold text-white bg-brand hover:bg-brand-700 px-2 py-1 rounded-lg transition-colors flex items-center justify-center gap-0.5 cursor-pointer"><Save className="w-2.5 h-2.5" /> Salvar</button>
+                              <button onClick={handleCancelEditGoogleEvent} className="flex-1 text-[8px] font-bold text-slate-600 bg-slate-100 hover:bg-slate-200 px-2 py-1 rounded-lg transition-colors cursor-pointer">Cancelar</button>
+                            </div>
+                          </div>
+                        ) : (
+                          <div className="flex gap-1 pt-1">
+                            <button onClick={() => handleStartEditGoogleEvent(ge)} className="text-[8px] font-bold text-blue-600 bg-blue-50 hover:bg-blue-500 hover:text-white px-1.5 py-0.5 rounded transition-colors cursor-pointer"><Pencil className="w-2.5 h-2.5 inline" /> Editar</button>
+                            <button onClick={() => handleDeleteGoogleEventFn(ge)} className="text-[8px] font-bold text-rose-600 bg-rose-50 hover:bg-rose-600 hover:text-white px-1.5 py-0.5 rounded transition-colors ml-auto cursor-pointer"><Trash2 className="w-2.5 h-2.5 inline" /> Excluir</button>
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            ) : null;
+          })()}
+
+          {/* Local-only overflow appointments (outside grid hours) */}
           {overflowAppointments.length > 0 && (
             <div className="mt-4 pt-4 border-t border-slate-200 space-y-3">
               <h4 className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">Outros Horários do Dia</h4>
               {overflowAppointments.map((appt) => {
                 const patientObj = patients.find((p) => p.id === appt.patientId);
                 return (
-                  <div key={appt.id} className="flex gap-3 items-start p-3 rounded-xl border bg-blue-50/10 border-blue-100/70">
+                  <div key={appt.id} className="flex gap-3 items-start p-3 rounded-xl border bg-[#0F3B2E]/5 border-[#0F3B2E]/15">
                     <div className="flex items-center gap-1.5 w-14 shrink-0 text-slate-500 font-bold text-[11px] pt-1">
                       <Clock className="w-3 h-3 text-slate-400" />
                       <span>{appt.time}</span>
@@ -804,6 +1351,13 @@ export default function CalendarView({
                         <div className="flex justify-between items-start gap-2">
                           <div className="min-w-0">
                             <div className="flex items-center gap-1.5 flex-wrap">
+                              <span className={`text-[8px] font-bold px-1.5 py-0.5 rounded uppercase ${
+                                appt.source === "google"
+                                  ? "text-gold bg-gold-subtle border border-gold/10"
+                                  : "text-brand bg-brand-50 border border-brand-100"
+                              }`}>
+                                {appt.source === "google" ? "Google" : "Local"}
+                              </span>
                               <span className="font-bold text-slate-800 truncate">{appt.patientName}</span>
                               {patientObj?.isDiabetic && (
                                 <span className="bg-amber-100 text-amber-800 text-[7px] px-1 rounded font-bold uppercase shrink-0">
@@ -824,10 +1378,10 @@ export default function CalendarView({
                             appt.status === "completed"
                               ? "bg-emerald-50 text-emerald-700 border-emerald-200"
                               : appt.status === "confirmed"
-                              ? "bg-teal-50 text-teal-700 border-teal-200"
+                              ? "bg-emerald-50 text-emerald-700 border-emerald-200"
                               : appt.status === "canceled"
                               ? "bg-slate-100 text-slate-500 border-slate-200"
-                              : "bg-blue-50 text-blue-700 border-blue-200"
+                              : "bg-[#0F3B2E]/10 text-[#0F3B2E] border-[#0F3B2E]/20"
                           }`}>
                             {appt.status === "completed" ? "Concluído" : appt.status === "confirmed" ? "Confirmado" : appt.status === "canceled" ? "Cancelado" : "Agendado"}
                           </span>
@@ -853,7 +1407,7 @@ export default function CalendarView({
       {/* Mobile FAB */}
       <button
         onClick={() => { resetForm(); setShowAddForm(true); }}
-        className="fixed bottom-6 right-6 z-30 flex items-center gap-2 rounded-full bg-teal-600 text-white px-4 py-3 shadow-xl hover:bg-teal-700 transition-all lg:hidden cursor-pointer"
+        className="fixed bottom-6 right-6 z-30 flex items-center gap-2 rounded-full bg-brand text-white px-4 py-3 shadow-xl hover:bg-brand-700 transition-all md:hidden cursor-pointer"
       >
         <Plus className="w-4 h-4" />
         <span className="text-xs font-bold">Nova Consulta</span>
@@ -861,7 +1415,7 @@ export default function CalendarView({
 
       {/* Mobile bottom sheet form */}
       {showAddForm && (
-        <div className="fixed inset-0 z-40 bg-slate-900/35 backdrop-blur-[2px] lg:hidden" onClick={() => { setShowAddForm(false); resetForm(); }}>
+        <div className="fixed inset-0 z-40 bg-slate-900/35 backdrop-blur-[2px] md:hidden" onClick={() => { setShowAddForm(false); resetForm(); }}>
           <div className="absolute bottom-0 left-0 right-0 rounded-t-3xl bg-white p-5 shadow-2xl max-h-[85vh] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
             <div className="flex items-center justify-between mb-4">
               <h3 className="text-sm font-bold text-slate-800 uppercase tracking-wider">

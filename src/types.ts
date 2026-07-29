@@ -4,6 +4,14 @@ export interface Patient {
   phone: string;
   dob: string; // YYYY-MM-DD
   gender: string;
+  cpf?: string;
+  email?: string;
+  cep?: string;
+  address?: string;
+  responsableName?: string;
+  responsableDob?: string;
+  responsableCpf?: string;
+  responsablePhone?: string;
   isDiabetic: boolean;
   hasCirculatoryIssues: boolean;
   isSmoker: boolean;
@@ -29,6 +37,8 @@ export interface Patient {
   signedAt?: string;
   footIssues: FootIssue[];
   evolutions: Evolution[];
+  avaliacaoDate?: string;
+  nailCutting?: string;
   createdAt: string;
 }
 
@@ -62,6 +72,7 @@ export interface Appointment {
   status: "scheduled" | "confirmed" | "completed" | "canceled";
   notes?: string;
   calendarEventId?: string; // Google Calendar event ID for sync
+  source?: "manual" | "google"; // Origin: manual (app) or google (imported from Google Calendar)
 }
 
 export interface FinanceRecord {

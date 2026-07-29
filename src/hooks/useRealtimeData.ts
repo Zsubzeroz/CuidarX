@@ -43,14 +43,22 @@ export function useRealtimeData() {
       }
     };
 
+    // Safety timeout: force-load after 2s even if some listeners haven't responded
+    const safetyTimer = setTimeout(() => {
+      if (loadedCount < totalCollections) {
+        console.warn(`[useRealtimeData] Safety timeout: only ${loadedCount}/${totalCollections} collections loaded, forcing UI ready`);
+        setIsLoading(false);
+      }
+    }, 2000);
+
     const unsubPatients = listenPatients(
-      (data) => { setPatients(data); setSyncStatus("synced"); checkLoaded(); },
-      () => { setSyncStatus("error"); checkLoaded(); }
+      (data) => { console.log(`[useRealtimeData] patients update: ${data.length} records`); setPatients(data); setSyncStatus("synced"); checkLoaded(); },
+      (err) => { console.error("[useRealtimeData] patients listener error:", err); setSyncStatus("error"); checkLoaded(); }
     );
 
     const unsubAppointments = listenAppointments(
-      (data) => { setAppointments(data); setSyncStatus("synced"); checkLoaded(); },
-      () => { setSyncStatus("error"); checkLoaded(); }
+      (data) => { console.log(`[useRealtimeData] appointments update: ${data.length} records`); setAppointments(data); setSyncStatus("synced"); checkLoaded(); },
+      (err) => { console.error("[useRealtimeData] appointments listener error:", err); setSyncStatus("error"); checkLoaded(); }
     );
 
     const unsubFinances = listenFinances(
@@ -74,6 +82,7 @@ export function useRealtimeData() {
     );
 
     return () => {
+      clearTimeout(safetyTimer);
       unsubPatients();
       unsubAppointments();
       unsubFinances();

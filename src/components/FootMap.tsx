@@ -62,7 +62,7 @@ export default function FootMap({
       {/* Interactive Map */}
       <div className="md:col-span-7 flex flex-col items-center">
         <h4 className="text-sm font-semibold text-slate-700 mb-4 flex items-center gap-2">
-          <Info className="w-4 h-4 text-teal-600" />
+          <Info className="w-4 h-4 text-gold" />
           {readOnly ? "Mapa de Lesões Ativas" : "Clique no mapa podal para registrar uma patologia"}
         </h4>
 
@@ -94,7 +94,7 @@ export default function FootMap({
                   fill="#f8fafc"
                   stroke="#cbd5e1"
                   strokeWidth="2"
-                  className="transition-colors hover:fill-teal-50/40"
+                  className="transition-colors hover:fill-emerald-50/40"
                 />
                 {/* Internal Details */}
                 <path
@@ -157,7 +157,7 @@ export default function FootMap({
                   fill="#f8fafc"
                   stroke="#cbd5e1"
                   strokeWidth="2"
-                  className="transition-colors hover:fill-teal-50/40"
+                  className="transition-colors hover:fill-emerald-50/40"
                 />
                 {/* Internal Details */}
                 <path
@@ -199,12 +199,12 @@ export default function FootMap({
       <div className="md:col-span-5 flex flex-col justify-between">
         {clickCoords && !readOnly ? (
           /* Create New Marker Form */
-          <div className="bg-teal-50/50 border border-teal-100 p-4 rounded-xl flex flex-col gap-3">
-            <h5 className="text-xs font-bold text-teal-800 uppercase tracking-wider flex items-center gap-1">
-              <PlusCircle className="w-4 h-4 text-teal-600" />
+          <div className="bg-emerald-50/50 border border-emerald-100 p-4 rounded-xl flex flex-col gap-3">
+            <h5 className="text-xs font-bold text-emerald-800 uppercase tracking-wider flex items-center gap-1">
+              <PlusCircle className="w-4 h-4 text-gold" />
               Novo Registro no Pé {selectedFoot === "left" ? "Esquerdo" : "Direito"}
             </h5>
-            <p className="text-xs text-teal-700">
+            <p className="text-xs text-emerald-700">
               Coordenadas marcadas: X: {clickCoords.x}%, Y: {clickCoords.y}%
             </p>
 
@@ -213,7 +213,7 @@ export default function FootMap({
               <select
                 value={condition}
                 onChange={(e) => setCondition(e.target.value)}
-                className="w-full text-xs bg-white border border-slate-200 rounded-lg p-2 focus:outline-none focus:ring-1 focus:ring-teal-500"
+                className="w-full text-xs bg-white border border-slate-200 rounded-lg p-2 focus:outline-none focus:ring-1 focus:ring-gold"
               >
                 {conditionsList.map((c) => (
                   <option key={c} value={c}>
@@ -230,7 +230,7 @@ export default function FootMap({
                 onChange={(e) => setNotes(e.target.value)}
                 placeholder="Ex: Unha inflamada, dor de grau III, calo sob pressão metatarsal..."
                 rows={3}
-                className="w-full text-xs bg-white border border-slate-200 rounded-lg p-2 focus:outline-none focus:ring-1 focus:ring-teal-500"
+                className="w-full text-xs bg-white border border-slate-200 rounded-lg p-2 focus:outline-none focus:ring-1 focus:ring-gold"
               />
             </div>
 
@@ -243,7 +243,7 @@ export default function FootMap({
               </button>
               <button
                 onClick={handleSaveIssue}
-                className="px-3 py-1.5 text-xs font-medium text-white bg-teal-600 hover:bg-teal-700 rounded-lg shadow-sm transition-colors"
+                className="px-3 py-1.5 text-xs font-medium text-white bg-brand hover:bg-brand-700 rounded-lg shadow-sm transition-colors"
               >
                 Salvar Ponto
               </button>
@@ -274,7 +274,7 @@ export default function FootMap({
                       <span className="font-bold flex items-center gap-1">
                         <span
                           className={`w-2 h-2 rounded-full ${
-                            issue.status === "active" ? "bg-rose-500" : "bg-emerald-500"
+                            issue.status === "active" ? "bg-rose-500" : "bg-gold"
                           }`}
                         />
                         {issue.condition}
@@ -291,7 +291,7 @@ export default function FootMap({
                         {issue.status === "active" && (
                           <button
                             onClick={() => onResolveIssue(issue.id)}
-                            className="text-[10px] text-emerald-700 hover:text-emerald-800 font-medium flex items-center gap-0.5 bg-emerald-50 hover:bg-emerald-100 px-2 py-1 rounded transition-colors"
+                            className="text-[10px] text-emerald-700 hover:text-emerald-800 font-medium flex items-center gap-0.5 bg-emerald-50 hover:bg-gold/10 px-2 py-1 rounded transition-colors"
                           >
                             <CheckCircle className="w-3 h-3" /> Resolvido
                           </button>

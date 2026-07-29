@@ -7,6 +7,24 @@ allprojects {
         google()
         mavenCentral()
     }
+
+    afterEvaluate {
+        if (it.hasProperty('android')) {
+            android {
+                compileOptions {
+                    sourceCompatibility JavaVersion.VERSION_17
+                    targetCompatibility JavaVersion.VERSION_17
+                }
+            }
+        }
+        if (it.plugins.hasPlugin('kotlin-android')) {
+            android {
+                kotlinOptions {
+                    jvmTarget = '17'
+                }
+            }
+        }
+    }
 }
 
 task clean(type: Delete) {

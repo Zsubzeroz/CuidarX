@@ -156,7 +156,7 @@ ${textToSend}`;
     {
       title: "Guia Pós-Operatório",
       prompt: "Gere recomendações pós-operatório (onicocriptose/unha encravada) completas e fáceis de ler para enviar ao WhatsApp do paciente.",
-      icon: <Sparkles className="w-4 h-4 text-teal-600" />,
+      icon: <Sparkles className="w-4 h-4 text-gold" />,
     },
     {
       title: "Cuidados Pé Diabético",
@@ -183,7 +183,7 @@ ${textToSend}`;
         {/* Patient context card */}
         <div className="bg-white p-5 rounded-2xl border border-slate-100 shadow-sm space-y-4">
           <div className="flex items-center gap-2">
-            <Cpu className="w-5 h-5 text-teal-600" />
+            <Cpu className="w-5 h-5 text-gold" />
             <h4 className="text-xs font-bold text-slate-800 uppercase tracking-wider">Contexto de Paciente</h4>
           </div>
           
@@ -194,7 +194,7 @@ ${textToSend}`;
           <select
             value={selectedPatientId}
             onChange={(e) => setSelectedPatientId(e.target.value)}
-            className="w-full text-xs bg-slate-50 border border-slate-200 p-2.5 rounded-xl focus:outline-none focus:ring-1 focus:ring-teal-500"
+            className="w-full text-xs bg-slate-50 border border-slate-200 p-2.5 rounded-xl focus:outline-none focus:ring-1 focus:ring-gold"
           >
             <option value="">Nenhum paciente selecionado (IA Geral)</option>
             {patients.map((p) => (
@@ -205,8 +205,8 @@ ${textToSend}`;
           </select>
 
           {activePatient && (
-            <div className="bg-teal-50/30 border border-teal-100/50 p-3 rounded-xl text-xs space-y-1">
-              <p className="font-bold text-teal-800">Contexto Carregado:</p>
+            <div className="bg-emerald-50/30 border border-emerald-100/50 p-3 rounded-xl text-xs space-y-1">
+              <p className="font-bold text-emerald-800">Contexto Carregado:</p>
               <p className="text-slate-600 font-medium">Nome: {activePatient.name}</p>
               <p className="text-slate-600">
                 Problemas: {activePatient.footIssues.filter((i) => i.status === "active").length} ativos
@@ -235,7 +235,7 @@ ${textToSend}`;
                   className={`w-full text-left p-3 rounded-xl border text-xs flex gap-2.5 items-start transition-all cursor-pointer ${
                     disabled
                       ? "bg-slate-50 border-slate-100 opacity-55 cursor-not-allowed"
-                      : "bg-white border-slate-100 hover:border-teal-100 hover:bg-teal-50/5"
+                      : "bg-white border-slate-100 hover:border-gold/30 hover:bg-gold/5"
                   }`}
                 >
                   <div className="pt-0.5">{qp.icon}</div>
@@ -260,10 +260,10 @@ ${textToSend}`;
         {/* Chat header */}
         <div className="border-b border-slate-100 pb-3 flex items-center justify-between">
           <div className="flex items-center gap-2">
-            <span className="w-2.5 h-2.5 rounded-full bg-teal-500 animate-pulse" />
+            <span className="w-2.5 h-2.5 rounded-full bg-gold animate-pulse" />
             <h3 className="text-sm font-bold text-slate-800">Trabalho Auxiliado por IA</h3>
           </div>
-          <span className="text-[10px] font-bold text-teal-700 bg-teal-50 px-2 py-1 rounded-full uppercase">
+          <span className="text-[10px] font-bold text-emerald-700 bg-emerald-50 px-2 py-1 rounded-full uppercase">
             Gemini 2.0 Flash
           </span>
         </div>
@@ -280,8 +280,8 @@ ${textToSend}`;
               <div
                 className={`w-8 h-8 rounded-full flex items-center justify-center shrink-0 border ${
                   msg.sender === "user"
-                    ? "bg-teal-600 border-teal-700 text-white"
-                    : "bg-teal-50 border-teal-100 text-teal-800"
+                    ? "bg-brand border-emerald-700 text-white"
+                    : "bg-emerald-50 border-emerald-100 text-emerald-800"
                 }`}
               >
                 {msg.sender === "user" ? <User className="w-4 h-4" /> : <Cpu className="w-4 h-4" />}
@@ -290,7 +290,7 @@ ${textToSend}`;
               <div
                 className={`p-3.5 rounded-2xl leading-relaxed whitespace-pre-wrap ${
                   msg.sender === "user"
-                    ? "bg-teal-600 text-white rounded-tr-none shadow-sm"
+                    ? "bg-brand text-white rounded-tr-none shadow-sm"
                     : "bg-slate-50 border border-slate-100 text-slate-700 rounded-tl-none shadow-sm"
                 }`}
               >
@@ -307,7 +307,7 @@ ${textToSend}`;
                     if (match.index > lastIndex) {
                       parts.push(line.substring(lastIndex, match.index));
                     }
-                    parts.push(<strong key={match.index} className={msg.sender === "user" ? "text-teal-100 font-extrabold" : "text-teal-950 font-bold"}>{match[1]}</strong>);
+                    parts.push(<strong key={match.index} className={msg.sender === "user" ? "text-emerald-100 font-extrabold" : "text-emerald-950 font-bold"}>{match[1]}</strong>);
                     lastIndex = boldRegex.lastIndex;
                   }
                   if (lastIndex < line.length) {
@@ -325,7 +325,7 @@ ${textToSend}`;
           ))}
           {isSending && (
             <div className="flex gap-3 max-w-[80%] text-xs mr-auto items-center">
-              <div className="w-8 h-8 rounded-full bg-teal-50 border border-teal-100 text-teal-800 flex items-center justify-center">
+              <div className="w-8 h-8 rounded-full bg-emerald-50 border border-emerald-100 text-emerald-800 flex items-center justify-center">
                 <Cpu className="w-4 h-4 animate-spin" />
               </div>
               <div className="bg-slate-50 border border-slate-100 p-3 rounded-2xl rounded-tl-none text-slate-400 italic">
@@ -347,12 +347,12 @@ ${textToSend}`;
               if (e.key === "Enter") handleSendMessage();
             }}
             disabled={isSending}
-            className="flex-1 text-xs bg-slate-50 border border-slate-200 rounded-xl p-3 focus:outline-none focus:ring-1 focus:ring-teal-500 disabled:opacity-60"
+            className="flex-1 text-xs bg-slate-50 border border-slate-200 rounded-xl p-3 focus:outline-none focus:ring-1 focus:ring-gold disabled:opacity-60"
           />
           <button
             onClick={() => handleSendMessage()}
             disabled={!inputText.trim() || isSending}
-            className="bg-teal-600 hover:bg-teal-700 text-white p-3 rounded-xl shadow-sm transition-all disabled:opacity-50 flex items-center justify-center cursor-pointer"
+            className="bg-brand hover:bg-brand-700 text-white p-3 rounded-xl shadow-sm transition-all disabled:opacity-50 flex items-center justify-center cursor-pointer"
           >
             <Send className="w-4 h-4" />
           </button>

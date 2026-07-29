@@ -129,7 +129,7 @@ export default function ServicesView({
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
           <h2 className="text-xl font-bold text-slate-800 tracking-tight flex items-center gap-2">
-            <ClipboardList className="w-5 h-5 text-teal-600" /> Controle de Serviços & Preços
+            <ClipboardList className="w-5 h-5 text-gold" /> Controle de Serviços & Preços
           </h2>
           <p className="text-xs text-slate-400 mt-1">
             Gerencie os procedimentos oferecidos, configure preços de tabela, tempos de atendimento e ative/desative serviços.
@@ -137,7 +137,7 @@ export default function ServicesView({
         </div>
         <button
           onClick={handleOpenCreateModal}
-          className="flex items-center justify-center gap-2 bg-teal-600 hover:bg-teal-700 text-white text-xs font-bold px-4 py-2.5 rounded-xl shadow-sm transition-all cursor-pointer self-start sm:self-auto"
+          className="flex items-center justify-center gap-2 bg-brand hover:bg-brand-700 text-white text-xs font-bold px-4 py-2.5 rounded-xl shadow-sm transition-all cursor-pointer self-start sm:self-auto"
         >
           <PlusCircle className="w-4 h-4" /> Novo Serviço
         </button>
@@ -150,7 +150,7 @@ export default function ServicesView({
             <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Total de Serviços</p>
             <h3 className="text-2xl font-bold text-slate-800 font-mono">{services.length}</h3>
           </div>
-          <div className="w-10 h-10 rounded-xl bg-teal-50 flex items-center justify-center text-teal-600">
+          <div className="w-10 h-10 rounded-xl bg-emerald-50 flex items-center justify-center text-gold">
             <ClipboardList className="w-5 h-5" />
           </div>
         </div>
@@ -158,9 +158,9 @@ export default function ServicesView({
         <div className="bg-white border border-slate-100 rounded-2xl p-4 shadow-sm flex items-center justify-between">
           <div className="space-y-1">
             <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Serviços Ativos</p>
-            <h3 className="text-2xl font-bold text-teal-600 font-mono">{activeServices}</h3>
+            <h3 className="text-2xl font-bold text-gold font-mono">{activeServices}</h3>
           </div>
-          <div className="w-10 h-10 rounded-xl bg-teal-50 flex items-center justify-center text-teal-600">
+          <div className="w-10 h-10 rounded-xl bg-emerald-50 flex items-center justify-center text-gold">
             <Check className="w-5 h-5" />
           </div>
         </div>
@@ -172,7 +172,7 @@ export default function ServicesView({
               R$ {averagePrice.toFixed(2).replace(".", ",")}
             </h3>
           </div>
-          <div className="w-10 h-10 rounded-xl bg-emerald-50 flex items-center justify-center text-emerald-600">
+          <div className="w-10 h-10 rounded-xl bg-emerald-50 flex items-center justify-center text-gold">
             <TrendingUp className="w-5 h-5" />
           </div>
         </div>
@@ -190,7 +190,7 @@ export default function ServicesView({
               placeholder="Buscar serviço por nome ou descrição..."
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
-              className="w-full text-xs border border-slate-200/80 pl-10 pr-4 py-2.5 rounded-xl bg-white focus:outline-none focus:ring-1 focus:ring-teal-500 text-slate-700"
+              className="w-full text-xs border border-slate-200/80 pl-10 pr-4 py-2.5 rounded-xl bg-white focus:outline-none focus:ring-1 focus:ring-gold text-slate-700"
             />
           </div>
 
@@ -203,7 +203,7 @@ export default function ServicesView({
                 onClick={() => setStatusFilter("all")}
                 className={`px-3 py-1 text-[11px] font-bold rounded-md transition-all cursor-pointer ${
                   statusFilter === "all"
-                    ? "bg-teal-600 text-white"
+                    ? "bg-brand text-white"
                     : "text-slate-500 hover:text-slate-800"
                 }`}
               >
@@ -213,7 +213,7 @@ export default function ServicesView({
                 onClick={() => setStatusFilter("active")}
                 className={`px-3 py-1 text-[11px] font-bold rounded-md transition-all cursor-pointer ${
                   statusFilter === "active"
-                    ? "bg-teal-600 text-white"
+                    ? "bg-brand text-white"
                     : "text-slate-500 hover:text-slate-800"
                 }`}
               >
@@ -223,7 +223,7 @@ export default function ServicesView({
                 onClick={() => setStatusFilter("inactive")}
                 className={`px-3 py-1 text-[11px] font-bold rounded-md transition-all cursor-pointer ${
                   statusFilter === "inactive"
-                    ? "bg-teal-600 text-white"
+                    ? "bg-brand text-white"
                     : "text-slate-500 hover:text-slate-800"
                 }`}
               >
@@ -291,7 +291,7 @@ export default function ServicesView({
                       <div className="flex items-center justify-end gap-2">
                         <button
                           onClick={() => handleOpenEditModal(service)}
-                          className="p-1.5 rounded-lg text-slate-500 hover:text-teal-600 hover:bg-teal-50 transition-all cursor-pointer"
+                          className="p-1.5 rounded-lg text-slate-500 hover:text-gold hover:bg-gold/5 transition-all cursor-pointer"
                           title="Editar Serviço"
                         >
                           <Edit2 className="w-3.5 h-3.5" />
@@ -350,7 +350,7 @@ export default function ServicesView({
                   placeholder="Ex: Órtese FMM / Fibra de Vidro"
                   value={name}
                   onChange={(e) => setName(e.target.value)}
-                  className="w-full text-xs border border-slate-200 p-3 rounded-xl focus:outline-none focus:ring-1 focus:ring-teal-500"
+                  className="w-full text-xs border border-slate-200 p-3 rounded-xl focus:outline-none focus:ring-1 focus:ring-gold"
                 />
               </div>
 
@@ -369,7 +369,7 @@ export default function ServicesView({
                       placeholder="0,00"
                       value={price}
                       onChange={(e) => setPrice(e.target.value)}
-                      className="w-full text-xs border border-slate-200 pl-9 pr-3 py-3 rounded-xl focus:outline-none focus:ring-1 focus:ring-teal-500 font-mono"
+                      className="w-full text-xs border border-slate-200 pl-9 pr-3 py-3 rounded-xl focus:outline-none focus:ring-1 focus:ring-gold font-mono"
                     />
                   </div>
                 </div>
@@ -387,7 +387,7 @@ export default function ServicesView({
                       placeholder="45"
                       value={duration}
                       onChange={(e) => setDuration(e.target.value)}
-                      className="w-full text-xs border border-slate-200 pl-9 pr-3 py-3 rounded-xl focus:outline-none focus:ring-1 focus:ring-teal-500 font-mono"
+                      className="w-full text-xs border border-slate-200 pl-9 pr-3 py-3 rounded-xl focus:outline-none focus:ring-1 focus:ring-gold font-mono"
                     />
                   </div>
                 </div>
@@ -403,7 +403,7 @@ export default function ServicesView({
                   placeholder="Descreva detalhes do procedimento, assepsia, indicações clínicas, etc..."
                   value={description}
                   onChange={(e) => setDescription(e.target.value)}
-                  className="w-full text-xs border border-slate-200 p-3 rounded-xl focus:outline-none focus:ring-1 focus:ring-teal-500 resize-none"
+                  className="w-full text-xs border border-slate-200 p-3 rounded-xl focus:outline-none focus:ring-1 focus:ring-gold resize-none"
                 />
               </div>
 
@@ -422,7 +422,7 @@ export default function ServicesView({
                     onChange={(e) => setIsActive(e.target.checked)}
                     className="sr-only peer"
                   />
-                  <div className="w-9 h-5 bg-slate-200 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-slate-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-teal-600"></div>
+                  <div className="w-9 h-5 bg-slate-200 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-slate-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-brand"></div>
                 </label>
               </div>
 
@@ -437,7 +437,7 @@ export default function ServicesView({
                 </button>
                 <button
                   type="submit"
-                  className="px-4 py-2 bg-teal-600 hover:bg-teal-700 text-white text-xs font-bold rounded-xl transition-all cursor-pointer flex items-center gap-1.5 shadow-sm"
+                  className="px-4 py-2 bg-brand hover:bg-brand-700 text-white text-xs font-bold rounded-xl transition-all cursor-pointer flex items-center gap-1.5 shadow-sm"
                 >
                   Salvar Serviço
                 </button>

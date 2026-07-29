@@ -53,7 +53,7 @@ export default function DashboardView({
 
   // Chart Data preparation: Last 7 days revenues
   const last7DaysData = Array.from({ length: 7 }).map((_, i) => {
-    const d = new Date(todayStr);
+    const d = new Date(todayStr + "T00:00:00");
     d.setDate(d.getDate() - (6 - i));
     const dStr = d.toISOString().split("T")[0];
     
@@ -71,94 +71,99 @@ export default function DashboardView({
   return (
     <div id="dashboard-view" className="space-y-6">
       {/* Header */}
-      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 bg-gradient-to-r from-teal-800 to-teal-950 p-6 rounded-2xl text-white shadow-md border border-teal-700/20">
-        <div className="flex items-center gap-4">
+      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 bg-hero-gradient p-6 rounded-2xl text-white shadow-luxury border border-[#1B523E] relative overflow-hidden">
+        {/* Decorative orb */}
+        <div className="absolute inset-0 bg-dots-gold opacity-30 pointer-events-none" />
+        <div className="absolute -top-10 -right-10 w-48 h-48 rounded-full bg-[#C8A45A]/10 blur-2xl pointer-events-none" />
+        <div className="absolute bottom-0 left-1/3 w-32 h-32 rounded-full bg-[#0A2B21]/60 blur-xl pointer-events-none" />
+        <div className="flex items-center gap-4 relative">
           <img
             src={clinicLogo}
             alt="Logo Dra. Fabrícia Rodrigues"
-            className="w-16 h-16 rounded-full object-cover border-2 border-teal-400/30 shadow-lg hidden sm:block"
+            className="w-16 h-16 rounded-2xl object-cover border-2 border-[#C8A45A]/50 shadow-lg hidden sm:block"
             referrerPolicy="no-referrer"
           />
           <div>
-            <h2 className="text-xl md:text-2xl font-bold tracking-tight">Olá, Dra. Fabrícia! 👋</h2>
-            <p className="text-teal-200 text-xs mt-1">
+            <p className="text-[10px] uppercase tracking-widest text-[#C8A45A] font-semibold mb-1">Bem-vinda, Doutora</p>
+            <h2 className="text-xl md:text-2xl font-bold tracking-tight font-display">Fabrícia Rodrigues 👋</h2>
+            <p className="text-white/60 text-xs mt-1">
               Seu consultório está pronto para os atendimentos de hoje.
             </p>
           </div>
         </div>
-        <div className="flex gap-2">
+        <div className="flex gap-2 relative">
           <button
             onClick={onQuickSchedule}
-            className="flex items-center gap-1 bg-teal-500 hover:bg-teal-400 text-teal-950 px-4 py-2 rounded-xl text-xs font-semibold shadow-sm transition-colors cursor-pointer"
+            className="flex items-center gap-1.5 bg-[#C8A45A] hover:bg-[#D0A74F] text-white px-4 py-2.5 rounded-xl text-xs font-bold shadow-gold transition-all active:scale-95 cursor-pointer"
           >
             <Plus className="w-4 h-4" /> Novo Agendamento
           </button>
           <button
             onClick={() => onNavigate("assistente")}
-            className="flex items-center gap-1 bg-white/10 hover:bg-white/15 text-white border border-white/20 px-4 py-2 rounded-xl text-xs font-semibold transition-all cursor-pointer"
+            className="flex items-center gap-1.5 bg-white/10 hover:bg-white/15 text-white border border-white/20 px-4 py-2.5 rounded-xl text-xs font-bold transition-all active:scale-95 cursor-pointer"
           >
-            <Activity className="w-4 h-4 text-teal-300" /> Assistente IA Podal
+            <Activity className="w-4 h-4 text-[#C8A45A]" /> Assistente IA
           </button>
         </div>
       </div>
 
       {/* Quick Actions (Ações Rápidas) */}
       <div className="space-y-2">
-        <h3 className="text-xs font-bold text-slate-500 uppercase tracking-wider text-left">Ações Rápidas</h3>
-        <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+        <h3 className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Ações Rápidas</h3>
+        <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
           {/* Button 1: Novo Agendamento */}
           <button
             onClick={onQuickSchedule}
-            className="flex items-center gap-3.5 bg-sky-50 border border-sky-100/80 hover:bg-sky-100/50 p-4 rounded-2xl text-left cursor-pointer transition-all hover:scale-[1.01]"
+            className="group flex items-center gap-3 bg-white border border-[#C8A45A]/15 hover:border-[#C8A45A]/40 hover:shadow-luxury p-4 rounded-2xl text-left cursor-pointer transition-all duration-200 hover:-translate-y-0.5"
           >
-            <div className="bg-sky-500 text-white p-2.5 rounded-xl">
+            <div className="bg-[#0F3B2E] text-[#C8A45A] p-2.5 rounded-xl shadow-sm group-hover:scale-105 transition-transform">
               <Calendar className="w-5 h-5" />
             </div>
             <div>
-              <h4 className="text-xs font-bold text-sky-950">Novo Agendamento</h4>
-              <p className="text-[10px] text-sky-600 mt-0.5">Agendar consulta na clínica</p>
+              <h4 className="text-xs font-bold text-slate-800">Novo Agendamento</h4>
+              <p className="text-[10px] text-slate-400 mt-0.5">Agendar consulta</p>
             </div>
           </button>
 
           {/* Button 2: Cadastrar Cliente */}
           <button
             onClick={() => onNavigate("pacientes")}
-            className="flex items-center gap-3.5 bg-amber-50 border border-amber-100/80 hover:bg-amber-100/50 p-4 rounded-2xl text-left cursor-pointer transition-all hover:scale-[1.01]"
+            className="group flex items-center gap-3 bg-white border border-[#C8A45A]/15 hover:border-[#C8A45A]/40 hover:shadow-luxury p-4 rounded-2xl text-left cursor-pointer transition-all duration-200 hover:-translate-y-0.5"
           >
-            <div className="bg-amber-500 text-white p-2.5 rounded-xl">
+            <div className="bg-amber-500 text-white p-2.5 rounded-xl shadow-sm group-hover:scale-105 transition-transform">
               <UserPlus className="w-5 h-5" />
             </div>
             <div>
-              <h4 className="text-xs font-bold text-amber-950">Cadastrar Cliente</h4>
-              <p className="text-[10px] text-amber-700 mt-0.5">Criar novo prontuário podal</p>
+              <h4 className="text-xs font-bold text-slate-800">Cadastrar Cliente</h4>
+              <p className="text-[10px] text-slate-400 mt-0.5">Criar prontuário podal</p>
             </div>
           </button>
 
           {/* Button 3: Ficha de Anamnese */}
           <button
             onClick={() => onNavigate("anamnese")}
-            className="flex items-center gap-3.5 bg-indigo-50 border border-indigo-100/80 hover:bg-indigo-100/50 p-4 rounded-2xl text-left cursor-pointer transition-all hover:scale-[1.01]"
+            className="group flex items-center gap-3 bg-white border border-[#C8A45A]/15 hover:border-[#C8A45A]/40 hover:shadow-luxury p-4 rounded-2xl text-left cursor-pointer transition-all duration-200 hover:-translate-y-0.5"
           >
-            <div className="bg-indigo-500 text-white p-2.5 rounded-xl">
+            <div className="bg-indigo-500 text-white p-2.5 rounded-xl shadow-sm group-hover:scale-105 transition-transform">
               <FileText className="w-5 h-5" />
             </div>
             <div>
-              <h4 className="text-xs font-bold text-indigo-950">Ficha de Anamnese</h4>
-              <p className="text-[10px] text-indigo-700 mt-0.5">Preencher ou imprimir ficha</p>
+              <h4 className="text-xs font-bold text-slate-800">Ficha de Anamnese</h4>
+              <p className="text-[10px] text-slate-400 mt-0.5">Preencher ou imprimir</p>
             </div>
           </button>
 
           {/* Button 4: Abrir Caixa / Venda */}
           <button
             onClick={() => onNavigate("financeiro")}
-            className="flex items-center gap-3.5 bg-emerald-50 border border-emerald-100/80 hover:bg-emerald-100/50 p-4 rounded-2xl text-left cursor-pointer transition-all hover:scale-[1.01]"
+            className="group flex items-center gap-3 bg-white border border-[#C8A45A]/15 hover:border-[#C8A45A]/40 hover:shadow-luxury p-4 rounded-2xl text-left cursor-pointer transition-all duration-200 hover:-translate-y-0.5"
           >
-            <div className="bg-emerald-500 text-white p-2.5 rounded-xl">
+            <div className="bg-[#C8A45A] text-white p-2.5 rounded-xl shadow-sm group-hover:scale-105 transition-transform">
               <Wallet className="w-5 h-5" />
             </div>
             <div>
-              <h4 className="text-xs font-bold text-emerald-950">Abrir Caixa / Venda</h4>
-              <p className="text-[10px] text-emerald-700 mt-0.5">Registrar fluxo financeiro</p>
+              <h4 className="text-xs font-bold text-slate-800">Abrir Caixa / Venda</h4>
+              <p className="text-[10px] text-slate-400 mt-0.5">Registrar financeiro</p>
             </div>
           </button>
         </div>
@@ -167,65 +172,63 @@ export default function DashboardView({
       {/* KPI Stats */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
         {/* Stat 1 */}
-        <div className="bg-white p-4 rounded-2xl border border-slate-100 shadow-sm flex items-center justify-between">
+        <div className="card-stat">
           <div>
-            <p className="text-[10px] uppercase font-bold text-slate-400 tracking-wider">Total Pacientes</p>
-            <h3 className="text-xl md:text-2xl font-bold text-slate-800 mt-1">{totalPatients}</h3>
-            <p className="text-[10px] text-teal-600 font-medium flex items-center gap-1 mt-1">
+            <p className="text-[10px] uppercase font-bold text-slate-400 tracking-widest">Total Pacientes</p>
+            <h3 className="text-2xl font-bold text-slate-800 mt-1.5">{totalPatients}</h3>
+            <p className="text-[10px] text-[#C8A45A] font-semibold flex items-center gap-1 mt-1.5">
               <TrendingUp className="w-3 h-3" /> Crescimento contínuo
             </p>
           </div>
-          <div className="bg-teal-50 p-2.5 rounded-xl">
-            <Users className="w-5 h-5 text-teal-600" />
+          <div className="bg-[#0F3B2E] p-3 rounded-xl shadow-sm shrink-0">
+            <Users className="w-5 h-5 text-[#C8A45A]" />
           </div>
         </div>
 
         {/* Stat 2 */}
-        <div className="bg-white p-4 rounded-2xl border border-slate-100 shadow-sm flex items-center justify-between">
+        <div className="card-stat">
           <div>
-            <p className="text-[10px] uppercase font-bold text-slate-400 tracking-wider">Consultas Hoje</p>
-            <h3 className="text-xl md:text-2xl font-bold text-slate-800 mt-1">{todayAppointments.length}</h3>
-            <p className="text-[10px] text-slate-500 mt-1">Dia {new Date(todayStr).toLocaleDateString("pt-BR")}</p>
+            <p className="text-[10px] uppercase font-bold text-slate-400 tracking-widest">Consultas Hoje</p>
+            <h3 className="text-2xl font-bold text-slate-800 mt-1.5">{todayAppointments.length}</h3>
+            <p className="text-[10px] text-slate-400 mt-1.5">{new Date(todayStr + "T00:00:00").toLocaleDateString("pt-BR", { weekday: "long" })}</p>
           </div>
-          <div className="bg-teal-50 p-2.5 rounded-xl">
-            <Calendar className="w-5 h-5 text-teal-600" />
+          <div className="bg-sky-500 p-3 rounded-xl shadow-sm shrink-0">
+            <Calendar className="w-5 h-5 text-white" />
           </div>
         </div>
 
         {/* Stat 3 */}
-        <div className="bg-white p-4 rounded-2xl border border-slate-100 shadow-sm flex items-center justify-between">
+        <div className="card-stat">
           <div>
-            <p className="text-[10px] uppercase font-bold text-slate-400 tracking-wider">Receita (Julho)</p>
-            <h3 className="text-xl md:text-2xl font-bold text-slate-800 mt-1">
+            <p className="text-[10px] uppercase font-bold text-slate-400 tracking-widest">Receita Mensal</p>
+            <h3 className="text-xl font-bold text-slate-800 mt-1.5">
               R$ {monthlyRevenue.toLocaleString("pt-BR", { minimumFractionDigits: 2 })}
             </h3>
-            <p className="text-[10px] text-emerald-600 font-medium mt-1">Doações e procedimentos concluidos</p>
+            <p className="text-[10px] text-[#C8A45A] font-semibold mt-1.5">Procedimentos concluídos</p>
           </div>
-          <div className="bg-emerald-50 p-2.5 rounded-xl">
-            <DollarSign className="w-5 h-5 text-emerald-600" />
+          <div className="bg-[#C8A45A] p-3 rounded-xl shadow-sm shrink-0">
+            <DollarSign className="w-5 h-5 text-white" />
           </div>
         </div>
 
         {/* Stat 4 */}
-        <div className={`bg-white p-4 rounded-2xl border shadow-sm flex items-center justify-between ${
-          diabeticActiveIssues.length > 0 ? "border-amber-100" : "border-slate-100"
+        <div className={`card-stat ${
+          diabeticActiveIssues.length > 0 ? "border-amber-200 bg-amber-50/30" : ""
         }`}>
           <div>
-            <p className="text-[10px] uppercase font-bold text-slate-400 tracking-wider">Alertas Diabéticos</p>
-            <h3 className="text-xl md:text-2xl font-bold mt-1 text-slate-800">
-              {diabeticActiveIssues.length}
-            </h3>
-            <p className={`text-[10px] font-medium mt-1 ${
-              diabeticActiveIssues.length > 0 ? "text-amber-600" : "text-slate-500"
+            <p className="text-[10px] uppercase font-bold text-slate-400 tracking-widest">Alertas Diabéticos</p>
+            <h3 className="text-2xl font-bold mt-1.5 text-slate-800">{diabeticActiveIssues.length}</h3>
+            <p className={`text-[10px] font-semibold mt-1.5 ${
+              diabeticActiveIssues.length > 0 ? "text-amber-600" : "text-slate-400"
             }`}>
-              {diabeticActiveIssues.length > 0 ? "Requer atenção imediata!" : "Nenhum caso crítico ativo"}
+              {diabeticActiveIssues.length > 0 ? "⚠️ Requer atenção!" : "Nenhum caso crítico"}
             </p>
           </div>
-          <div className={`p-2.5 rounded-xl ${
-            diabeticActiveIssues.length > 0 ? "bg-amber-50" : "bg-slate-50"
+          <div className={`p-3 rounded-xl shadow-sm shrink-0 ${
+            diabeticActiveIssues.length > 0 ? "bg-amber-500" : "bg-slate-100"
           }`}>
             <AlertTriangle className={`w-5 h-5 ${
-              diabeticActiveIssues.length > 0 ? "text-amber-600" : "text-slate-400"
+              diabeticActiveIssues.length > 0 ? "text-white" : "text-slate-400"
             }`} />
           </div>
         </div>
@@ -236,14 +239,14 @@ export default function DashboardView({
         {/* Left Side: Critical patient alerts and visual chart */}
         <div className="lg:col-span-7 space-y-6">
           {/* Faturamento semanal chart */}
-          <div className="bg-white p-5 rounded-2xl border border-slate-100 shadow-sm">
-            <div className="flex justify-between items-center mb-4">
+          <div className="bg-white p-5 rounded-2xl border border-slate-100 shadow-card">
+            <div className="flex justify-between items-center mb-5">
               <div>
-                <h4 className="text-xs font-bold text-slate-400 uppercase tracking-wider">Faturamento</h4>
-                <h3 className="text-sm font-semibold text-slate-700">Fluxo semanal de receitas (R$)</h3>
+                <p className="text-[10px] uppercase font-bold text-slate-400 tracking-widest">Faturamento</p>
+                <h3 className="text-sm font-semibold text-slate-700 mt-0.5">Fluxo semanal de receitas (R$)</h3>
               </div>
-              <span className="text-[10px] text-slate-500 bg-slate-100 px-2.5 py-1 rounded-full font-medium">
-                Sincronizado
+              <span className="text-[10px] text-[#C8A45A] bg-[#FBF8EE] px-3 py-1 rounded-full font-bold border border-[#E9D79E]">
+                ● Sincronizado
               </span>
             </div>
             <div className="h-48 w-full">
@@ -251,21 +254,30 @@ export default function DashboardView({
                 <AreaChart data={last7DaysData} margin={{ top: 10, right: 10, left: -20, bottom: 0 }}>
                   <defs>
                     <linearGradient id="colorFaturamento" x1="0" y1="0" x2="0" y2="1">
-                      <stop offset="5%" stopColor="#0d9488" stopOpacity={0.2} />
-                      <stop offset="95%" stopColor="#0d9488" stopOpacity={0} />
+                      <stop offset="5%" stopColor="#0F3B2E" stopOpacity={0.15} />
+                      <stop offset="95%" stopColor="#C8A45A" stopOpacity={0.02} />
                     </linearGradient>
                   </defs>
                   <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f1f5f9" />
                   <XAxis dataKey="name" tickLine={false} axisLine={false} style={{ fontSize: "10px", fill: "#94a3b8" }} />
                   <YAxis tickLine={false} axisLine={false} style={{ fontSize: "10px", fill: "#94a3b8" }} />
-                  <Tooltip contentStyle={{ fontSize: "12px", borderRadius: "8px", border: "1px solid #f1f5f9" }} />
+                  <Tooltip
+                    contentStyle={{
+                      fontSize: "12px",
+                      borderRadius: "12px",
+                      border: "1px solid rgba(200,164,90,0.3)",
+                      boxShadow: "0 4px 12px rgba(15,59,46,0.1)",
+                    }}
+                  />
                   <Area
                     type="monotone"
                     dataKey="Faturamento"
-                    stroke="#0d9488"
-                    strokeWidth={2}
+                    stroke="#0F3B2E"
+                    strokeWidth={2.5}
                     fillOpacity={1}
                     fill="url(#colorFaturamento)"
+                    dot={{ fill: "#C8A45A", strokeWidth: 2, r: 3, stroke: "#fff" }}
+                    activeDot={{ r: 5, fill: "#C8A45A", stroke: "#0F3B2E", strokeWidth: 2 }}
                   />
                 </AreaChart>
               </ResponsiveContainer>
@@ -325,40 +337,42 @@ export default function DashboardView({
           <div className="bg-white p-5 rounded-2xl border border-slate-100 shadow-sm flex flex-col h-full">
             <div className="flex justify-between items-center mb-4">
               <h4 className="text-xs font-bold text-slate-400 uppercase tracking-wider">Agenda de Hoje</h4>
-              <span className="text-xs font-semibold text-teal-600">
+              <span className="text-xs font-semibold text-gold">
                 {todayAppointments.length} consultas
               </span>
             </div>
 
             {todayAppointments.length === 0 ? (
-              <div className="flex flex-col items-center justify-center p-8 bg-slate-50 rounded-xl border border-dashed border-slate-200 text-center text-slate-400 flex-1">
-                <Clock className="w-8 h-8 text-slate-300 mb-2" />
-                <p className="text-xs font-medium">Sem consultas agendadas para hoje.</p>
-                <p className="text-[10px] mt-1 text-slate-400">Aproveite para organizar prontuários ou revisar finanças.</p>
+              <div className="flex flex-col items-center justify-center p-8 bg-[#F8FAFC] rounded-xl border border-dashed border-slate-200 text-center text-slate-400 flex-1">
+                <div className="w-12 h-12 rounded-2xl bg-slate-100 flex items-center justify-center mb-3">
+                  <Clock className="w-6 h-6 text-slate-300" />
+                </div>
+                <p className="text-xs font-semibold text-slate-500">Dia livre de consultas!</p>
+                <p className="text-[10px] mt-1 text-slate-400">Aproveite para revisar prontuários e organizar as finanças.</p>
               </div>
             ) : (
-              <div className="space-y-3 flex-1 overflow-y-auto max-h-[380px]">
+              <div className="space-y-2.5 flex-1 overflow-y-auto max-h-[380px]">
                 {todayAppointments.map((appt) => {
                   const patientObj = patients.find((p) => p.id === appt.patientId);
                   return (
                     <div
                       key={appt.id}
-                      className="border border-slate-100 bg-slate-50/50 p-3.5 rounded-xl text-xs space-y-2 hover:border-teal-100 hover:bg-teal-50/10 transition-all"
+                      className="border-l-4 border-[#0F3B2E] bg-[#F8FAFC] border border-slate-100 pl-3 pr-3.5 py-3 rounded-xl text-xs space-y-2 hover:border-l-[#C8A45A] hover:shadow-card transition-all duration-200"
                     >
                       <div className="flex justify-between items-start">
                         <div>
                           <p className="font-bold text-slate-800">{appt.patientName}</p>
-                          <span className="text-[10px] text-teal-700 bg-teal-50 px-2 py-0.5 rounded-full font-medium inline-block mt-0.5">
+                          <span className="text-[10px] text-[#0F3B2E] bg-[#D8E6E0] px-2 py-0.5 rounded-full font-semibold inline-block mt-0.5">
                             {appt.service}
                           </span>
                         </div>
-                        <span className="font-bold text-slate-800 bg-white px-2 py-1 rounded border border-slate-200">
+                        <span className="font-bold text-white bg-[#0F3B2E] px-2.5 py-1 rounded-lg text-[11px] border border-[#C8A45A]/30">
                           {appt.time}
                         </span>
                       </div>
 
                       {patientObj && (
-                        <div className="flex items-center gap-4 text-[10px] text-slate-500 pt-1 border-t border-slate-100">
+                        <div className="flex items-center gap-4 text-[10px] text-slate-500 pt-1 border-t border-slate-200/60">
                           <span className="flex items-center gap-1">
                             <Phone className="w-3 h-3 text-slate-400" /> {patientObj.phone}
                           </span>
@@ -376,9 +390,9 @@ export default function DashboardView({
             )}
             <button
               onClick={() => onNavigate("agenda")}
-              className="mt-4 w-full text-center text-xs font-semibold text-teal-700 hover:text-white bg-teal-50 hover:bg-teal-600 border border-teal-100 py-2.5 rounded-xl transition-all"
+              className="mt-4 w-full text-center text-xs font-bold text-white bg-[#0F3B2E] hover:bg-[#1B523E] border border-[#C8A45A]/30 hover:border-[#C8A45A]/60 py-2.5 rounded-xl transition-all shadow-sm"
             >
-              Ver Agenda Completa
+              Ver Agenda Completa →
             </button>
           </div>
         </div>
