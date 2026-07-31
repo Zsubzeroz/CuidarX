@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import { Patient, FootIssue } from "../types";
 import FootMap from "./FootMap";
 import {
@@ -8,19 +8,20 @@ import {
   Phone,
   Calendar,
   AlertTriangle,
+  AlertCircle,
+  CheckCircle,
   FileText,
   Heart,
   PlusCircle,
   HelpCircle,
   Trash2,
   Check,
-  CheckCircle,
 } from "lucide-react";
 
 interface PatientViewProps {
   patients: Patient[];
   onAddPatient: (patient: Omit<Patient, "id" | "createdAt" | "footIssues" | "evolutions">) => void;
-  onDeletePatient: (id: string) => void;
+  onDeletePatient: (id: string) => Promise<void>;
   onUpdatePatientIssues: (patientId: string, issues: FootIssue[]) => void;
 }
 
@@ -34,6 +35,13 @@ export default function PatientView({
   const [searchQuery, setSearchQuery] = useState("");
   const [showAddForm, setShowAddForm] = useState(false);
   const [activeTab, setActiveTab] = useState<"info" | "map">("info");
+  const [feedback, setFeedback] = useState<{ type: "success" | "error"; message: string } | null>(null);
+
+  useEffect(() => {
+    if (!feedback) return;
+    const t = setTimeout(() => setFeedback(null), 3000);
+    return () => clearTimeout(t);
+  }, [feedback]);
 
   // New Patient Form State
   const [newName, setNewName] = useState("");
@@ -112,8 +120,14 @@ export default function PatientView({
 
   return (
     <div id="patients-tab" className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
+      {feedback && (
+        <div className={`fixed top-4 right-4 z-[70] flex items-center gap-2 px-4 py-3 rounded-xl shadow-xl text-xs font-bold text-white page-enter ${feedback.type === "success" ? "bg-emerald-600" : "bg-rose-600"}`}>
+          {feedback.type === "success" ? <CheckCircle className="w-4 h-4 shrink-0" /> : <AlertCircle className="w-4 h-4 shrink-0" />}
+          {feedback.message}
+        </div>
+      )}
       {/* LEFT SIDE: Patients List & Search */}
-      <div className="lg:col-span-4 bg-white p-6 rounded-2xl border border-slate-100 shadow-sm space-y-4">
+      <div className="lg:col-span-4 bg-white dark:bg-slate-900 p-6 rounded-2xl border border-slate-100 dark:border-slate-800 shadow-sm space-y-4">
         <div className="flex justify-between items-center">
           <h3 className="text-sm font-bold text-slate-800 uppercase tracking-wider">Prontuários</h3>
           <button
@@ -183,7 +197,7 @@ export default function PatientView({
       <div className="lg:col-span-8 space-y-6">
         {showAddForm ? (
           /* ADD PATIENT FORM */
-          <div className="bg-white p-6 rounded-2xl border border-slate-100 shadow-sm space-y-4 text-left">
+          <div className="bg-white dark:bg-slate-900 p-6 rounded-2xl border border-slate-100 dark:border-slate-800 shadow-sm space-y-4 text-left">
             <h3 className="text-sm font-bold text-slate-800 uppercase tracking-wider flex items-center gap-2">
               <PlusCircle className="w-5 h-5 text-gold" />
               Novo Prontuário de Paciente
@@ -240,7 +254,7 @@ export default function PatientView({
 
               {/* Health checklist checkboxes */}
               <div className="md:col-span-2 bg-slate-50 p-4 rounded-xl space-y-2">
-                <p className="text-xs font-bold text-slate-700 uppercase tracking-wider mb-2">Ficha de Anamnese Básica</p>
+                <p className="text-xs font-bold text-slate-700 uppercase tracking-wider mb-2">Informações de Saúde</p>
                 
                 <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
                   <label className="flex items-center gap-2 cursor-pointer text-xs font-semibold text-slate-600">
@@ -316,7 +330,7 @@ export default function PatientView({
           </div>
         ) : currentPatient ? (
           /* COMPLETE PATIENT CLINICAL DOSSIER */
-          <div className="bg-white rounded-2xl border border-slate-100 shadow-sm overflow-hidden text-left space-y-4">
+          <div className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-100 dark:border-slate-800 shadow-sm overflow-hidden text-left space-y-4">
             {/* Patient Header card */}
             <div className="bg-slate-50 p-6 border-b border-slate-100 flex flex-col md:flex-row md:items-center justify-between gap-4">
               <div>
@@ -339,9 +353,17 @@ export default function PatientView({
               </div>
 
               <button
-                onClick={() => {
+                onClick={async () => {
                   if (confirm(`Tem certeza que deseja excluir permanentemente o prontuário de ${currentPatient.name}?`)) {
-                    onDeletePatient(currentPatient.id);
+                    try {
+                      await onDeletePatient(currentPatient.id);
+                      setFeedback({ type: "success", message: `${currentPatient.name} excluído(a) com sucesso` });
+                      const remaining = patients.filter((p) => p.id !== currentPatient.id);
+                      setSelectedPatientId(remaining[0]?.id || "");
+                    } catch (err) {
+                      console.error("Erro ao excluir paciente:", err);
+                      setFeedback({ type: "error", message: "Erro ao excluir paciente. Tente novamente." });
+                    }
                   }
                 }}
                 className="text-[11px] font-bold text-rose-600 hover:text-white bg-rose-50 hover:bg-rose-600 px-3 py-1.5 rounded-xl border border-rose-100 hover:border-rose-600 transition-all flex items-center gap-1 ml-auto cursor-pointer"
@@ -360,7 +382,7 @@ export default function PatientView({
                     : "border-transparent text-slate-400 hover:text-slate-600"
                 }`}
               >
-                Anamnese & Dados
+                Dados & Perfil
               </button>
               <button
                 onClick={() => setActiveTab("map")}
@@ -424,7 +446,7 @@ export default function PatientView({
 
                   <div className="space-y-4">
                     <h4 className="text-xs font-bold text-slate-400 uppercase tracking-wider flex items-center gap-1.5">
-                      <FileText className="w-4 h-4 text-gold" /> Histórico & Anamnese Geral
+                      <FileText className="w-4 h-4 text-gold" /> Observações & Histórico
                     </h4>
                     
                     <div className="bg-slate-50/50 border border-slate-100 p-4 rounded-xl text-xs space-y-1">
@@ -451,7 +473,7 @@ export default function PatientView({
             </div>
           </div>
         ) : (
-          <div className="bg-white p-12 rounded-2xl border border-slate-100 shadow-sm text-center text-slate-400">
+          <div className="bg-white dark:bg-slate-900 p-12 rounded-2xl border border-slate-100 dark:border-slate-800 shadow-sm text-center text-slate-400">
             <User className="w-12 h-12 text-slate-200 mx-auto mb-3 animate-pulse" />
             <p className="text-sm font-semibold">Nenhum paciente selecionado.</p>
             <p className="text-xs mt-1 text-slate-400">Por favor, selecione um paciente na lista ou adicione um novo.</p>

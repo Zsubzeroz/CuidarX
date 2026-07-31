@@ -20,6 +20,7 @@ import {
   createAppointment as fsCreateAppointment,
   deleteAppointment as fsDeleteAppointment,
 } from "./services/firestoreService";
+import type { ScheduleBlock } from "./types";
 import {
   getConfig as getWhatsAppConfig,
   saveConfig as saveWhatsAppConfig,
@@ -34,7 +35,6 @@ import FinanceView from "./components/FinanceView";
 import AiAssistantView from "./components/AiAssistantView";
 import BookingPortalView from "./components/BookingPortalView";
 import ServicesView from "./components/ServicesView";
-import AnamneseView from "./components/AnamneseView";
 import ErrorBoundary from "./components/ErrorBoundary";
 // @ts-ignore
 import clinicLogo from "./assets/images/clinic_logo_1783686122531.jpg";
@@ -52,10 +52,11 @@ import {
   X,
   Phone,
   LayoutDashboard,
-  FileText,
   Settings,
   MessageCircle,
   Bell,
+  Sun,
+  Moon,
 } from "lucide-react";
 
 export default function App() {
@@ -64,8 +65,25 @@ export default function App() {
 
   const [activeTab, setActiveTab] = useState<string>("agenda");
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
-  const [selectedAnamnesePatientId, setSelectedAnamnesePatientId] = useState<string | null>(null);
-  const [anamneseModalOpen, setAnamneseModalOpen] = useState(false);
+  const [scheduleFormRequest, setScheduleFormRequest] = useState(0);
+
+  // Dark Mode — class-based, claro por padrão, persistido no localStorage
+  const [isDarkMode, setIsDarkMode] = useState<boolean>(() => {
+    try {
+      return localStorage.getItem("theme") === "dark";
+    } catch {
+      return false;
+    }
+  });
+
+  useEffect(() => {
+    const root = document.documentElement;
+    if (isDarkMode) root.classList.add("dark");
+    else root.classList.remove("dark");
+    try {
+      localStorage.setItem("theme", isDarkMode ? "dark" : "light");
+    } catch {}
+  }, [isDarkMode]);
 
   // Real-time Firestore data
   const {
@@ -76,17 +94,19 @@ export default function App() {
     isLoading,
     syncStatus,
     handleAddPatient,
-    handleUpdatePatient,
     handleDeletePatient,
     handleUpdatePatientIssues,
-    handleAddPatientEvolution,
     handleAddAppointment,
     handleUpdateAppointment,
     handleUpdateAppointmentStatus,
     handleDeleteAppointment,
     handleAddFinanceRecord,
+    handleDeleteFinanceRecord,
     handleAddOrUpdateService,
     handleDeleteService,
+    scheduleBlocks,
+    handleAddScheduleBlock,
+    handleDeleteScheduleBlock,
   } = useRealtimeData();
 
   const { isMobile, isTablet, isDesktop } = useResponsive();
@@ -108,6 +128,23 @@ export default function App() {
     saveWhatsAppConfig(config);
   };
 
+  // Bloquear sábados automaticamente no portal do cliente (padrão: desativado)
+  const [blockSaturdays, setBlockSaturdays] = useState<boolean>(() => {
+    try {
+      const saved = localStorage.getItem("blockSaturdays");
+      return saved === null ? false : saved === "true";
+    } catch {
+      return false;
+    }
+  });
+
+  const handleSaveBlockSaturdays = (value: boolean) => {
+    setBlockSaturdays(value);
+    try {
+      localStorage.setItem("blockSaturdays", value ? "true" : "false");
+    } catch {}
+  };
+
   // Register connecting callback
   useEffect(() => {
     onConnectingGoogleChange(setIsConnectingGoogle);
@@ -125,6 +162,7 @@ export default function App() {
 
   // Check URL hash for OAuth redirect token (fallback flow)
   useEffect(() => {
+    if (isClienteRoute) return;
     const extracted = extractTokenFromUrl();
     if (extracted) {
       console.log("[App] Token from redirect URL, connecting...");
@@ -141,6 +179,7 @@ export default function App() {
 
   // Auto-sync on mount: try silent token refresh, then sync
   useEffect(() => {
+    if (isClienteRoute) return;
     const init = async () => {
       if (!googleConfigured) return;
 
@@ -365,7 +404,6 @@ export default function App() {
     { id: "agenda", label: "Minha Agenda", icon: Calendar },
     { id: "portal", label: "Agendamento", icon: Globe },
     { id: "pacientes", label: "Clientes", icon: Users },
-    { id: "anamnese", label: "Anamnese / Fichas / Contratos", icon: FileText },
     { id: "financeiro", label: "Caixa & Financeiro", icon: DollarSign },
     { id: "servicos", label: "Produtos e Serviços", icon: ClipboardList },
     { id: "configuracoes", label: "Configurações", icon: Settings },
@@ -373,7 +411,7 @@ export default function App() {
 
   // Public client portal — render BookingPortalView full-screen, no admin chrome
   if (isClienteRoute) {
-    return <BookingPortalView clientMode />;
+    return <BookingPortalView clientMode blockSaturdays={blockSaturdays} />;
   }
 
   if (isLoading) {
@@ -412,6 +450,11 @@ export default function App() {
     );
   }
 
+  const handleQuickSchedule = () => {
+    setActiveTab("agenda");
+    setScheduleFormRequest((n) => n + 1);
+  };
+
   // RESPONSIVE AGENDA LAYOUT
   const renderAgenda = () => {
     const calendarPanel = (
@@ -419,10 +462,14 @@ export default function App() {
         patients={patients}
         appointments={appointments}
         services={services}
+        scheduleBlocks={scheduleBlocks}
         onAddAppointment={handleAddAppointment}
         onUpdateAppointment={handleUpdateAppointment}
         onUpdateAppointmentStatus={handleUpdateAppointmentStatus}
         onDeleteAppointment={handleDeleteAppointment}
+        onAddScheduleBlock={handleAddScheduleBlock}
+        onDeleteScheduleBlock={handleDeleteScheduleBlock}
+        scheduleFormRequest={scheduleFormRequest}
         googleEvents={googleEvents}
         isGoogleConnected={isGoogleConnected}
         isGoogleConfigured={googleConfigured}
@@ -435,11 +482,7 @@ export default function App() {
         onCreateGoogleEvent={handleCreateGoogleEvent}
                   onDeleteGoogleEvent={handleDeleteGoogleEvent}
                   googlePermissionError={googlePermissionError}
-                  onSelectPatientForAnamnese={(patientId) => {
-          setSelectedAnamnesePatientId(patientId);
-          setAnamneseModalOpen(true);
-        }}
-      />
+        />
     );
 
     // Mobile: Calendar only
@@ -447,7 +490,7 @@ export default function App() {
       return calendarPanel;
     }
 
-    // Tablet: Calendar only — Anamnese opens in modal
+    // Tablet: Calendar only
     if (isTablet) {
       return (
         <div className="w-full">
@@ -456,7 +499,7 @@ export default function App() {
       );
     }
 
-    // Desktop: Calendar only — Anamnese opens in modal
+    // Desktop: Calendar only
     return (
       <div className="w-full">
         {calendarPanel}
@@ -465,7 +508,7 @@ export default function App() {
   };
 
   return (
-    <div id="app-root-container" className="min-h-screen bg-[#F8FAFC] flex flex-col font-sans">
+    <div id="app-root-container" className="min-h-screen bg-[#F8FAFC] dark:bg-[#0D1512] flex flex-col font-sans">
       {/* Header */}
       <header className="bg-[#0F3B2E] border-b border-[#C8A45A]/30 sticky top-0 z-50 shadow-md px-4 md:px-8 py-4 flex items-center justify-between transition-all">
         <div className="flex items-center gap-3">
@@ -490,6 +533,21 @@ export default function App() {
         </div>
 
         <div className="flex items-center gap-3">
+          {/* Toggle de Tema (Dark / Light) */}
+          <button
+            onClick={() => setIsDarkMode((prev) => !prev)}
+            className="flex items-center gap-2 bg-[#0A2B21] hover:bg-[#1B523E] border border-[#C8A45A]/40 px-3 py-2 rounded-full text-xs font-bold transition-all shadow-sm cursor-pointer"
+            title={isDarkMode ? "Ativar modo claro" : "Ativar modo escuro"}
+            aria-label="Alternar tema claro/escuro"
+          >
+            {isDarkMode ? (
+              <Sun className="w-4 h-4 text-[#C8A45A]" />
+            ) : (
+              <Moon className="w-4 h-4 text-[#C8A45A]" />
+            )}
+            <span className="hidden sm:inline text-[#C8A45A]">{isDarkMode ? "Claro" : "Escuro"}</span>
+          </button>
+
           <a
             href={getClinicWhatsAppLink()}
             target="_blank"
@@ -521,7 +579,7 @@ export default function App() {
       </header>
 
       {/* Navigation */}
-      <div className="bg-white border-b border-slate-200/70 shadow-sm">
+      <div className="bg-white dark:bg-slate-900 border-b border-slate-200/70 dark:border-slate-800 shadow-sm">
         <div className="max-w-[1600px] w-full mx-auto px-4 md:px-8 py-3.5">
           {/* Desktop navigation buttons */}
           <div className="hidden lg:flex flex-wrap gap-2 justify-start">
@@ -535,7 +593,7 @@ export default function App() {
                   className={`relative flex items-center gap-2 px-4 py-2.5 rounded-xl text-xs font-bold transition-all duration-200 cursor-pointer ${
                     isSelected
                       ? "bg-[#0F3B2E] text-white border border-[#C8A45A]/70 shadow-md"
-                      : "bg-transparent text-slate-500 hover:bg-slate-50 hover:text-slate-800 border border-transparent hover:border-slate-200"
+                      : "bg-transparent text-slate-500 hover:bg-slate-50 hover:text-slate-800 dark:text-slate-400 dark:hover:bg-slate-800 dark:hover:text-slate-100 border border-transparent hover:border-slate-200 dark:hover:border-slate-700"
                   }`}
                 >
                   <ItemIcon className={`w-4 h-4 transition-colors ${
@@ -557,7 +615,7 @@ export default function App() {
                 className="fixed inset-0 z-40 bg-[#0F3B2E]/40 backdrop-blur-sm"
                 onClick={() => setIsMobileMenuOpen(false)}
               />
-              <div className="fixed top-0 left-0 bottom-0 z-50 w-[82vw] max-w-[300px] bg-white shadow-2xl flex flex-col drawer-enter">
+              <div className="fixed top-0 left-0 bottom-0 z-50 w-[82vw] max-w-[300px] bg-white dark:bg-slate-900 shadow-2xl flex flex-col drawer-enter">
                 {/* Drawer Header */}
                 <div className="bg-gradient-to-b from-[#0F3B2E] to-[#0A2B21] px-5 pt-5 pb-4 border-b border-[#C8A45A]/30">
                   <div className="flex items-center justify-between">
@@ -644,20 +702,20 @@ export default function App() {
             appointments={appointments}
             finances={finances}
             onNavigate={(tab) => setActiveTab(tab)}
-            onQuickSchedule={() => setActiveTab("agenda")}
+            onQuickSchedule={handleQuickSchedule}
           />
         )}
 
         {activeTab === "configuracoes" && (
           <div className="max-w-2xl mx-auto space-y-6">
-            <div className="bg-white rounded-2xl border border-slate-100 shadow-sm p-6">
+            <div className="bg-white dark:bg-slate-900 dark:border-slate-800 rounded-2xl border border-slate-100 shadow-sm p-6">
               <div className="flex items-center gap-3 mb-6">
-                <div className="p-2.5 bg-emerald-50 rounded-xl">
+                <div className="p-2.5 bg-emerald-50 dark:bg-emerald-50 rounded-xl">
                   <Settings className="w-5 h-5 text-gold" />
                 </div>
                 <div>
-                  <h2 className="text-base font-bold text-slate-800">Configurações</h2>
-                  <p className="text-[11px] text-slate-500">Gerencie as preferências da clínica</p>
+                  <h2 className="text-base font-bold text-slate-800 dark:text-slate-100">Configurações</h2>
+                  <p className="text-[11px] text-slate-500 dark:text-slate-400">Gerencie as preferências da clínica</p>
                 </div>
               </div>
 
@@ -727,6 +785,26 @@ export default function App() {
                   </span>
                 </div>
 
+                {/* Portal do Cliente */}
+                <div className="p-4 bg-slate-50 rounded-xl border border-slate-100">
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-2">
+                      <Calendar className="w-4 h-4 text-gold" />
+                      <p className="text-xs font-bold text-slate-700">Portal do Cliente</p>
+                    </div>
+                    <label className="relative inline-flex items-center cursor-pointer">
+                      <input
+                        type="checkbox"
+                        checked={blockSaturdays}
+                        onChange={(e) => handleSaveBlockSaturdays(e.target.checked)}
+                        className="sr-only peer"
+                      />
+                      <div className="w-9 h-5 bg-slate-300 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-slate-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-brand"></div>
+                    </label>
+                  </div>
+                  <p className="text-[9px] text-slate-400 mt-1.5">Bloquear sábados automaticamente no agendamento online. Domingos ficam sempre bloqueados.</p>
+                </div>
+
                 {/* WhatsApp da Clínica */}
                 <div className="p-4 bg-slate-50 rounded-xl border border-slate-100">
                   <div className="flex items-center gap-2 mb-3">
@@ -736,9 +814,9 @@ export default function App() {
                   <div className="flex gap-2">
                     <input
                       type="tel"
-                      value={whatsAppConfig.clinicPhone || "19997222694"}
+                      value={whatsAppConfig.clinicPhone || "19997270910"}
                       onChange={(e) => handleSaveWhatsAppConfig({ ...whatsAppConfig, clinicPhone: e.target.value })}
-                      placeholder="19997222694"
+                      placeholder="19997270910"
                       className="flex-1 text-xs bg-white border border-slate-200 p-2.5 rounded-xl focus:outline-none focus:ring-1 focus:ring-gold"
                     />
                     <a
@@ -750,7 +828,7 @@ export default function App() {
                       <MessageCircle className="w-3.5 h-3.5" /> Testar
                     </a>
                   </div>
-                  <p className="text-[9px] text-slate-400 mt-1.5">Número usado nos links de suporte e contato do sistema. Inclua apenas o DDD + número (ex: 19997222694).</p>
+                  <p className="text-[9px] text-slate-400 mt-1.5">Número usado nos links de suporte e contato do sistema. Inclua apenas o DDD + número (ex: 19997270910).</p>
                 </div>
 
                 {/* WhatsApp Auto */}
@@ -835,23 +913,14 @@ export default function App() {
           />
         )}
 
-        {activeTab === "anamnese" && (
-          <AnamneseView
-            patients={patients}
-            appointments={appointments}
-            finances={finances}
-            onUpdatePatient={handleUpdatePatient}
-            onAddPatientEvolution={handleAddPatientEvolution}
-            onAddFinanceRecord={handleAddFinanceRecord}
-            onNavigate={setActiveTab}
-            embeddedPatientId={selectedAnamnesePatientId || undefined}
-          />
-        )}
-
         {activeTab === "agenda" && renderAgenda()}
 
         {activeTab === "financeiro" && (
-          <FinanceView finances={finances} onAddFinanceRecord={handleAddFinanceRecord} />
+          <FinanceView
+            finances={finances}
+            onAddFinanceRecord={handleAddFinanceRecord}
+            onDeleteFinanceRecord={handleDeleteFinanceRecord}
+          />
         )}
 
         {activeTab === "servicos" && (
@@ -864,7 +933,7 @@ export default function App() {
 
         {activeTab === "assistente" && <AiAssistantView patients={patients} />}
 
-        {activeTab === "portal" && <BookingPortalView />}
+        {activeTab === "portal" && <BookingPortalView blockSaturdays={blockSaturdays} />}
       </ErrorBoundary></main>
 
       {/* Mobile Support Footer */}
@@ -880,39 +949,7 @@ export default function App() {
         </a>
       </div>
 
-      {/* Anamnese Modal */}
-      {anamneseModalOpen && (
-        <div className="fixed inset-0 z-50 bg-black/40 backdrop-blur-sm" onClick={() => setAnamneseModalOpen(false)}>
-          <div
-            className="fixed inset-4 md:inset-6 lg:inset-8 bg-white rounded-2xl shadow-2xl flex flex-col overflow-hidden"
-            onClick={(e) => e.stopPropagation()}
-          >
-            <div className="sticky top-0 z-10 bg-white border-b border-slate-100 px-5 py-4 flex items-center justify-between shrink-0">
-              <h2 className="text-sm font-bold text-slate-800 uppercase tracking-wider">Ficha do Paciente</h2>
-              <button
-                onClick={() => setAnamneseModalOpen(false)}
-                className="p-2 rounded-xl hover:bg-slate-100 text-slate-500 hover:text-slate-800 transition-all cursor-pointer"
-              >
-                <X className="w-5 h-5" />
-              </button>
-            </div>
-            <div className="flex-1 overflow-y-auto p-5">
-              <AnamneseView
-                patients={patients}
-                appointments={appointments}
-                finances={finances}
-                onUpdatePatient={handleUpdatePatient}
-                onAddPatientEvolution={handleAddPatientEvolution}
-                onAddFinanceRecord={handleAddFinanceRecord}
-                onNavigate={setActiveTab}
-                embeddedPatientId={selectedAnamnesePatientId || undefined}
-              />
-            </div>
-          </div>
-        </div>
-      )}
-
-      <footer className="bg-white border-t border-slate-100 py-6 px-4">
+      <footer className="bg-white dark:bg-slate-900 border-t border-slate-100 dark:border-slate-800 py-6 px-4">
         <div className="divider-gold mb-4" />
         <div className="max-w-[1600px] mx-auto flex flex-col sm:flex-row items-center justify-between gap-2 text-[10px] text-slate-400 font-medium">
           <p>© 2026 <span className="text-[#0F3B2E] font-semibold">Clínica Podologia Fabrícia</span>. Todos os direitos reservados.</p>

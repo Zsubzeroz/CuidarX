@@ -5,6 +5,7 @@ import { createServer as createViteServer } from "vite";
 import { GoogleGenAI } from "@google/genai";
 import dotenv from "dotenv";
 import { Patient, Appointment, FinanceRecord, ClinicService } from "./src/types.js";
+import patientRouter from "./src/routes/patients.js";
 import {
   fetchFromFirestore,
   saveToFirestore,
@@ -41,6 +42,9 @@ function getGemini(): GoogleGenAI {
 
 // Enable JSON bodies
 app.use(express.json());
+
+// Patient CRUD REST API
+app.use("/api/patients", patientRouter);
 
 // Load and seed database
 function loadClinicData() {
@@ -320,47 +324,6 @@ app.get("/api/data", async (req: Request, res: Response) => {
     db = loadClinicData();
   }
   res.json(db);
-});
-
-app.post("/api/patients", async (req: Request, res: Response) => {
-  const patient: Patient = req.body;
-  db = loadClinicData();
-  
-  const existingIdx = db.patients.findIndex((p: Patient) => p.id === patient.id);
-  if (existingIdx !== -1) {
-    db.patients[existingIdx] = patient;
-  } else {
-    patient.id = `pat-${Date.now()}`;
-    patient.createdAt = new Date().toISOString();
-    db.patients.push(patient);
-  }
-  
-  saveClinicData(db);
-
-  if (isFirebaseEnabled) {
-    await saveToFirestore("patients", patient.id, patient);
-  }
-
-  res.json(patient);
-});
-
-app.delete("/api/patients/:id", async (req: Request, res: Response) => {
-  const { id } = req.params;
-  db = loadClinicData();
-  const dependentAppointments = db.appointments.filter((a: Appointment) => a.patientId === id);
-  
-  db.patients = db.patients.filter((p: Patient) => p.id !== id);
-  db.appointments = db.appointments.filter((a: Appointment) => a.patientId !== id);
-  saveClinicData(db);
-
-  if (isFirebaseEnabled) {
-    await deleteFromFirestore("patients", id);
-    for (const appt of dependentAppointments) {
-      await deleteFromFirestore("appointments", appt.id);
-    }
-  }
-
-  res.json({ success: true });
 });
 
 app.post("/api/appointments", async (req: Request, res: Response) => {

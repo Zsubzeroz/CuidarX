@@ -69,8 +69,15 @@ export async function updatePatient(patient: Patient): Promise<void> {
 }
 
 export async function deletePatient(id: string): Promise<void> {
-  if (!isFirebaseConfigured || !db) return;
-  await deleteDoc(doc(db, "patients", id));
+  if (!isFirebaseConfigured || !db) {
+    throw new Error("Firestore não configurado");
+  }
+  try {
+    await deleteDoc(doc(db, "patients", id));
+  } catch (error) {
+    console.error("Erro ao excluir paciente:", error);
+    throw error;
+  }
 }
 
 // ============================================================
@@ -113,6 +120,18 @@ export async function createFinanceRecord(record: FinanceRecord): Promise<void> 
   const docRef = doc(db, "finances", record.id);
   const { id, ...data } = record;
   await setDoc(docRef, data);
+}
+
+export async function deleteFinanceRecord(id: string): Promise<void> {
+  if (!isFirebaseConfigured || !db) {
+    throw new Error("Firestore não configurado");
+  }
+  try {
+    await deleteDoc(doc(db, "finances", id));
+  } catch (error) {
+    console.error("Erro ao excluir lançamento financeiro:", error);
+    throw error;
+  }
 }
 
 // ============================================================

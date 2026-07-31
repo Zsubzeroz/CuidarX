@@ -13,6 +13,7 @@ import {
   updateAppointment as fsUpdateAppointment,
   deleteAppointment as fsDeleteAppointment,
   createFinanceRecord as fsCreateFinanceRecord,
+  deleteFinanceRecord as fsDeleteFinanceRecord,
   createOrUpdateService as fsCreateOrUpdateService,
   deleteService as fsDeleteService,
   createScheduleBlock as fsCreateScheduleBlock,
@@ -139,6 +140,7 @@ export function useRealtimeData() {
     } catch (e) {
       console.error(e);
       setSyncStatus("error");
+      throw e;
     }
   }, []);
 
@@ -236,6 +238,18 @@ export function useRealtimeData() {
     }
   }, []);
 
+  const handleDeleteFinanceRecord = useCallback(async (id: string) => {
+    setSyncStatus("syncing");
+    try {
+      await fsDeleteFinanceRecord(id);
+      setSyncStatus("synced");
+    } catch (e) {
+      console.error(e);
+      setSyncStatus("error");
+      throw e;
+    }
+  }, []);
+
   // ---- SERVICES HANDLERS ----
   const handleAddOrUpdateService = useCallback(async (serviceData: Omit<ClinicService, "id"> & { id?: string }) => {
     setSyncStatus("syncing");
@@ -308,6 +322,7 @@ export function useRealtimeData() {
     handleUpdateAppointmentStatus,
     handleDeleteAppointment,
     handleAddFinanceRecord,
+    handleDeleteFinanceRecord,
     handleAddOrUpdateService,
     handleDeleteService,
     scheduleBlocks,

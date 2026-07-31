@@ -256,7 +256,7 @@ ${textToSend}`;
       </div>
 
       {/* RIGHT COLUMN: Interactive Chat Area */}
-      <div className="lg:col-span-8 bg-white p-5 rounded-2xl border border-slate-100 shadow-sm flex flex-col h-[600px] text-left">
+      <div className="lg:col-span-8 bg-white dark:bg-slate-900 p-5 rounded-2xl border border-slate-100 dark:border-slate-800 shadow-sm flex flex-col h-[600px] text-left">
         {/* Chat header */}
         <div className="border-b border-slate-100 pb-3 flex items-center justify-between">
           <div className="flex items-center gap-2">

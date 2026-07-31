@@ -58,7 +58,7 @@ export default function FootMap({
   };
 
   return (
-    <div id="footmap-container" className="grid grid-cols-1 md:grid-cols-12 gap-6 bg-white p-6 rounded-2xl border border-slate-100 shadow-sm">
+    <div id="footmap-container" className="grid grid-cols-1 md:grid-cols-12 gap-6 bg-white dark:bg-slate-900 p-6 rounded-2xl border border-slate-100 dark:border-slate-800 shadow-sm">
       {/* Interactive Map */}
       <div className="md:col-span-7 flex flex-col items-center">
         <h4 className="text-sm font-semibold text-slate-700 mb-4 flex items-center gap-2">

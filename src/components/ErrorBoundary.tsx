@@ -36,7 +36,7 @@ export default class ErrorBoundary extends React.Component<ErrorBoundaryProps, E
       }
 
       return (
-        <div className="flex flex-col items-center justify-center p-12 bg-white rounded-2xl border border-slate-100 shadow-sm text-center max-w-lg mx-auto my-8">
+        <div className="flex flex-col items-center justify-center p-12 bg-white dark:bg-slate-900 rounded-2xl border border-slate-100 dark:border-slate-800 shadow-sm text-center max-w-lg mx-auto my-8">
           <div className="w-14 h-14 bg-rose-50 rounded-full flex items-center justify-center mb-4 border border-rose-100">
             <AlertTriangle className="w-6 h-6 text-rose-500" />
           </div>

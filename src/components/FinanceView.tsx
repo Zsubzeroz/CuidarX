@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import { FinanceRecord } from "../types";
 import {
   TrendingUp,
@@ -11,6 +11,9 @@ import {
   ArrowDownRight,
   Search,
   Filter,
+  Trash2,
+  CheckCircle,
+  AlertCircle,
 } from "lucide-react";
 import {
   BarChart,
@@ -29,9 +32,10 @@ import {
 interface FinanceViewProps {
   finances: FinanceRecord[];
   onAddFinanceRecord: (record: Omit<FinanceRecord, "id">) => void;
+  onDeleteFinanceRecord: (id: string) => Promise<void>;
 }
 
-export default function FinanceView({ finances, onAddFinanceRecord }: FinanceViewProps) {
+export default function FinanceView({ finances, onAddFinanceRecord, onDeleteFinanceRecord }: FinanceViewProps) {
   const [type, setType] = useState<"income" | "expense">("income");
   const [category, setCategory] = useState("Serviço");
   const [amount, setAmount] = useState("");
@@ -39,6 +43,13 @@ export default function FinanceView({ finances, onAddFinanceRecord }: FinanceVie
   const [description, setDescription] = useState("");
   const [searchQuery, setSearchQuery] = useState("");
   const [filterCategory, setFilterCategory] = useState("all");
+  const [feedback, setFeedback] = useState<{ type: "success" | "error"; message: string } | null>(null);
+
+  useEffect(() => {
+    if (!feedback) return;
+    const t = setTimeout(() => setFeedback(null), 3000);
+    return () => clearTimeout(t);
+  }, [feedback]);
 
   const categories = {
     income: ["Serviço", "Produto", "Curso/Palestra", "Outros"],
@@ -64,6 +75,17 @@ export default function FinanceView({ finances, onAddFinanceRecord }: FinanceVie
 
     setAmount("");
     setDescription("");
+  };
+
+  const handleDeleteRecord = async (record: FinanceRecord) => {
+    if (!confirm(`Excluir o lançamento "${record.description}" no valor de R$ ${record.amount.toFixed(2)}?`)) return;
+    try {
+      await onDeleteFinanceRecord(record.id);
+      setFeedback({ type: "success", message: "Lançamento excluído com sucesso" });
+    } catch (err) {
+      console.error("Erro ao excluir lançamento:", err);
+      setFeedback({ type: "error", message: "Erro ao excluir lançamento. Tente novamente." });
+    }
   };
 
   // Financial Metrics
@@ -129,10 +151,16 @@ export default function FinanceView({ finances, onAddFinanceRecord }: FinanceVie
 
   return (
     <div id="finance-tab" className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
+      {feedback && (
+        <div className={`fixed top-4 right-4 z-[70] flex items-center gap-2 px-4 py-3 rounded-xl shadow-xl text-xs font-bold text-white page-enter ${feedback.type === "success" ? "bg-emerald-600" : "bg-rose-600"}`}>
+          {feedback.type === "success" ? <CheckCircle className="w-4 h-4 shrink-0" /> : <AlertCircle className="w-4 h-4 shrink-0" />}
+          {feedback.message}
+        </div>
+      )}
       {/* LEFT SIDE: Cash Entry Form & Overview Cards */}
       <div className="lg:col-span-4 space-y-6">
         {/* Overview cards */}
-        <div className="bg-white p-5 rounded-2xl border border-slate-100 shadow-sm space-y-4 text-left">
+        <div className="bg-white dark:bg-slate-900 p-5 rounded-2xl border border-slate-100 dark:border-slate-800 shadow-sm space-y-4 text-left">
           <h4 className="text-xs font-bold text-slate-400 uppercase tracking-wider">Metas e Fluxo de Caixa</h4>
           
           <div className="space-y-3">
@@ -180,7 +208,7 @@ export default function FinanceView({ finances, onAddFinanceRecord }: FinanceVie
         </div>
 
         {/* Add Entry Form */}
-        <div className="bg-white p-5 rounded-2xl border border-slate-100 shadow-sm text-left">
+        <div className="bg-white dark:bg-slate-900 p-5 rounded-2xl border border-slate-100 dark:border-slate-800 shadow-sm text-left">
           <h3 className="text-xs font-bold text-slate-800 uppercase tracking-wider mb-4 flex items-center gap-1.5">
             <PlusCircle className="w-5 h-5 text-gold" />
             Lançar Fluxo de Caixa
@@ -276,7 +304,7 @@ export default function FinanceView({ finances, onAddFinanceRecord }: FinanceVie
         {/* Visual Charts Grid */}
         <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
           {/* Revenue and Expense evolution chart */}
-          <div className="bg-white p-5 rounded-2xl border border-slate-100 shadow-sm space-y-4">
+          <div className="bg-white dark:bg-slate-900 p-5 rounded-2xl border border-slate-100 dark:border-slate-800 shadow-sm space-y-4">
             <h4 className="text-xs font-bold text-slate-400 uppercase tracking-wider">Histórico de Fluxo</h4>
             <div className="h-44 w-full">
               <ResponsiveContainer width="100%" height="100%">
@@ -294,7 +322,7 @@ export default function FinanceView({ finances, onAddFinanceRecord }: FinanceVie
           </div>
 
           {/* Expenses Pie Chart */}
-          <div className="bg-white p-5 rounded-2xl border border-slate-100 shadow-sm space-y-4 flex flex-col justify-between">
+          <div className="bg-white dark:bg-slate-900 p-5 rounded-2xl border border-slate-100 dark:border-slate-800 shadow-sm space-y-4 flex flex-col justify-between">
             <h4 className="text-xs font-bold text-slate-400 uppercase tracking-wider">Distribuição de Despesas</h4>
             {pieData.length === 0 ? (
               <p className="text-center text-xs text-slate-400 py-12">Nenhuma despesa registrada.</p>
@@ -335,7 +363,7 @@ export default function FinanceView({ finances, onAddFinanceRecord }: FinanceVie
         </div>
 
         {/* Historic Cash Ledger Table */}
-        <div className="bg-white p-5 rounded-2xl border border-slate-100 shadow-sm space-y-4">
+        <div className="bg-white dark:bg-slate-900 p-5 rounded-2xl border border-slate-100 dark:border-slate-800 shadow-sm space-y-4">
           <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
             <h4 className="text-sm font-bold text-slate-800">Livro-Caixa e Lançamentos</h4>
             
@@ -377,12 +405,13 @@ export default function FinanceView({ finances, onAddFinanceRecord }: FinanceVie
                   <th className="p-3">Categoria</th>
                   <th className="p-3">Descrição</th>
                   <th className="p-3 text-right">Valor (R$)</th>
+                  <th className="p-3 text-center">Ações</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-50 text-slate-700">
                 {filteredLedger.length === 0 ? (
                   <tr>
-                    <td colSpan={5} className="text-center py-6 text-slate-400">
+                    <td colSpan={6} className="text-center py-6 text-slate-400">
                       Nenhum lançamento financeiro encontrado.
                     </td>
                   </tr>
@@ -409,6 +438,15 @@ export default function FinanceView({ finances, onAddFinanceRecord }: FinanceVie
                         record.type === "income" ? "text-gold" : "text-rose-600"
                       }`}>
                         {record.type === "income" ? "+" : "-"} R$ {record.amount.toFixed(2)}
+                      </td>
+                      <td className="p-3 text-center">
+                        <button
+                          onClick={() => handleDeleteRecord(record)}
+                          className="text-[10px] font-bold text-rose-600 bg-rose-50 hover:bg-rose-600 hover:text-white px-2 py-1.5 rounded-lg border border-rose-100 hover:border-rose-600 transition-all cursor-pointer"
+                          title="Excluir lançamento"
+                        >
+                          <Trash2 className="w-3.5 h-3.5" />
+                        </button>
                       </td>
                     </tr>
                   ))

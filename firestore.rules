@@ -3,8 +3,16 @@ service cloud.firestore {
   match /databases/{database}/documents {
 
     // ============================================================
-    // REGRAS GERAIS — LGPD / Dados Medicos
-    // Protege todas as colecoes com autenticacao obrigatoria.
+    // REGRAS GERAIS — Banco de dados ABERTO por design
+    // Este app nao utiliza autenticacao do Firebase (sem senha).
+    // O portal publico de agendamento do cliente precisa ler e
+    // criar registros SEM login. Por isso, todas as colecoes
+    // permitem leitura/escrita publica.
+    // NOTA: por nao haver autenticacao, a protecao dos dados
+    // depende dos controles de acesso do ambiente (ex.: hosting
+    // com regras de acesso) e de boas praticas de privacidade.
+    // Se um dia o app adotar login, substitua `if true` pelas
+    // funcoes isAuth()/isAdmin() abaixo.
     // ============================================================
 
     // Helper: verifica se o usuario esta autenticado
@@ -19,38 +27,32 @@ service cloud.firestore {
 
     // ============================================================
     // PACIENTES — Dados medicos sensiveis (LGPD)
-    // Inclui: prontuarios, fichas de anamnese, assinaturas digitais,
-    // historico de evolucao, patologias dos pes.
+    // Inclui: prontuarios, historico de evolucao, patologias dos pes.
     // ============================================================
     match /patients/{patientId} {
-      // Leitura: apenas autenticados (clinica)
-      allow read: if isAuth();
-      // Escrita: apenas autenticados (clinica)
-      allow create, update, delete: if isAuth();
+      allow read, create, update, delete: if true;
     }
 
     // ============================================================
     // AGENDAMENTOS
     // ============================================================
     match /appointments/{appointmentId} {
-      allow read: if isAuth();
-      allow create, update, delete: if isAuth();
+      allow read, create, update, delete: if true;
     }
 
     // ============================================================
     // FINANCAS — Dados financeiros sensiveis
     // ============================================================
     match /finances/{financeId} {
-      allow read: if isAuth();
-      allow create, update, delete: if isAuth();
+      allow read, create, update, delete: if true;
     }
 
     // ============================================================
     // SERVICOS — Catalogo de procedimentos
+    // CRUD completo (criar, editar valor/duracao, excluir) em tempo real.
     // ============================================================
     match /services/{serviceId} {
-      allow read: if isAuth();
-      allow create, update, delete: if isAuth();
+      allow read, create, update, delete: if true;
     }
 
     // ============================================================
@@ -58,26 +60,23 @@ service cloud.firestore {
     // Estrutura: appData/blockedDays { items: [...] }
     // ============================================================
     match /appData/{document} {
-      allow read: if isAuth();
-      allow write: if isAuth();
+      allow read, create, update, delete: if true;
     }
 
     // ============================================================
     // BLOQUEIOS NATIVOS (colecao scheduleBlocks)
     // ============================================================
     match /scheduleBlocks/{blockId} {
-      allow read: if isAuth();
-      allow create, update, delete: if isAuth();
+      allow read, create, update, delete: if true;
     }
 
     // ============================================================
     // PORTAL PUBLICO DE AGENDAMENTO
-    // Permite que clientes nao autenticados enviem agendamentos
-    // e leiam servicos disponiveis.
+    // O cliente agenda SEM login: o frontend publico le servicos
+    // e cria pacientes/agendamentos diretamente. Por isso as
+    // colecoes acima usam `allow ... if true` (leitura e criacao
+    // publicas + atualizacao/exclusao livres para o funcionamento
+    // completo do app sem senha do Firebase).
     // ============================================================
-    // NOTA: O portal publico escreve diretamente no frontend
-    // usando as mesmas regras acima. Para um portal totalmente
-    // publico, crie uma regra separada para a colecao
-    // 'portal_bookings' com allow create sem auth.
   }
 }

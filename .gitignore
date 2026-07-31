@@ -47,3 +47,6 @@ android/.idea/
 # Temporary
 tmp/
 temp/
+
+# Firebase deploy cache
+.firebase/

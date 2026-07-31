@@ -23,16 +23,10 @@ import {
   Send,
   HelpCircle,
   X,
+  AlertCircle,
 } from "lucide-react";
 // @ts-ignore
 import clinicLogo from "../assets/images/clinic_logo_1783686122531.jpg";
-import {
-  isGoogleCalendarConnected,
-  hasPersistedToken,
-  createGoogleCalendarEvent,
-  fetchGoogleCalendarEvents,
-  isGoogleCalendarConfigured,
-} from "../services/googleCalendar";
 import { getClinicWhatsAppLink } from "../services/whatsappAutoService";
 
 const SLOT_INTERVAL = 30;
@@ -73,6 +67,22 @@ function isOverlapping(
   return startA < endB && endA > startB;
 }
 
+function isSunday(dateStr: string): boolean {
+  try {
+    return new Date(dateStr + "T00:00:00").getDay() === 0;
+  } catch {
+    return false;
+  }
+}
+
+function isSaturday(dateStr: string): boolean {
+  try {
+    return new Date(dateStr + "T00:00:00").getDay() === 6;
+  } catch {
+    return false;
+  }
+}
+
 function formatTimeBR(dateStr: string): string {
   try {
     const d = new Date(dateStr);
@@ -107,12 +117,14 @@ interface BlockedSlot {
 
 interface BookingPortalViewProps {
   clientMode?: boolean;
+  blockSaturdays?: boolean;
 }
 
-export default function BookingPortalView({ clientMode = false }: BookingPortalViewProps) {
+export default function BookingPortalView({ clientMode = false, blockSaturdays = false }: BookingPortalViewProps) {
   const [portalTab, setPortalTab] = useState<"portal" | "simulator" | "code">("portal");
   const [isSubmitted, setIsSubmitted] = useState(false);
   const [isCopied, setIsCopied] = useState(false);
+  const [googleSyncStatus, setGoogleSyncStatus] = useState<"synced" | "pending" | "error" | "">("");
 
   const [name, setName] = useState("");
   const [phone, setPhone] = useState("");
@@ -124,18 +136,12 @@ export default function BookingPortalView({ clientMode = false }: BookingPortalV
   const [service, setService] = useState("Podologia Geral");
   const [notes, setNotes] = useState("");
   const [isLoading, setIsLoading] = useState(false);
-  const [gcConnected, setGcConnected] = useState(false);
+  const [footStrike, setFootStrike] = useState("Não sei");
 
   const [servicesList, setServicesList] = useState<ServiceOption[]>([]);
   const [blockedSlots, setBlockedSlots] = useState<BlockedSlot[]>([]);
   const [availableSlots, setAvailableSlots] = useState<string[]>([]);
   const [selectedServiceDuration, setSelectedServiceDuration] = useState(45);
-
-  const calendarConfigured = isGoogleCalendarConfigured();
-
-  useEffect(() => {
-    setGcConnected(isGoogleCalendarConnected() || hasPersistedToken());
-  }, []);
 
   // Load services from Firestore
   useEffect(() => {
@@ -236,51 +242,23 @@ export default function BookingPortalView({ clientMode = false }: BookingPortalV
       // ignore
     }
 
-    // 3. Try to fetch Google Calendar events for this date
-    if (gcConnected) {
-      try {
-        const dayStart = new Date(selectedDate + "T00:00:00-03:00").toISOString();
-        const dayEnd = new Date(selectedDate + "T23:59:59-03:00").toISOString();
-        const events = await fetchGoogleCalendarEvents(dayStart, dayEnd);
-        for (const evt of events) {
-          let startM = 0;
-          let endM = 0;
-          if (evt.startTimeRaw) {
-            const d = new Date(evt.startTimeRaw);
-            startM = d.getHours() * 60 + d.getMinutes();
-          } else if (evt.start) {
-            const d = new Date(evt.start);
-            startM = d.getHours() * 60 + d.getMinutes();
-          }
-          if (evt.endTimeRaw) {
-            const d = new Date(evt.endTimeRaw);
-            endM = d.getHours() * 60 + d.getMinutes();
-          } else if (evt.end) {
-            const d = new Date(evt.end);
-            endM = d.getHours() * 60 + d.getMinutes();
-          }
-          if (endM > startM) {
-            occupied.push({
-              startMinutes: startM,
-              endMinutes: endM,
-              reason: `GC: ${evt.summary}`,
-            });
-          }
-        }
-      } catch {
-        // token might be expired
-      }
-    }
-
     setBlockedSlots(occupied);
-  }, [gcConnected]);
+  }, []);
 
   useEffect(() => {
     loadBlockedSlots(date);
   }, [date, loadBlockedSlots]);
 
   // Compute available slots whenever blockedSlots or selectedServiceDuration changes
+  const dateBlocked = !!date && (isSunday(date) || (blockSaturdays && isSaturday(date)));
+  const blockedDayName = dateBlocked && isSunday(date) ? "domingo" : "sábado";
+
   useEffect(() => {
+    if (dateBlocked) {
+      setAvailableSlots([]);
+      setTime("");
+      return;
+    }
     const allSlots = generateSlots(clientMode);
     const dur = selectedServiceDuration;
     const businessEnd = clientMode ? 18 : BUSINESS_END;
@@ -300,7 +278,7 @@ export default function BookingPortalView({ clientMode = false }: BookingPortalV
     if (time && !free.includes(time)) {
       setTime("");
     }
-  }, [blockedSlots, selectedServiceDuration, time, clientMode]);
+  }, [blockedSlots, selectedServiceDuration, time, clientMode, dateBlocked]);
 
   const handleSimulateBooking = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -308,46 +286,24 @@ export default function BookingPortalView({ clientMode = false }: BookingPortalV
       alert("Preencha todos os campos obrigatórios.");
       return;
     }
+    if (dateBlocked) {
+      alert(`A clínica não realiza atendimentos aos ${blockedDayName === "domingo" ? "domingos" : "sábados"}. Por favor, selecione outro dia da semana.`);
+      return;
+    }
     setIsLoading(true);
 
     const found = servicesList.find((s) => s.name === service);
-    const duration = found?.duration || 45;
     const price = found?.price || 150;
+    const durationMin = found?.duration || selectedServiceDuration || 45;
     const patientId = `pat-web-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`;
     const appointmentId = `app-web-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`;
 
-    // Calculate end time
-    const startM = timeToMinutes(time);
-    const endM = startM + duration;
-    const endHour = Math.floor(endM / 60);
-    const endMin = endM % 60;
-    const endTimeStr = `${endHour.toString().padStart(2, "0")}:${endMin.toString().padStart(2, "0")}`;
-
-    // Google Calendar time strings
-    const dtStart = `${date}T${time}:00-03:00`;
-    const dtEnd = `${date}T${endTimeStr}:00-03:00`;
-
-    let calendarEventId: string | undefined;
+    let calendarEventId: string | undefined = undefined;
+    let googleResult = "skipped";
+    setGoogleSyncStatus("");
 
     try {
-      // 1. Create Google Calendar event (if connected)
-      if (gcConnected) {
-        try {
-          const eventId = await createGoogleCalendarEvent(
-            `${service} - ${name}`,
-            notes || `Agendamento via Portal Online - ${name}\nTelefone: ${phone}\nDiabético: ${isDiabetic ? "Sim" : "Não"}`,
-            dtStart,
-            dtEnd
-          );
-          if (eventId) {
-            calendarEventId = eventId;
-          }
-        } catch (err) {
-          console.warn("Falha ao criar evento no Google Calendar:", err);
-        }
-      }
-
-      // 2. Save patient to Firestore
+      // 1. Save patient to Firestore
       if (!isFirebaseConfigured || !db) {
         throw new Error("Firebase não configurado");
       }
@@ -367,7 +323,43 @@ export default function BookingPortalView({ clientMode = false }: BookingPortalV
         createdAt: new Date().toISOString(),
       });
 
-      // 3. Save appointment to Firestore
+      // 1b. Try to create the Google Calendar event in the same operation (if token available)
+      try {
+        const {
+          createGoogleCalendarEvent: fsCreateGoogleEvent,
+          isGoogleCalendarConnected: gcalConnected,
+        } = await import("../services/googleCalendar");
+        if (gcalConnected()) {
+          const dtStart = `${date}T${time}:00-03:00`;
+          const endDate = new Date(
+            new Date(`${date}T${time}:00`).getTime() + durationMin * 60000
+          );
+          const dtEnd = endDate.toISOString().slice(0, 19) + "-03:00";
+          const summary = `${service} - ${name}`;
+          const description =
+            `Agendamento Online - Portal do Cliente\n` +
+            `Paciente: ${name}\n` +
+            `Telefone: ${phone}\n` +
+            `Serviço: ${service}\n` +
+            `Data: ${formatDateBR(date)} às ${time}\n` +
+            `Valor: R$ ${price}\n` +
+            (notes ? `Observações: ${notes}` : "");
+          const evtId = await fsCreateGoogleEvent(summary, description, dtStart, dtEnd);
+          if (evtId) {
+            calendarEventId = evtId;
+            googleResult = "created";
+          } else {
+            googleResult = "error";
+          }
+        } else {
+          googleResult = "no-token";
+        }
+      } catch (err) {
+        console.error("[Portal] Falha ao criar evento no Google Calendar:", err);
+        googleResult = "error";
+      }
+
+      // 2. Save appointment to Firestore (with calendarEventId if Google event was created)
       await setDoc(doc(db, "appointments", appointmentId), {
         patientId,
         patientName: name,
@@ -377,14 +369,18 @@ export default function BookingPortalView({ clientMode = false }: BookingPortalV
         price,
         status: "scheduled",
         notes: notes || "Solicitado via Portal Online",
-        calendarEventId: calendarEventId || null,
-        source: "manual",
+        source: "portal",
+        ...(calendarEventId ? { calendarEventId } : {}),
+        ...(googleResult === "created"
+          ? { googleSync: "synced" }
+          : { googleSync: "pending" }),
       });
 
       setIsSubmitted(true);
-    } catch (err) {
-      console.error(err);
-      alert("Houve um erro no agendamento. Verifique o Firebase.");
+      setGoogleSyncStatus(googleResult === "created" ? "synced" : googleResult === "no-token" ? "pending" : "error");
+    } catch (e: any) {
+      console.error(e);
+      alert("Erro detalhado: " + (e.message || JSON.stringify(e)));
     } finally {
       setIsLoading(false);
     }
@@ -498,7 +494,7 @@ export default function BookingPortalView({ clientMode = false }: BookingPortalV
     const isToday = date === new Date().toISOString().split("T")[0];
 
     return (
-      <div id="booking-portal-view" className="min-h-screen bg-gradient-to-br from-emerald-50 to-white flex flex-col items-center justify-center p-4">
+      <div id="booking-portal-view" className="booking-portal-light min-h-screen bg-gradient-to-br from-emerald-50 to-white flex flex-col items-center justify-center p-4">
         <div className="w-full max-w-lg">
           <div className="text-center mb-6">
             <img
@@ -582,6 +578,15 @@ export default function BookingPortalView({ clientMode = false }: BookingPortalV
                           className="w-full text-xs p-3 border border-slate-200 rounded-xl focus:outline-none focus:ring-1 focus:ring-brand"
                         />
                       </div>
+
+                      {dateBlocked && (
+                        <div className="bg-amber-50 border border-amber-200 rounded-xl p-3 text-xs flex items-start gap-2">
+                          <AlertCircle className="w-4 h-4 text-amber-600 shrink-0 mt-0.5" />
+                          <p className="text-amber-800 leading-relaxed">
+                            A clínica não realiza atendimentos aos {blockedDayName === "domingo" ? "domingos" : "sábados"}. Por favor, selecione outro dia da semana.
+                          </p>
+                        </div>
+                      )}
 
                       {/* Info sobre agendamento no mesmo dia */}
                       <div className="bg-amber-50 border border-amber-100 rounded-xl p-4 text-xs space-y-2">
@@ -728,7 +733,7 @@ export default function BookingPortalView({ clientMode = false }: BookingPortalV
 
       {portalTab === "portal" && (
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
-          <div className="lg:col-span-7 bg-white p-6 rounded-2xl border border-slate-100 shadow-sm space-y-6">
+          <div className="lg:col-span-7 bg-white dark:bg-slate-900 p-6 rounded-2xl border border-slate-100 dark:border-slate-800 shadow-sm space-y-6">
             <div className="flex items-center justify-between border-b border-slate-100 pb-4">
               <div>
                 <span className="bg-emerald-100 text-emerald-800 text-[10px] font-bold px-2.5 py-1 rounded-full uppercase tracking-wider inline-flex items-center gap-1">
@@ -804,7 +809,7 @@ export default function BookingPortalView({ clientMode = false }: BookingPortalV
           </div>
 
           <div className="lg:col-span-5 space-y-6">
-            <div className="bg-white p-6 rounded-2xl border border-slate-100 shadow-sm space-y-4">
+            <div className="bg-white dark:bg-slate-900 p-6 rounded-2xl border border-slate-100 dark:border-slate-800 shadow-sm space-y-4">
               <h4 className="text-xs font-bold text-slate-800 uppercase tracking-wider flex items-center gap-1.5">
                 <HelpCircle className="w-4 h-4 text-gold" /> Integração com WhatsApp
               </h4>
@@ -832,7 +837,7 @@ https://podologa-fabricia.web.app/cliente`}
               </div>
             </div>
 
-            <div className="bg-white p-6 rounded-2xl border border-slate-100 shadow-sm space-y-4">
+            <div className="bg-white dark:bg-slate-900 p-6 rounded-2xl border border-slate-100 dark:border-slate-800 shadow-sm space-y-4">
               <h4 className="text-xs font-bold text-slate-800 uppercase tracking-wider flex items-center gap-1.5">
                 <CheckCircle className="w-4 h-4 text-gold" /> Status de Sincronização
               </h4>
@@ -847,7 +852,7 @@ https://podologa-fabricia.web.app/cliente`}
                   <div className="flex items-center gap-2 font-medium">
                     <span className="w-2.5 h-2.5 rounded-full bg-gold"></span> Google Agenda
                   </div>
-                  <span className="font-bold font-mono text-[11px]">{gcConnected ? "CONECTADO" : calendarConfigured ? "NÃO LOGADO" : "NÃO CONFIGURADO"}</span>
+                  <span className="font-bold font-mono text-[11px]">N/A</span>
                 </div>
                 <div className="flex items-center justify-between p-2.5 bg-emerald-50 rounded-xl border border-emerald-100 text-emerald-900">
                   <div className="flex items-center gap-2 font-medium">
@@ -863,7 +868,7 @@ https://podologa-fabricia.web.app/cliente`}
 
       {portalTab === "simulator" && (
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
-          <div className="lg:col-span-7 bg-white p-6 rounded-2xl border border-slate-100 shadow-sm space-y-6">
+          <div className="lg:col-span-7 bg-white dark:bg-slate-900 p-6 rounded-2xl border border-slate-100 dark:border-slate-800 shadow-sm space-y-6">
             <div>
               <h3 className="text-base font-bold text-slate-800 tracking-tight">
                 Simulador do Portal de Agendamento
@@ -962,6 +967,15 @@ https://podologa-fabricia.web.app/cliente`}
                           className="w-full text-xs pl-10 pr-4 py-3 border border-slate-200 rounded-xl focus:outline-none focus:ring-1 focus:ring-gold"
                         />
                       </div>
+
+                      {dateBlocked && (
+                        <div className="bg-amber-50 border border-amber-200 rounded-xl p-3 text-xs flex items-start gap-2">
+                          <AlertCircle className="w-4 h-4 text-amber-600 shrink-0 mt-0.5" />
+                          <p className="text-amber-800 leading-relaxed">
+                            A clínica não realiza atendimentos aos {blockedDayName === "domingo" ? "domingos" : "sábados"}. Por favor, selecione outro dia da semana.
+                          </p>
+                        </div>
+                      )}
                     </div>
 
                     {date && (
@@ -1027,9 +1041,35 @@ https://podologa-fabricia.web.app/cliente`}
                 <div>
                   <h4 className="text-lg font-bold text-slate-800">Agendamento Realizado com Sucesso!</h4>
                   <p className="text-xs text-slate-500 mt-1 max-w-md mx-auto">
-                    Evento criado no Google Agenda e registrado no Firestore (pacientes + agendamentos).
+                    Registrado no Firestore (pacientes + agendamentos) e sincronizado com o app da Dra. Fabrícia.
                   </p>
                 </div>
+
+                {googleSyncStatus && (
+                  <div className={`border p-3 rounded-xl text-left text-xs max-w-md mx-auto ${
+                    googleSyncStatus === "synced"
+                      ? "bg-emerald-50 border-emerald-100"
+                      : googleSyncStatus === "pending"
+                      ? "bg-amber-50 border-amber-100"
+                      : "bg-rose-50 border-rose-100"
+                  }`}>
+                    {googleSyncStatus === "synced" ? (
+                      <p className="font-bold text-emerald-800 flex items-center gap-1.5">
+                        <Check className="w-3.5 h-3.5" /> Evento criado no Google Agenda com sucesso.
+                      </p>
+                    ) : googleSyncStatus === "pending" ? (
+                      <p className="font-bold text-amber-800 flex items-center gap-1.5">
+                        <Clock className="w-3.5 h-3.5" /> Google Agenda: aguardando conexão.
+                        <span className="font-medium text-amber-700">O app da Dra. Fabrícia sincronizará automaticamente ao abrir a agenda.</span>
+                      </p>
+                    ) : (
+                      <p className="font-bold text-rose-800 flex items-center gap-1.5">
+                        <AlertCircle className="w-3.5 h-3.5" /> Não foi possível criar o evento no Google Agenda agora.
+                        <span className="font-medium text-rose-700">Ele será sincronizado automaticamente quando o app abrir.</span>
+                      </p>
+                    )}
+                  </div>
+                )}
 
                 <div className="bg-emerald-50 border border-emerald-100 p-4 rounded-xl text-left text-xs space-y-2 max-w-md mx-auto">
                   <p className="font-bold text-emerald-800 flex items-center gap-1.5">
@@ -1058,7 +1098,7 @@ _Por favor, se você for diabético, lembre-se de trazer os exames mais recentes
           </div>
 
           <div className="lg:col-span-5 space-y-6">
-            <div className="bg-white p-5 rounded-2xl border border-slate-100 shadow-sm space-y-4">
+            <div className="bg-white dark:bg-slate-900 p-5 rounded-2xl border border-slate-100 dark:border-slate-800 shadow-sm space-y-4">
               <h4 className="text-xs font-bold text-slate-800 uppercase tracking-wider flex items-center gap-1.5">
                 <HelpCircle className="w-4 h-4 text-gold" /> Como Funciona
               </h4>
@@ -1086,7 +1126,7 @@ _Por favor, se você for diabético, lembre-se de trazer os exames mais recentes
       )}
 
       {portalTab === "code" && (
-        <div className="bg-white p-6 rounded-2xl border border-slate-100 shadow-sm space-y-4">
+        <div className="bg-white dark:bg-slate-900 p-6 rounded-2xl border border-slate-100 dark:border-slate-800 shadow-sm space-y-4">
           <div>
             <h3 className="text-base font-bold text-slate-800 tracking-tight">
               Código-Fonte HTML/JS para Emergências (Backup)

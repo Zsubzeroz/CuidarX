@@ -145,7 +145,7 @@ export default function ServicesView({
 
       {/* Stats Cards Dashboard */}
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-        <div className="bg-white border border-slate-100 rounded-2xl p-4 shadow-sm flex items-center justify-between">
+        <div className="bg-white dark:bg-slate-900 border border-slate-100 dark:border-slate-800 rounded-2xl p-4 shadow-sm flex items-center justify-between">
           <div className="space-y-1">
             <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Total de Serviços</p>
             <h3 className="text-2xl font-bold text-slate-800 font-mono">{services.length}</h3>
@@ -155,7 +155,7 @@ export default function ServicesView({
           </div>
         </div>
 
-        <div className="bg-white border border-slate-100 rounded-2xl p-4 shadow-sm flex items-center justify-between">
+        <div className="bg-white dark:bg-slate-900 border border-slate-100 dark:border-slate-800 rounded-2xl p-4 shadow-sm flex items-center justify-between">
           <div className="space-y-1">
             <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Serviços Ativos</p>
             <h3 className="text-2xl font-bold text-gold font-mono">{activeServices}</h3>
@@ -165,7 +165,7 @@ export default function ServicesView({
           </div>
         </div>
 
-        <div className="bg-white border border-slate-100 rounded-2xl p-4 shadow-sm flex items-center justify-between">
+        <div className="bg-white dark:bg-slate-900 border border-slate-100 dark:border-slate-800 rounded-2xl p-4 shadow-sm flex items-center justify-between">
           <div className="space-y-1">
             <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Preço Médio da Tabela</p>
             <h3 className="text-2xl font-bold text-slate-800 font-mono">
@@ -179,7 +179,7 @@ export default function ServicesView({
       </div>
 
       {/* Filter and Table Container */}
-      <div className="bg-white border border-slate-100 rounded-2xl shadow-sm overflow-hidden">
+      <div className="bg-white dark:bg-slate-900 border border-slate-100 dark:border-slate-800 rounded-2xl shadow-sm overflow-hidden">
         {/* Controls Bar */}
         <div className="p-4 bg-slate-50/50 border-b border-slate-100 flex flex-col md:flex-row gap-3 items-center justify-between">
           {/* Search bar */}
@@ -316,7 +316,7 @@ export default function ServicesView({
       {/* CREATE / EDIT MODAL */}
       {isModalOpen && (
         <div className="fixed inset-0 bg-slate-900/40 backdrop-blur-sm flex items-center justify-center p-4 z-[100] animate-fade-in">
-          <div className="bg-white rounded-2xl shadow-xl border border-slate-100 max-w-lg w-full overflow-hidden flex flex-col">
+          <div className="bg-white dark:bg-slate-900 rounded-2xl shadow-xl border border-slate-100 dark:border-slate-800 max-w-lg w-full overflow-hidden flex flex-col">
             {/* Modal Header */}
             <div className="px-6 py-4 border-b border-slate-100 flex items-center justify-between bg-slate-50/50">
               <h3 className="font-bold text-slate-800 text-sm">

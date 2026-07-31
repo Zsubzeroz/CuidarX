@@ -15,6 +15,7 @@ import {
   FileText,
   UserPlus,
   Wallet,
+  Cake,
 } from "lucide-react";
 import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from "recharts";
 
@@ -44,6 +45,36 @@ export default function DashboardView({
   const diabeticActiveIssues = patients.filter(
     (p) => p.isDiabetic && p.footIssues.some((issue) => issue.status === "active")
   );
+
+  // Birthday alerts: today + next 7 days
+  const now = new Date();
+  const todayMD = (now.getMonth() + 1) * 100 + now.getDate();
+  const birthdayRange = Array.from({ length: 8 }).map((_, i) => {
+    const d = new Date(now.getFullYear(), now.getMonth(), now.getDate() + i);
+    return (d.getMonth() + 1) * 100 + d.getDate();
+  });
+  const upcomingBirthdays = patients
+    .map((p) => {
+      if (!p.dob) return null;
+      const [, m, day] = p.dob.split("-").map(Number);
+      if (!m || !day) return null;
+      const md = m * 100 + day;
+      const inRange = birthdayRange.includes(md);
+      if (!inRange) return null;
+      let age = now.getFullYear() - new Date(p.dob + "T00:00:00").getFullYear();
+      const bdayThisYear = new Date(now.getFullYear(), m - 1, day);
+      if (bdayThisYear > now) age--;
+      const isToday = md === todayMD;
+      const daysUntil = (() => {
+        const next = new Date(now.getFullYear(), m - 1, day);
+        if (next < now) next.setFullYear(now.getFullYear() + 1);
+        return Math.round((next.getTime() - now.getTime()) / 86400000);
+      })();
+      return { patient: p, age, isToday, daysUntil, md };
+    })
+    .filter(Boolean)
+    .sort((a, b) => (a.isToday ? -1 : 0) - (b.isToday ? -1 : 0) || a.daysUntil - b.daysUntil)
+    .slice(0, 8) as { patient: Patient; age: number; isToday: boolean; daysUntil: number; md: number }[];
 
   // Financial calculations
   const monthlyCompletedAppts = appointments.filter(
@@ -114,7 +145,7 @@ export default function DashboardView({
           {/* Button 1: Novo Agendamento */}
           <button
             onClick={onQuickSchedule}
-            className="group flex items-center gap-3 bg-white border border-[#C8A45A]/15 hover:border-[#C8A45A]/40 hover:shadow-luxury p-4 rounded-2xl text-left cursor-pointer transition-all duration-200 hover:-translate-y-0.5"
+            className="group flex items-center gap-3 bg-white dark:bg-slate-900 border border-[#C8A45A]/15 dark:border-[#C8A45A]/25 hover:border-[#C8A45A]/40 hover:shadow-luxury p-4 rounded-2xl text-left cursor-pointer transition-all duration-200 hover:-translate-y-0.5"
           >
             <div className="bg-[#0F3B2E] text-[#C8A45A] p-2.5 rounded-xl shadow-sm group-hover:scale-105 transition-transform">
               <Calendar className="w-5 h-5" />
@@ -128,7 +159,7 @@ export default function DashboardView({
           {/* Button 2: Cadastrar Cliente */}
           <button
             onClick={() => onNavigate("pacientes")}
-            className="group flex items-center gap-3 bg-white border border-[#C8A45A]/15 hover:border-[#C8A45A]/40 hover:shadow-luxury p-4 rounded-2xl text-left cursor-pointer transition-all duration-200 hover:-translate-y-0.5"
+            className="group flex items-center gap-3 bg-white dark:bg-slate-900 border border-[#C8A45A]/15 dark:border-[#C8A45A]/25 hover:border-[#C8A45A]/40 hover:shadow-luxury p-4 rounded-2xl text-left cursor-pointer transition-all duration-200 hover:-translate-y-0.5"
           >
             <div className="bg-amber-500 text-white p-2.5 rounded-xl shadow-sm group-hover:scale-105 transition-transform">
               <UserPlus className="w-5 h-5" />
@@ -139,24 +170,24 @@ export default function DashboardView({
             </div>
           </button>
 
-          {/* Button 3: Ficha de Anamnese */}
+          {/* Button 3: Produtos e Serviços */}
           <button
-            onClick={() => onNavigate("anamnese")}
-            className="group flex items-center gap-3 bg-white border border-[#C8A45A]/15 hover:border-[#C8A45A]/40 hover:shadow-luxury p-4 rounded-2xl text-left cursor-pointer transition-all duration-200 hover:-translate-y-0.5"
+            onClick={() => onNavigate("servicos")}
+            className="group flex items-center gap-3 bg-white dark:bg-slate-900 border border-[#C8A45A]/15 dark:border-[#C8A45A]/25 hover:border-[#C8A45A]/40 hover:shadow-luxury p-4 rounded-2xl text-left cursor-pointer transition-all duration-200 hover:-translate-y-0.5"
           >
             <div className="bg-indigo-500 text-white p-2.5 rounded-xl shadow-sm group-hover:scale-105 transition-transform">
               <FileText className="w-5 h-5" />
             </div>
             <div>
-              <h4 className="text-xs font-bold text-slate-800">Ficha de Anamnese</h4>
-              <p className="text-[10px] text-slate-400 mt-0.5">Preencher ou imprimir</p>
+              <h4 className="text-xs font-bold text-slate-800">Produtos e Serviços</h4>
+              <p className="text-[10px] text-slate-400 mt-0.5">Catálogo e preços</p>
             </div>
           </button>
 
           {/* Button 4: Abrir Caixa / Venda */}
           <button
             onClick={() => onNavigate("financeiro")}
-            className="group flex items-center gap-3 bg-white border border-[#C8A45A]/15 hover:border-[#C8A45A]/40 hover:shadow-luxury p-4 rounded-2xl text-left cursor-pointer transition-all duration-200 hover:-translate-y-0.5"
+            className="group flex items-center gap-3 bg-white dark:bg-slate-900 border border-[#C8A45A]/15 dark:border-[#C8A45A]/25 hover:border-[#C8A45A]/40 hover:shadow-luxury p-4 rounded-2xl text-left cursor-pointer transition-all duration-200 hover:-translate-y-0.5"
           >
             <div className="bg-[#C8A45A] text-white p-2.5 rounded-xl shadow-sm group-hover:scale-105 transition-transform">
               <Wallet className="w-5 h-5" />
@@ -239,11 +270,11 @@ export default function DashboardView({
         {/* Left Side: Critical patient alerts and visual chart */}
         <div className="lg:col-span-7 space-y-6">
           {/* Faturamento semanal chart */}
-          <div className="bg-white p-5 rounded-2xl border border-slate-100 shadow-card">
+          <div className="bg-white dark:bg-slate-900 p-5 rounded-2xl border border-slate-100 dark:border-slate-800 shadow-card">
             <div className="flex justify-between items-center mb-5">
               <div>
                 <p className="text-[10px] uppercase font-bold text-slate-400 tracking-widest">Faturamento</p>
-                <h3 className="text-sm font-semibold text-slate-700 mt-0.5">Fluxo semanal de receitas (R$)</h3>
+                <h3 className="text-sm font-semibold text-slate-700 dark:text-slate-200 mt-0.5">Fluxo semanal de receitas (R$)</h3>
               </div>
               <span className="text-[10px] text-[#C8A45A] bg-[#FBF8EE] px-3 py-1 rounded-full font-bold border border-[#E9D79E]">
                 ● Sincronizado
@@ -334,7 +365,63 @@ export default function DashboardView({
 
         {/* Right Side: Agenda de Hoje */}
         <div className="lg:col-span-5 space-y-6">
-          <div className="bg-white p-5 rounded-2xl border border-slate-100 shadow-sm flex flex-col h-full">
+          {upcomingBirthdays.length > 0 && (
+            <div className="bg-gradient-to-br from-rose-50 via-white to-amber-50 dark:from-slate-900 dark:via-slate-900 dark:to-slate-900 border border-rose-100 dark:border-rose-500/20 p-5 rounded-2xl shadow-card">
+              <div className="flex items-center gap-2 mb-4">
+                <div className="bg-rose-500 p-2 rounded-xl shadow-sm">
+                  <Cake className="w-4 h-4 text-white" />
+                </div>
+                <div className="flex-1">
+                  <h4 className="text-xs font-bold text-rose-700 uppercase tracking-wider">Aniversariantes</h4>
+                  <p className="text-[10px] text-rose-400">
+                    {upcomingBirthdays.filter((b) => b.isToday).length > 0
+                      ? `Hoje: ${upcomingBirthdays.filter((b) => b.isToday).length} paciente(s)`
+                      : "Próximos 7 dias"}
+                  </p>
+                </div>
+                <span className="text-[9px] font-bold text-rose-500 bg-rose-50 border border-rose-100 px-2 py-1 rounded-lg">
+                  🎂 {upcomingBirthdays.length}
+                </span>
+              </div>
+              <div className="space-y-2">
+                {upcomingBirthdays.map(({ patient, age, isToday, daysUntil }) => (
+                  <div
+                    key={patient.id}
+                    className={`flex items-center justify-between gap-2 bg-white border p-3 rounded-xl text-xs ${
+                      isToday ? "border-rose-300 bg-rose-50/50" : "border-slate-100"
+                    }`}
+                  >
+                    <div className="flex items-center gap-2.5 min-w-0">
+                      <div className={`w-8 h-8 rounded-full flex items-center justify-center shrink-0 font-bold text-[10px] ${
+                        isToday ? "bg-rose-500 text-white" : "bg-rose-100 text-rose-600"
+                      }`}>
+                        {isToday ? "🎉" : age}
+                      </div>
+                      <div className="min-w-0">
+                        <p className="font-bold text-slate-800 truncate">{patient.name}</p>
+                        <p className="text-[10px] text-slate-400">
+                          {isToday ? "Faz aniversário HOJE!" : `Em ${daysUntil === 0 ? "hoje" : `${daysUntil} dia${daysUntil > 1 ? "s" : ""}`} · ${age} anos`}
+                        </p>
+                      </div>
+                    </div>
+                    {patient.phone && (
+                      <a
+                        href={`https://wa.me/${patient.phone.replace(/\D/g, "")}?text=${encodeURIComponent(
+                          `🎂 Parabéns, ${patient.name}! Desejamos um feliz aniversário com muita saúde para seus pés! 🦶✨`
+                        )}`}
+                        target="_blank"
+                        rel="noreferrer"
+                        className="text-[9px] font-bold text-emerald-700 bg-emerald-50 hover:bg-emerald-500 hover:text-white px-2.5 py-1.5 rounded-lg transition-colors shrink-0"
+                      >
+                        Parabéns 🎁
+                      </a>
+                    )}
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+          <div className="bg-white dark:bg-slate-900 p-5 rounded-2xl border border-slate-100 dark:border-slate-800 shadow-sm flex flex-col h-full">
             <div className="flex justify-between items-center mb-4">
               <h4 className="text-xs font-bold text-slate-400 uppercase tracking-wider">Agenda de Hoje</h4>
               <span className="text-xs font-semibold text-gold">

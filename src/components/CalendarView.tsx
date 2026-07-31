@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from "react";
-import { Patient, Appointment, ClinicService } from "../types";
-import { GoogleCalendarEvent } from "../services/googleCalendar";
+import { Patient, Appointment, ClinicService, ScheduleBlock } from "../types";
+import { GoogleCalendarEvent, updateGoogleCalendarEvent } from "../services/googleCalendar";
 import {
   Calendar,
   Clock,
@@ -22,17 +22,28 @@ import {
   Bell,
   Send,
   ExternalLink,
+  Lock,
+  Ban,
+  Utensils,
+  Stethoscope,
+  Plane,
+  PartyPopper,
+  Layers,
 } from "lucide-react";
 
 interface CalendarViewProps {
   patients: Patient[];
   appointments: Appointment[];
   services?: ClinicService[];
+  scheduleBlocks?: ScheduleBlock[];
   onAddAppointment: (appointment: Omit<Appointment, "id">) => void;
   onUpdateAppointment: (appointment: Appointment) => void;
   onUpdateAppointmentStatus: (id: string, status: Appointment["status"]) => void;
   onDeleteAppointment: (id: string) => void;
   onAddPatient?: (patient: Omit<Patient, "id">) => Promise<void>;
+  onAddScheduleBlock?: (block: Omit<ScheduleBlock, "id" | "createdAt">) => void;
+  onDeleteScheduleBlock?: (id: string) => void;
+  scheduleFormRequest?: number;
   googleEvents: GoogleCalendarEvent[];
   isGoogleConnected: boolean;
   isGoogleConfigured: boolean;
@@ -45,18 +56,21 @@ interface CalendarViewProps {
   onSyncGoogleEvents: (date: string) => void;
   onCreateGoogleEvent: (summary: string, description: string, startTime: string, endTime: string) => Promise<string | null>;
   onDeleteGoogleEvent: (eventId: string) => Promise<void>;
-  onSelectPatientForAnamnese?: (patientId: string) => void;
 }
 
 export default function CalendarView({
   patients,
   appointments,
   services = [],
+  scheduleBlocks = [],
   onAddAppointment,
   onUpdateAppointment,
   onUpdateAppointmentStatus,
   onDeleteAppointment,
   onAddPatient,
+  onAddScheduleBlock,
+  onDeleteScheduleBlock,
+  scheduleFormRequest = 0,
   googleEvents,
   isGoogleConnected,
   isGoogleConfigured,
@@ -69,7 +83,6 @@ export default function CalendarView({
   onSyncGoogleEvents,
   onCreateGoogleEvent,
   onDeleteGoogleEvent,
-  onSelectPatientForAnamnese,
 }: CalendarViewProps) {
   const [selectedDate, setSelectedDate] = useState(new Date().toISOString().split("T")[0]);
   const [showAddForm, setShowAddForm] = useState(false);
@@ -80,6 +93,7 @@ export default function CalendarView({
   const [service, setService] = useState("");
   const [price, setPrice] = useState(0);
   const [notes, setNotes] = useState("");
+  const [quantity, setQuantity] = useState(1);
 
   const [editingGoogleEvent, setEditingGoogleEvent] = useState<GoogleCalendarEvent | null>(null);
   const [geEditSummary, setGeEditSummary] = useState("");
@@ -88,10 +102,49 @@ export default function CalendarView({
   const [newPatientName, setNewPatientName] = useState("");
   const [newPatientPhone, setNewPatientPhone] = useState("");
   const [showTomorrowReminders, setShowTomorrowReminders] = useState(false);
+  const [showBlockModal, setShowBlockModal] = useState(false);
+  const [blockDate, setBlockDate] = useState(new Date().toISOString().split("T")[0]);
+  const [blockStart, setBlockStart] = useState("12:00");
+  const [blockEnd, setBlockEnd] = useState("13:30");
+  const [blockReason, setBlockReason] = useState("Almoço");
+  const [blockAllDay, setBlockAllDay] = useState(false);
+  const [feedback, setFeedback] = useState<{ type: "success" | "error"; message: string } | null>(null);
+
+  useEffect(() => {
+    if (!feedback) return;
+    const t = setTimeout(() => setFeedback(null), 3000);
+    return () => clearTimeout(t);
+  }, [feedback]);
+
+  const editFormRef = useRef<HTMLDivElement>(null);
+
+  const scrollFormIntoView = () => {
+    if (window.innerWidth < 768) return;
+    setTimeout(() => {
+      editFormRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
+    }, 80);
+  };
+
+  // Auto-open the schedule form on mobile when requested (Dashboard "Novo Agendamento")
+  useEffect(() => {
+    if (scheduleFormRequest > 0) {
+      resetForm();
+      setShowAddForm(true);
+      scrollFormIntoView();
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [scheduleFormRequest]);
+
+  // Open block modal with selected date when requested
+  useEffect(() => {
+    if (showBlockModal) {
+      setBlockDate(selectedDate);
+    }
+  }, [showBlockModal, selectedDate]);
 
   // Local safety timeout for Google connect spinner (3s max)
   const [localConnecting, setLocalConnecting] = useState(false);
-  const connectingTimerRef = useRef<ReturnType<typeof setTimeout>>();
+  const connectingTimerRef = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
   const effectiveConnecting = isConnectingGoogle || localConnecting;
 
   const handleConnectClick = () => {
@@ -147,6 +200,7 @@ export default function CalendarView({
     setPatientId(patients[0]?.id || "");
     setTime("09:00");
     setNotes("");
+    setQuantity(1);
     setEditingAppt(null);
     setShowNewPatient(false);
     setNewPatientName("");
@@ -191,8 +245,14 @@ export default function CalendarView({
       }
     } else {
       const patientObj = patients.find((p) => p.id === patientId);
-      if (!patientObj) return;
-      resolvedPatientName = patientObj.name;
+      if (patientObj) {
+        resolvedPatientName = patientObj.name;
+      } else if (editingAppt) {
+        resolvedPatientId = editingAppt.patientId;
+        resolvedPatientName = editingAppt.patientName;
+      } else {
+        return;
+      }
     }
 
     if (editingAppt) {
@@ -200,10 +260,12 @@ export default function CalendarView({
         ...editingAppt,
         patientId: resolvedPatientId,
         patientName: resolvedPatientName,
+        date: selectedDate,
         time,
         service,
         price,
         notes,
+        quantity,
       };
       await onUpdateAppointment(updatedAppt);
 
@@ -212,6 +274,7 @@ export default function CalendarView({
         const endDate = new Date(new Date(`${selectedDate}T${time}:00`).getTime() + (price > 150 ? 60 : 45) * 60000);
         const dtEnd = endDate.toISOString().slice(0, 19) + "-03:00";
         await onEditGoogleEvent(editingAppt.calendarEventId, `${service} - ${resolvedPatientName}`, notes || "", dtStart, dtEnd);
+        onSyncGoogleEvents(selectedDate);
       }
     } else {
       const dtStart = `${selectedDate}T${time}:00-03:00`;
@@ -238,6 +301,7 @@ export default function CalendarView({
         price,
         status: "scheduled",
         notes,
+        quantity,
         calendarEventId,
       });
     }
@@ -246,21 +310,32 @@ export default function CalendarView({
     setShowAddForm(false);
   };
 
-  const startEdit = (appt: Appointment) => {
+  const handleEditAppointment = (appt: Appointment) => {
     setEditingAppt(appt);
     setPatientId(appt.patientId);
     setTime(appt.time);
     setService(appt.service);
     setPrice(appt.price);
     setNotes(appt.notes || "");
+    setQuantity(appt.quantity || 1);
+    setShowNewPatient(false);
     setShowAddForm(true);
+    scrollFormIntoView();
   };
 
   const handleDelete = async (appt: Appointment) => {
     if (!confirm(`Excluir agendamento de ${appt.patientName}?`)) return;
-    await onDeleteAppointment(appt.id);
-    if (appt.calendarEventId && isGoogleConnected) {
-      await onDeleteGoogleEvent(appt.calendarEventId);
+    try {
+      await onDeleteAppointment(appt.id);
+    } catch (err) {
+      console.error("Erro ao excluir agendamento do Firestore:", err);
+    }
+    if (appt.calendarEventId) {
+      try {
+        await onDeleteGoogleEvent(appt.calendarEventId);
+      } catch (err) {
+        console.error("Erro ao excluir evento do Google Calendar:", err);
+      }
     }
   };
 
@@ -293,8 +368,87 @@ export default function CalendarView({
     setEditingGoogleEvent(null);
   };
 
+  const STATUS_LABELS: Record<Appointment["status"], string> = {
+    scheduled: "Agendado",
+    confirmed: "Confirmado",
+    completed: "Concluído",
+    canceled: "Cancelado",
+  };
+
+  const STATUS_ICONS: Record<Appointment["status"], string> = {
+    scheduled: "🕐",
+    confirmed: "✅",
+    completed: "✔️",
+    canceled: "✖️",
+  };
+
+  const stripStatusPrefix = (summary: string) => {
+    return summary.replace(/^(✅|✔️|✖️|🕐)\s*/, "").trim();
+  };
+
   const handleStatusChange = async (appt: Appointment, newStatus: Appointment["status"]) => {
-    await onUpdateAppointmentStatus(appt.id, newStatus);
+    try {
+      await onUpdateAppointmentStatus(appt.id, newStatus);
+
+      if (appt.calendarEventId && isGoogleConnected) {
+        const existingGe = googleEvents.find((ge) => ge.id === appt.calendarEventId);
+        const baseSummary = stripStatusPrefix(
+          existingGe?.summary || `${appt.service} - ${appt.patientName}`
+        );
+        const baseDescription = (existingGe?.description || appt.notes || "")
+          .replace(/^Status: .*\n?/, "")
+          .trim();
+
+        const start = existingGe?.startTimeRaw || `${appt.date}T${appt.time}:00-03:00`;
+        const end =
+          existingGe?.endTimeRaw ||
+          (() => {
+            const endDate = new Date(
+              new Date(`${appt.date}T${appt.time}:00`).getTime() + (appt.price > 150 ? 60 : 45) * 60000
+            );
+            return endDate.toISOString().slice(0, 19) + "-03:00";
+          })();
+
+        const newSummary = `${STATUS_ICONS[newStatus]} ${baseSummary}`;
+        const statusLine = `Status: ${STATUS_LABELS[newStatus]}`;
+        const newDescription = baseDescription ? `${statusLine}\n${baseDescription}` : statusLine;
+
+        await onEditGoogleEvent(appt.calendarEventId, newSummary, newDescription, start, end);
+        onSyncGoogleEvents(selectedDate);
+      }
+
+      setFeedback({ type: "success", message: `${appt.patientName}: ${STATUS_LABELS[newStatus]}` });
+    } catch (err) {
+      console.error("Erro ao atualizar status:", err);
+      setFeedback({ type: "error", message: "Erro ao atualizar o status" });
+    }
+  };
+
+  const handleCreateBlock = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!onAddScheduleBlock) return;
+    onAddScheduleBlock({
+      date: blockDate,
+      startTime: blockAllDay ? "00:00" : blockStart,
+      endTime: blockAllDay ? "23:59" : blockEnd,
+      reason: blockReason,
+    });
+    setShowBlockModal(false);
+    setBlockAllDay(false);
+  };
+
+  const dayBlocks = scheduleBlocks.filter((b) => b.date === selectedDate);
+
+  const getBlockForHour = (hour: string) => {
+    const [sh, sm] = hour.split(":").map(Number);
+    const slotMin = sh * 60 + sm;
+    return dayBlocks.find((b) => {
+      const [bh, bm] = b.startTime.split(":").map(Number);
+      const [eh, em] = b.endTime.split(":").map(Number);
+      const bStart = bh * 60 + bm;
+      const bEnd = eh * 60 + em;
+      return slotMin >= bStart && slotMin < bEnd;
+    });
   };
 
   const formatGoogleTime = (isoString: string) => {
@@ -361,7 +515,6 @@ export default function CalendarView({
 
   const onEditGoogleEvent = async (eventId: string, summary: string, description: string, start: string, end: string) => {
     try {
-      const { updateGoogleCalendarEvent } = await import("../services/googleCalendar");
       await updateGoogleCalendarEvent(eventId, summary, description, start, end);
     } catch (err) {
       console.error("Error updating Google Calendar event:", err);
@@ -461,6 +614,9 @@ export default function CalendarView({
                   {p.name} {p.isDiabetic ? " (Diabético)" : ""}
                 </option>
               ))}
+              {editingAppt && !patients.some((p) => p.id === editingAppt.patientId) && (
+                <option value={editingAppt.patientId}>{editingAppt.patientName}</option>
+              )}
             </select>
             <button
               type="button"
@@ -474,7 +630,7 @@ export default function CalendarView({
         )}
       </div>
 
-      <div className="grid grid-cols-2 gap-2">
+      <div className="grid grid-cols-3 gap-2">
         <div>
           <label className="block text-[10px] font-bold text-slate-500 uppercase mb-1">Horário:</label>
           <select
@@ -495,6 +651,32 @@ export default function CalendarView({
             onChange={(e) => setPrice(Number(e.target.value))}
             className="w-full text-xs bg-slate-50 border border-slate-200 p-2.5 rounded-xl focus:outline-none focus:ring-1 focus:ring-gold"
           />
+        </div>
+        <div>
+          <label className="block text-[10px] font-bold text-slate-500 uppercase mb-1">Sessões:</label>
+          <div className="flex items-center gap-1">
+            <button
+              type="button"
+              onClick={() => setQuantity(Math.max(1, (quantity || 1) - 1))}
+              className="w-7 h-8 shrink-0 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-600 text-sm font-bold cursor-pointer"
+            >
+              −
+            </button>
+            <input
+              type="number"
+              min={1}
+              value={quantity || 1}
+              onChange={(e) => setQuantity(Math.max(1, Number(e.target.value)))}
+              className="w-full min-w-0 text-xs bg-slate-50 border border-slate-200 py-2 px-1 rounded-xl focus:outline-none focus:ring-1 focus:ring-gold text-center"
+            />
+            <button
+              type="button"
+              onClick={() => setQuantity((quantity || 1) + 1)}
+              className="w-7 h-8 shrink-0 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-600 text-sm font-bold cursor-pointer"
+            >
+              +
+            </button>
+          </div>
         </div>
       </div>
 
@@ -539,9 +721,16 @@ export default function CalendarView({
 
   return (
     <div id="calendar-tab" className="grid grid-cols-1 md:grid-cols-12 gap-6 items-start">
+      {/* Status feedback toast */}
+      {feedback && (
+        <div className={`fixed top-4 right-4 z-[70] flex items-center gap-2 px-4 py-3 rounded-xl shadow-xl text-xs font-bold text-white page-enter ${feedback.type === "success" ? "bg-emerald-600" : "bg-rose-600"}`}>
+          {feedback.type === "success" ? <CheckCircle2 className="w-4 h-4 shrink-0" /> : <AlertCircle className="w-4 h-4 shrink-0" />}
+          {feedback.message}
+        </div>
+      )}
       {/* LEFT: Date selector + Schedule form (desktop & tablet) */}
         <div className="hidden md:block md:col-span-5 lg:col-span-4 space-y-6 order-2 lg:order-1">
-          <div className="bg-white p-6 rounded-2xl border border-slate-100 shadow-sm flex flex-col gap-4">
+          <div className="bg-white dark:bg-slate-900 p-6 rounded-2xl border border-slate-100 dark:border-slate-800 shadow-sm flex flex-col gap-4">
           <span className="text-[10px] uppercase font-bold text-slate-400 tracking-wider text-left">Data</span>
           <div className="flex justify-between items-center bg-slate-50 border border-slate-100 p-2 rounded-xl">
             <button
@@ -574,7 +763,7 @@ export default function CalendarView({
         </div>
 
         {/* Google Calendar Status */}
-        <div className="bg-white p-6 rounded-2xl border border-slate-100 shadow-sm space-y-4">
+        <div className="bg-white dark:bg-slate-900 p-6 rounded-2xl border border-slate-100 dark:border-slate-800 shadow-sm space-y-4">
           <div className="flex items-center justify-between">
             <span className="text-[10px] uppercase font-bold text-slate-400 tracking-wider">Google Agenda</span>
             {isGoogleConnected ? (
@@ -751,7 +940,11 @@ export default function CalendarView({
         );
         })()}
 
-        <div className="bg-white p-6 rounded-2xl border border-slate-100 shadow-sm text-left">
+        <div ref={editFormRef} className={`bg-white dark:bg-slate-900 p-6 rounded-2xl border transition-all duration-300 scroll-mt-24 ${
+          editingAppt
+            ? "border-blue-400 ring-2 ring-blue-400/50 shadow-lg"
+            : "border-slate-100 dark:border-slate-800 shadow-sm"
+        }`}>
           <div className="flex justify-between items-center mb-4">
             <h3 className="text-xs font-bold text-slate-800 uppercase tracking-wider flex items-center gap-1">
               <Calendar className="w-4 h-4 text-gold" />
@@ -776,7 +969,7 @@ export default function CalendarView({
       </div>
 
       {/* RIGHT: Hourly agenda */}
-      <div className="md:col-span-7 lg:col-span-8 bg-white p-6 rounded-2xl border border-slate-100 shadow-sm text-left order-1 lg:order-2">
+      <div className="md:col-span-7 lg:col-span-8 bg-white dark:bg-slate-900 p-6 rounded-2xl border border-slate-100 dark:border-slate-800 shadow-sm text-left order-1 lg:order-2">
         {/* Mobile Google status bar */}
         <div className="md:hidden mb-4">
           {isGoogleConnected && googlePermissionError ? (
@@ -860,22 +1053,155 @@ export default function CalendarView({
         </div>
 
         {/* Lembretes de Amanhã */}
-        <div className="mb-4">
-          <button
-            onClick={() => setShowTomorrowReminders(true)}
-            className="w-full flex items-center justify-center gap-2 bg-gradient-to-r from-[#0F3B2E]/5 to-[#0A2B21]/5 hover:from-[#0F3B2E] hover:to-[#0A2B21] text-emerald-800 hover:text-white font-bold text-xs py-3 rounded-xl border border-[#C8A45A]/20 hover:border-[#C8A45A]/50 transition-all shadow-sm hover:shadow-md cursor-pointer group"
-          >
-            <Bell className="w-4 h-4 text-[#C8A45A] group-hover:text-[#C8A45A]" />
-            Lembretes de Amanhã ({tomorrowAppointments.length} pacientes)
-          </button>
+        <div className="mb-4 space-y-2">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+            <button
+              onClick={() => setShowBlockModal(true)}
+              className="w-full flex items-center justify-center gap-2 bg-rose-50 hover:bg-rose-100 text-rose-700 border border-rose-200 hover:border-rose-300 font-bold text-xs py-3 rounded-xl transition-all shadow-sm cursor-pointer"
+            >
+              <Lock className="w-4 h-4 text-rose-500" />
+              Bloquear Horário
+            </button>
+            <button
+              onClick={() => setShowTomorrowReminders(true)}
+              className="w-full flex items-center justify-center gap-2 bg-gradient-to-r from-[#0F3B2E]/5 to-[#0A2B21]/5 hover:from-[#0F3B2E] hover:to-[#0A2B21] text-emerald-800 hover:text-white font-bold text-xs py-3 rounded-xl border border-[#C8A45A]/20 hover:border-[#C8A45A]/50 transition-all shadow-sm hover:shadow-md cursor-pointer group"
+            >
+              <Bell className="w-4 h-4 text-[#C8A45A] group-hover:text-[#C8A45A]" />
+              Lembretes de Amanhã ({tomorrowAppointments.length})
+            </button>
+          </div>
+          {dayBlocks.length > 0 && (
+            <div className="flex flex-wrap gap-1.5">
+              {dayBlocks.map((b) => (
+                <span key={b.id} className="inline-flex items-center gap-1 text-[9px] font-bold text-rose-700 bg-rose-50 border border-rose-100 px-2 py-1 rounded-lg">
+                  <Ban className="w-3 h-3 text-rose-500" />
+                  {b.startTime}–{b.endTime} · {b.reason}
+                  <button
+                    type="button"
+                    onClick={() => onDeleteScheduleBlock?.(b.id)}
+                    className="ml-0.5 text-rose-400 hover:text-rose-700 cursor-pointer"
+                    title="Remover bloqueio"
+                  >
+                    <XCircle className="w-3 h-3" />
+                  </button>
+                </span>
+              ))}
+            </div>
+          )}
         </div>
+
+        {/* Bloquear Horário Modal */}
+        {showBlockModal && (
+          <>
+            <div className="fixed inset-0 z-50 bg-slate-900/40 backdrop-blur-sm" onClick={() => setShowBlockModal(false)} />
+            <div className="fixed inset-0 z-50 flex items-center justify-center p-4" onClick={() => setShowBlockModal(false)}>
+              <div className="bg-white dark:bg-slate-900 rounded-3xl shadow-2xl max-w-md w-full max-h-[85vh] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
+                <div className="bg-brand text-white p-5 rounded-t-3xl flex items-center justify-between">
+                  <div className="flex items-center gap-2.5">
+                    <Lock className="w-5 h-5 text-gold" />
+                    <div>
+                      <h3 className="text-sm font-bold">Bloquear Horário</h3>
+                      <p className="text-[10px] text-gold/70">{new Date(blockDate + "T00:00:00").toLocaleDateString("pt-BR", { weekday: "long", day: "2-digit", month: "long" })}</p>
+                    </div>
+                  </div>
+                  <button onClick={() => setShowBlockModal(false)} className="text-white/70 hover:text-white p-1 cursor-pointer">
+                    <XCircle className="w-5 h-5" />
+                  </button>
+                </div>
+                <form onSubmit={handleCreateBlock} className="p-5 space-y-4">
+                  <div>
+                    <label className="block text-[10px] font-bold text-slate-500 uppercase mb-1.5">Motivo do Bloqueio</label>
+                    <div className="grid grid-cols-2 gap-2">
+                      {[
+                        { label: "Almoço", icon: Utensils, reason: "Almoço" },
+                        { label: "Médico", icon: Stethoscope, reason: "Médico" },
+                        { label: "Férias", icon: Plane, reason: "Férias" },
+                        { label: "Feriado", icon: PartyPopper, reason: "Feriado" },
+                      ].map((preset) => {
+                        const PresetIcon = preset.icon;
+                        return (
+                          <button
+                            key={preset.reason}
+                            type="button"
+                            onClick={() => setBlockReason(preset.reason)}
+                            className={`flex items-center justify-center gap-1.5 px-3 py-2.5 rounded-xl text-[11px] font-bold border transition-all cursor-pointer ${
+                              blockReason === preset.reason
+                                ? "bg-brand text-white border-brand shadow-sm"
+                                : "bg-white text-slate-600 border-slate-200 hover:border-gold/40"
+                            }`}
+                          >
+                            <PresetIcon className="w-3.5 h-3.5" /> {preset.label}
+                          </button>
+                        );
+                      })}
+                      <input
+                        type="text"
+                        value={blockReason}
+                        onChange={(e) => setBlockReason(e.target.value)}
+                        placeholder="Outro motivo..."
+                        className="col-span-2 text-xs border border-slate-200 rounded-xl p-2.5 focus:outline-none focus:ring-1 focus:ring-gold"
+                      />
+                    </div>
+                  </div>
+
+                  <div>
+                    <label className="block text-[10px] font-bold text-slate-500 uppercase mb-1.5">Data</label>
+                    <input
+                      type="date"
+                      value={blockDate}
+                      onChange={(e) => setBlockDate(e.target.value)}
+                      className="w-full text-xs border border-slate-200 rounded-xl p-2.5 focus:outline-none focus:ring-1 focus:ring-gold"
+                    />
+                  </div>
+
+                  <label className="flex items-center gap-2 text-xs font-bold text-slate-700 cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={blockAllDay}
+                      onChange={(e) => setBlockAllDay(e.target.checked)}
+                      className="accent-gold w-4 h-4 rounded"
+                    />
+                    Dia inteiro (sem horários)
+                  </label>
+
+                  {!blockAllDay && (
+                    <div className="grid grid-cols-2 gap-3">
+                      <div>
+                        <label className="block text-[10px] font-bold text-slate-500 uppercase mb-1.5">Início</label>
+                        <input
+                          type="time"
+                          value={blockStart}
+                          onChange={(e) => setBlockStart(e.target.value)}
+                          className="w-full text-xs border border-slate-200 rounded-xl p-2.5 focus:outline-none focus:ring-1 focus:ring-gold"
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-[10px] font-bold text-slate-500 uppercase mb-1.5">Fim</label>
+                        <input
+                          type="time"
+                          value={blockEnd}
+                          onChange={(e) => setBlockEnd(e.target.value)}
+                          className="w-full text-xs border border-slate-200 rounded-xl p-2.5 focus:outline-none focus:ring-1 focus:ring-gold"
+                        />
+                      </div>
+                    </div>
+                  )}
+
+                  <button type="submit" className="w-full bg-brand hover:bg-brand-700 text-white font-bold py-3 rounded-xl text-xs shadow-sm transition-all cursor-pointer">
+                    Confirmar Bloqueio
+                  </button>
+                </form>
+              </div>
+            </div>
+          </>
+        )}
 
         {/* Tomorrow Reminders Modal */}
         {showTomorrowReminders && (
           <>
             <div className="fixed inset-0 z-50 bg-slate-900/40 backdrop-blur-sm" onClick={() => setShowTomorrowReminders(false)} />
             <div className="fixed inset-0 z-50 flex items-center justify-center p-4" onClick={() => setShowTomorrowReminders(false)}>
-              <div className="bg-white rounded-3xl shadow-2xl max-w-lg w-full max-h-[80vh] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
+              <div className="bg-white dark:bg-slate-900 rounded-3xl shadow-2xl max-w-lg w-full max-h-[80vh] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
                 <div className="bg-brand text-white p-5 rounded-t-3xl flex items-center justify-between">
                   <div className="flex items-center gap-2.5">
                     <Bell className="w-5 h-5 text-gold" />
@@ -969,6 +1295,29 @@ export default function CalendarView({
             const appt = getApptForHour(hour);
             const patientObj = appt ? patients.find((p) => p.id === appt.patientId) : null;
             const isDuplicate = appt?.calendarEventId && googleEvt;
+            const blocked = getBlockForHour(hour);
+
+            if (blocked) {
+              return (
+                <div key={hour} className="flex gap-3 items-start p-3 rounded-xl border border-rose-100 bg-rose-50/70">
+                  <div className="flex items-center gap-1.5 w-14 shrink-0 text-rose-400 font-bold text-[11px] pt-1">
+                    <Clock className="w-3 h-3" />
+                    <span>{hour}</span>
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center gap-2">
+                      <span className="flex items-center gap-1 text-[10px] font-bold text-rose-700 bg-white border border-rose-100 px-2 py-1 rounded-lg">
+                        <Ban className="w-3 h-3 text-rose-500" />
+                        {blocked.reason}
+                      </span>
+                      <span className="text-[9px] text-rose-400 font-medium">
+                        {blocked.startTime} – {blocked.endTime}
+                      </span>
+                    </div>
+                  </div>
+                </div>
+              );
+            }
 
             return (
               <div
@@ -1131,7 +1480,7 @@ export default function CalendarView({
                             </>
                           )}
                           <button
-                            onClick={() => startEdit(appt)}
+                            onClick={() => handleEditAppointment(appt)}
                             className="text-[9px] font-bold text-blue-600 bg-blue-50 hover:bg-blue-500 hover:text-white px-2 py-1 rounded transition-colors cursor-pointer"
                           >
                             <Pencil className="w-3 h-3 inline" /> Editar
@@ -1171,6 +1520,11 @@ export default function CalendarView({
                             <span className="text-[9px] font-bold text-slate-700 bg-slate-50 px-1.5 py-0.5 rounded border border-slate-100">
                               R$ {appt.price}
                             </span>
+                            {(appt.quantity && appt.quantity > 1) && (
+                              <span className="text-[9px] font-bold text-gold bg-gold-subtle px-1.5 py-0.5 rounded border border-gold/30 flex items-center gap-0.5">
+                                <Layers className="w-3 h-3" /> {appt.quantity} sessões
+                              </span>
+                            )}
                           </div>
                           {patientObj?.phone && (
                             <p className="text-[9px] text-slate-400 mt-0.5">{patientObj.phone}</p>
@@ -1250,7 +1604,7 @@ export default function CalendarView({
                           </button>
                         )}
                         <button
-                          onClick={() => startEdit(appt)}
+                          onClick={() => handleEditAppointment(appt)}
                           className="text-[9px] font-bold text-blue-600 bg-blue-50 hover:bg-blue-500 hover:text-white px-2 py-1 rounded transition-colors cursor-pointer"
                         >
                           <Pencil className="w-3 h-3 inline" /> Editar
@@ -1387,7 +1741,7 @@ export default function CalendarView({
                           </span>
                         </div>
                         <div className="flex flex-wrap gap-1 pt-1.5 border-t border-slate-100/40">
-                          <button onClick={() => startEdit(appt)} className="text-[9px] font-bold text-blue-600 bg-blue-50 hover:bg-blue-500 hover:text-white px-2 py-1 rounded transition-colors cursor-pointer">
+                          <button onClick={() => handleEditAppointment(appt)} className="text-[9px] font-bold text-blue-600 bg-blue-50 hover:bg-blue-500 hover:text-white px-2 py-1 rounded transition-colors cursor-pointer">
                             <Pencil className="w-3 h-3 inline" /> Editar
                           </button>
                           <button onClick={() => handleDelete(appt)} className="text-[9px] font-bold text-rose-600 bg-rose-50 hover:bg-rose-600 hover:text-white px-2 py-1 rounded transition-colors ml-auto cursor-pointer">
@@ -1416,7 +1770,7 @@ export default function CalendarView({
       {/* Mobile bottom sheet form */}
       {showAddForm && (
         <div className="fixed inset-0 z-40 bg-slate-900/35 backdrop-blur-[2px] md:hidden" onClick={() => { setShowAddForm(false); resetForm(); }}>
-          <div className="absolute bottom-0 left-0 right-0 rounded-t-3xl bg-white p-5 shadow-2xl max-h-[85vh] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
+          <div className="absolute bottom-0 left-0 right-0 rounded-t-3xl bg-white dark:bg-slate-900 p-5 shadow-2xl max-h-[85vh] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
             <div className="flex items-center justify-between mb-4">
               <h3 className="text-sm font-bold text-slate-800 uppercase tracking-wider">
                 {editingAppt ? "Editar Consulta" : "Agendar Consulta"}

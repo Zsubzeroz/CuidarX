@@ -300,7 +300,7 @@ export async function fetchGoogleCalendarEvents(
         return [];
       }
       if (!response.ok) return [];
-      const data = await response.json();
+      const data = (await response.json()) as { items?: Array<Record<string, unknown>> };
       return (data.items || []).reduce<GoogleCalendarEvent[]>((acc, event: any) => {
         const startStr = event.start?.dateTime || event.start?.date || "";
         const endStr = event.end?.dateTime || event.end?.date || "";

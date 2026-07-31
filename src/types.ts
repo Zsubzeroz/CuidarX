@@ -35,6 +35,9 @@ export interface Patient {
   imageUseAuthorized?: string;
   contractObservations?: string;
   signedAt?: string;
+  packageService?: string;
+  packageQuantity?: number; // Total de sessões do pacote contratado
+  packageSessionsUsed?: number; // Sessões já utilizadas
   footIssues: FootIssue[];
   evolutions: Evolution[];
   avaliacaoDate?: string;
@@ -59,6 +62,20 @@ export interface Evolution {
   procedure: string; // e.g., Podopatia, Órtese, Debridamento
   notes: string;
   recommendations: string;
+  serviceType?: "podologia" | "enfermagem";
+  checklist?: string[]; // Podoprofilaxia Completa, Onicocriptose, Curativo/Retorno, Órtese Laminar, Calosidade, Verruga Plantar, Outros
+  value?: number;
+  paymentMethod?: string; // Pix, Dinheiro, Débito, Crédito
+  procedureDescription?: string;
+  homecareRecommendations?: string;
+  photosBefore?: string[];
+  photosAfter?: string[];
+  nextAppointmentScheduled?: boolean;
+  nextAppointmentDate?: string;
+  nextAppointmentTime?: string;
+  professionalSignature?: string;
+  clientSignature?: string;
+  signedAt?: string;
 }
 
 export interface Appointment {
@@ -71,8 +88,9 @@ export interface Appointment {
   price: number;
   status: "scheduled" | "confirmed" | "completed" | "canceled";
   notes?: string;
+  quantity?: number; // Nº de sessões / pacote contratado
   calendarEventId?: string; // Google Calendar event ID for sync
-  source?: "manual" | "google"; // Origin: manual (app) or google (imported from Google Calendar)
+  source?: "manual" | "google" | "portal"; // Origin: manual (app), google (imported), or portal (public booking)
 }
 
 export interface FinanceRecord {

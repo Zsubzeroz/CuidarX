@@ -16,7 +16,7 @@ export function getConfig(): WhatsAppAutoConfig {
     const raw = localStorage.getItem(STORAGE_KEY);
     if (raw) return JSON.parse(raw);
   } catch {}
-  return { enabled: false, provider: "", apiKey: "", clinicPhone: "19997222694" };
+  return { enabled: false, provider: "", apiKey: "", clinicPhone: "19997270910" };
 }
 
 export function saveConfig(config: WhatsAppAutoConfig): void {
@@ -30,7 +30,7 @@ export function getClinicWhatsApp(): string {
     const config = getConfig();
     if (config.clinicPhone) return config.clinicPhone;
   } catch {}
-  return "19997222694";
+  return "19997270910";
 }
 
 export function getClinicWhatsAppLink(): string {
