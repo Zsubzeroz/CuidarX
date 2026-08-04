@@ -24,14 +24,19 @@ import {
   HelpCircle,
   X,
   AlertCircle,
+  MapPin,
 } from "lucide-react";
 // @ts-ignore
 import clinicLogo from "../assets/images/clinic_logo_1783686122531.jpg";
-import { getClinicWhatsAppLink } from "../services/whatsappAutoService";
+import { getClinicWhatsAppLink, buildClientMessage } from "../services/whatsappAutoService";
+import {
+  fetchGoogleCalendarEvents,
+  isGoogleCalendarConnected,
+} from "../services/googleCalendar";
 
 const SLOT_INTERVAL = 30;
 const BUSINESS_START = 7;
-const BUSINESS_END = 19;
+const BUSINESS_END = 20;
 
 const serviceDefaults: Record<string, { price: number; duration: number }> = {
   "Podologia Geral": { price: 150, duration: 45 },
@@ -41,14 +46,10 @@ const serviceDefaults: Record<string, { price: number; duration: number }> = {
   "Avaliação de Pé Diabético": { price: 150, duration: 45 },
 };
 
-function generateSlots(forClient = false): string[] {
+function generateSlots(startMin: number, endMin: number): string[] {
   const slots: string[] = [];
-  const start = forClient ? 8 : BUSINESS_START;
-  const end = forClient ? 18 : BUSINESS_END;
-  for (let h = start; h < end; h++) {
-    for (let m = 0; m < 60; m += SLOT_INTERVAL) {
-      slots.push(`${h.toString().padStart(2, "0")}:${m.toString().padStart(2, "0")}`);
-    }
+  for (let min = startMin; min < endMin; min += SLOT_INTERVAL) {
+    slots.push(`${String(Math.floor(min / 60)).padStart(2, "0")}:${String(min % 60).padStart(2, "0")}`);
   }
   return slots;
 }
@@ -118,9 +119,16 @@ interface BlockedSlot {
 interface BookingPortalViewProps {
   clientMode?: boolean;
   blockSaturdays?: boolean;
+  expedienteStart?: string;
+  expedienteEnd?: string;
 }
 
-export default function BookingPortalView({ clientMode = false, blockSaturdays = false }: BookingPortalViewProps) {
+export default function BookingPortalView({
+  clientMode = false,
+  blockSaturdays = false,
+  expedienteStart = "08:00",
+  expedienteEnd = "20:00",
+}: BookingPortalViewProps) {
   const [portalTab, setPortalTab] = useState<"portal" | "simulator" | "code">("portal");
   const [isSubmitted, setIsSubmitted] = useState(false);
   const [isCopied, setIsCopied] = useState(false);
@@ -129,6 +137,7 @@ export default function BookingPortalView({ clientMode = false, blockSaturdays =
   const [name, setName] = useState("");
   const [phone, setPhone] = useState("");
   const [dob, setDob] = useState("");
+  const [dobDisplay, setDobDisplay] = useState("");
   const [gender, setGender] = useState("Feminino");
   const [isDiabetic, setIsDiabetic] = useState(false);
   const [date, setDate] = useState("");
@@ -143,25 +152,30 @@ export default function BookingPortalView({ clientMode = false, blockSaturdays =
   const [availableSlots, setAvailableSlots] = useState<string[]>([]);
   const [selectedServiceDuration, setSelectedServiceDuration] = useState(45);
 
-  // Load services from Firestore
+  // Load services from Firestore — PORTAL DO CLIENTE:
+  // exibe APENAS servicos com status "Ativo".
+  const isServiceActive = (data: any): boolean =>
+    data.isActive === true ||
+    data.isActive === "Ativo" ||
+    data.status === true ||
+    data.status === "Ativo";
+
   useEffect(() => {
     (async () => {
+      const fallback = Object.entries(serviceDefaults).map(([name, cfg]) => ({
+        name,
+        ...cfg,
+      }));
       try {
-        if (!isFirebaseConfigured || !db) return;
-        const q = query(collection(db, "services"), where("isActive", "!=", false));
-        const snap = await getDocs(q);
-        if (snap.empty) {
-          const fallback = Object.entries(serviceDefaults).map(([name, cfg]) => ({
-            name,
-            ...cfg,
-          }));
+        if (!isFirebaseConfigured || !db) {
           setServicesList(fallback);
           return;
         }
+        const snap = await getDocs(collection(db, "services"));
         const list: ServiceOption[] = [];
         snap.forEach((d) => {
           const data = d.data();
-          if (data.name) {
+          if (data.name && isServiceActive(data)) {
             list.push({
               name: data.name,
               price: data.price || 150,
@@ -170,20 +184,8 @@ export default function BookingPortalView({ clientMode = false, blockSaturdays =
             });
           }
         });
-        if (list.length > 0) {
-          setServicesList(list);
-        } else {
-          const fallback = Object.entries(serviceDefaults).map(([name, cfg]) => ({
-            name,
-            ...cfg,
-          }));
-          setServicesList(fallback);
-        }
+        setServicesList(list);
       } catch {
-        const fallback = Object.entries(serviceDefaults).map(([name, cfg]) => ({
-          name,
-          ...cfg,
-        }));
         setServicesList(fallback);
       }
     })();
@@ -197,23 +199,55 @@ export default function BookingPortalView({ clientMode = false, blockSaturdays =
 
   // Load blocked slots when date or service changes
   const loadBlockedSlots = useCallback(async (selectedDate: string) => {
-    if (!selectedDate || !isFirebaseConfigured || !db) {
+    if (!selectedDate) {
       setBlockedSlots([]);
       return;
     }
 
     const occupied: BlockedSlot[] = [];
 
+    const apptDurationFor = (serviceName: string): number => {
+      const srv = servicesList.find((s) => s.name === serviceName);
+      if (srv?.duration && srv.duration > 0) return srv.duration;
+      return serviceDefaults[serviceName]?.duration || 45;
+    };
+
+    // 1. Google Calendar — FONTE DA VERDADE: oculta qualquer horário que
+    //    colida com eventos ou bloqueios existentes na agenda oficial.
     try {
-      // 1. Fetch schedule blocks for this date
+      if (isGoogleCalendarConnected()) {
+        const timeMin = `${selectedDate}T00:00:00-03:00`;
+        const timeMax = `${selectedDate}T23:59:59-03:00`;
+        const events = await fetchGoogleCalendarEvents(timeMin, timeMax);
+        events.forEach((ge) => {
+          const isAllDay = !(ge.start && ge.start.includes("T"));
+          const startM = isAllDay ? 0 : timeToMinutes(ge.start?.slice(11, 16) || "");
+          const endM = isAllDay ? 24 * 60 : timeToMinutes(ge.end?.slice(11, 16) || "");
+          if (isNaN(startM) || isNaN(endM)) return;
+          occupied.push({
+            startMinutes: startM,
+            endMinutes: endM,
+            reason: `Google: ${ge.summary || "Compromisso"}`,
+          });
+        });
+      }
+    } catch (err) {
+      console.warn("[Portal] Falha ao consultar Google Agenda:", err);
+    }
+
+    try {
+      // 2. Fetch schedule blocks for this date
       const blocksSnap = await getDocs(
         query(collection(db, "scheduleBlocks"), where("date", "==", selectedDate))
       );
       blocksSnap.forEach((d) => {
         const data = d.data();
+        const startM = timeToMinutes(data.startTime);
+        const endM = timeToMinutes(data.endTime);
+        if (isNaN(startM) || isNaN(endM)) return;
         occupied.push({
-          startMinutes: timeToMinutes(data.startTime),
-          endMinutes: timeToMinutes(data.endTime),
+          startMinutes: startM,
+          endMinutes: endM,
           reason: data.reason || "Bloqueado",
         });
       });
@@ -222,14 +256,14 @@ export default function BookingPortalView({ clientMode = false, blockSaturdays =
     }
 
     try {
-      // 2. Fetch appointments for this date
+      // 3. Fetch appointments for this date
       const apptsSnap = await getDocs(
         query(collection(db, "appointments"), where("date", "==", selectedDate))
       );
       apptsSnap.forEach((d) => {
         const data = d.data();
         if (data.time) {
-          const apptDuration = serviceDefaults[data.service]?.duration || 45;
+          const apptDuration = apptDurationFor(data.service);
           const startM = timeToMinutes(data.time);
           occupied.push({
             startMinutes: startM,
@@ -243,7 +277,7 @@ export default function BookingPortalView({ clientMode = false, blockSaturdays =
     }
 
     setBlockedSlots(occupied);
-  }, []);
+  }, [servicesList]);
 
   useEffect(() => {
     loadBlockedSlots(date);
@@ -259,13 +293,16 @@ export default function BookingPortalView({ clientMode = false, blockSaturdays =
       setTime("");
       return;
     }
-    const allSlots = generateSlots(clientMode);
+    const expedienteStartMin = timeToMinutes(expedienteStart);
+    const expedienteEndMin = timeToMinutes(expedienteEnd);
+    const startMin = clientMode ? expedienteStartMin : BUSINESS_START * 60;
+    const endMin = clientMode ? expedienteEndMin : BUSINESS_END * 60;
+    const allSlots = generateSlots(startMin, endMin);
     const dur = selectedServiceDuration;
-    const businessEnd = clientMode ? 18 : BUSINESS_END;
     const free = allSlots.filter((slot) => {
       const startM = timeToMinutes(slot);
       const endM = startM + dur;
-      if (endM > timeToMinutes(`${businessEnd}:00`)) return false;
+      if (endM > endMin) return false;
       for (const block of blockedSlots) {
         if (isOverlapping(startM, endM, block.startMinutes, block.endMinutes)) {
           return false;
@@ -278,7 +315,19 @@ export default function BookingPortalView({ clientMode = false, blockSaturdays =
     if (time && !free.includes(time)) {
       setTime("");
     }
-  }, [blockedSlots, selectedServiceDuration, time, clientMode, dateBlocked]);
+  }, [blockedSlots, selectedServiceDuration, time, clientMode, dateBlocked, expedienteStart, expedienteEnd]);
+
+  const handleDobChange = (raw: string) => {
+    const digits = raw.replace(/\D/g, "").slice(0, 8);
+    let formatted = digits;
+    if (digits.length > 4) {
+      formatted = `${digits.slice(0, 2)}/${digits.slice(2, 4)}/${digits.slice(4)}`;
+    } else if (digits.length > 2) {
+      formatted = `${digits.slice(0, 2)}/${digits.slice(2)}`;
+    }
+    setDobDisplay(formatted);
+    setDob(digits.length === 8 ? `${digits.slice(4)}-${digits.slice(2, 4)}-${digits.slice(0, 2)}` : "");
+  };
 
   const handleSimulateBooking = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -328,13 +377,10 @@ export default function BookingPortalView({ clientMode = false, blockSaturdays =
         const {
           createGoogleCalendarEvent: fsCreateGoogleEvent,
           isGoogleCalendarConnected: gcalConnected,
+          buildEventTimeRange,
         } = await import("../services/googleCalendar");
         if (gcalConnected()) {
-          const dtStart = `${date}T${time}:00-03:00`;
-          const endDate = new Date(
-            new Date(`${date}T${time}:00`).getTime() + durationMin * 60000
-          );
-          const dtEnd = endDate.toISOString().slice(0, 19) + "-03:00";
+          const { start: dtStart, end: dtEnd } = buildEventTimeRange(date, time, durationMin);
           const summary = `${service} - ${name}`;
           const description =
             `Agendamento Online - Portal do Cliente\n` +
@@ -493,6 +539,16 @@ export default function BookingPortalView({ clientMode = false, blockSaturdays =
     const minDateStr = tomorrow.toISOString().split("T")[0];
     const isToday = date === new Date().toISOString().split("T")[0];
 
+    const bookedPrice = servicesList.find((s) => s.name === service)?.price || 150;
+    const confirmMessage = buildClientMessage({
+      nome: name,
+      data: formatDateBR(date),
+      horario: time,
+      procedimento: service,
+      valor: `R$ ${bookedPrice.toFixed(2)}`,
+    });
+    const whatsappConfirmUrl = `${getClinicWhatsAppLink()}?text=${encodeURIComponent(confirmMessage)}`;
+
     return (
       <div id="booking-portal-view" className="booking-portal-light min-h-screen bg-gradient-to-br from-emerald-50 to-white flex flex-col items-center justify-center p-4">
         <div className="w-full max-w-lg">
@@ -530,7 +586,17 @@ export default function BookingPortalView({ clientMode = false, blockSaturdays =
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                     <div>
                       <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-1.5">Data Nascimento</label>
-                      <input type="date" required value={dob} onChange={(e) => setDob(e.target.value)} className="w-full text-xs p-3 border border-slate-200 rounded-xl focus:outline-none focus:ring-1 focus:ring-brand" />
+                      <input
+                        type="text"
+                        inputMode="numeric"
+                        autoComplete="bday"
+                        placeholder="DD/MM/AAAA"
+                        maxLength={10}
+                        value={dobDisplay}
+                        required
+                        onChange={(e) => handleDobChange(e.target.value)}
+                        className="w-full text-xs p-3 border border-slate-200 rounded-xl focus:outline-none focus:ring-1 focus:ring-brand"
+                      />
                     </div>
                     <div>
                       <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-1.5">Gênero</label>
@@ -612,8 +678,8 @@ export default function BookingPortalView({ clientMode = false, blockSaturdays =
                             Horários Disponíveis ({availableSlots.length} vagas)
                           </label>
                           {availableSlots.length === 0 ? (
-                            <div className="bg-amber-50 border border-amber-100 p-4 rounded-xl text-xs text-amber-800">
-                              Nenhum horário disponível nesta data. Tente outra data.
+                            <div className="bg-amber-50 border border-amber-100 p-4 rounded-xl text-xs text-amber-800 text-center">
+                              Nenhum horário disponível nesta data. Por favor, escolha outro dia.
                             </div>
                           ) : (
                             <div className="grid grid-cols-4 sm:grid-cols-6 gap-2 max-h-48 overflow-y-auto">
@@ -622,10 +688,10 @@ export default function BookingPortalView({ clientMode = false, blockSaturdays =
                                   key={slot}
                                   type="button"
                                   onClick={() => setTime(slot)}
-                                  className={`text-center py-2.5 px-2 rounded-lg text-xs font-bold border transition-all cursor-pointer ${
+                                  className={`text-center py-2.5 px-2 rounded-full text-xs font-bold border transition-all cursor-pointer active:scale-95 ${
                                     time === slot
                                       ? "bg-brand text-white border-brand shadow-sm"
-                                      : "bg-white text-slate-700 border-slate-200 hover:border-gold/50 hover:bg-gold/5"
+                                      : "bg-white text-slate-700 border-slate-200 hover:border-brand hover:bg-brand/5 active:bg-brand/10"
                                   }`}
                                 >
                                   {slot}
@@ -659,18 +725,70 @@ export default function BookingPortalView({ clientMode = false, blockSaturdays =
                   </button>
                 </form>
               ) : (
-                <div className="p-6 text-center space-y-5">
-                  <div className="w-16 h-16 bg-emerald-100 text-gold rounded-full flex items-center justify-center mx-auto">
-                    <CheckCircle className="w-10 h-10 stroke-[2.5]" />
-                  </div>
-                  <div>
-                    <h4 className="text-lg font-bold text-brand">Agendamento Realizado!</h4>
+                <div className="p-6">
+                  <div className="text-center">
+                    <div className="w-16 h-16 bg-emerald-100 text-emerald-600 rounded-full flex items-center justify-center mx-auto shadow-inner">
+                      <CheckCircle className="w-10 h-10 stroke-[2.5]" />
+                    </div>
+                    <h4 className="mt-4 text-lg font-bold text-brand">Agendamento Realizado com Sucesso!</h4>
                     <p className="text-xs text-slate-500 mt-1">
-                      Seu agendamento foi registrado com sucesso.
+                      Seu horário foi reservado na agenda da Dra. Fabrícia.
                     </p>
                   </div>
-                  <button onClick={resetForm} className="w-full bg-white hover:bg-slate-50 text-brand border border-emerald-200 font-bold py-2.5 rounded-xl text-xs transition-all cursor-pointer">
-                    Agendar Outro
+
+                  <div className="mt-6 bg-emerald-50/70 border border-emerald-100 rounded-2xl overflow-hidden">
+                    <div className="flex items-center gap-2 px-4 py-3 bg-brand/5 border-b border-emerald-100/70">
+                      <Calendar className="w-4 h-4 text-brand" />
+                      <p className="text-[11px] font-bold text-brand uppercase tracking-wider">Resumo da Consulta</p>
+                    </div>
+                    <div className="p-4 space-y-3">
+                      <div className="flex items-center justify-between gap-4">
+                        <span className="text-[11px] text-slate-500 font-semibold">Data</span>
+                        <span className="text-xs font-bold text-slate-800">{formatDateBR(date)}</span>
+                      </div>
+                      <div className="flex items-center justify-between gap-4">
+                        <span className="text-[11px] text-slate-500 font-semibold">Horário</span>
+                        <span className="text-xs font-bold text-slate-800">{time}</span>
+                      </div>
+                      <div className="flex items-center justify-between gap-4">
+                        <span className="text-[11px] text-slate-500 font-semibold">Procedimento</span>
+                        <span className="text-xs font-bold text-slate-800 text-right">{service}</span>
+                      </div>
+                      <div className="flex items-center justify-between gap-4 pt-2 border-t border-emerald-100">
+                        <span className="text-[11px] text-slate-500 font-semibold">Valor Estimado</span>
+                        <span className="text-xs font-bold text-brand">R$ {bookedPrice.toFixed(2)}</span>
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="mt-3 bg-white border border-emerald-100 rounded-2xl p-4 flex items-start gap-3">
+                    <div className="p-2 bg-emerald-50 rounded-lg shrink-0">
+                      <MapPin className="w-4 h-4 text-brand" />
+                    </div>
+                    <div>
+                      <p className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">Endereço da Clínica</p>
+                      <p className="text-xs font-semibold text-slate-800 mt-1 leading-relaxed">
+                        Rua Papa João Paulo II, 256
+                        <br />
+                        Artur Nogueira/SP
+                      </p>
+                    </div>
+                  </div>
+
+                  <a
+                    href={whatsappConfirmUrl}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="mt-5 w-full flex items-center justify-center gap-2 bg-[#25D366] hover:bg-[#1EBE5B] text-white font-bold py-3 rounded-xl shadow-md hover:shadow-lg transition-all text-xs"
+                  >
+                    <span className="text-sm leading-none">💬</span> Enviar Comprovante para o WhatsApp da Clínica
+                  </a>
+                  <p className="text-[10px] text-slate-400 text-center mt-2">
+                    Toque no botão para abrir o WhatsApp com o comprovante do seu agendamento.
+                  </p>
+
+                  <button onClick={resetForm} className="mt-4 w-full bg-white hover:bg-slate-50 text-brand border border-emerald-200 font-bold py-2.5 rounded-xl text-xs transition-all cursor-pointer">
+                    Novo Agendamento
                   </button>
                 </div>
               )}
@@ -678,7 +796,7 @@ export default function BookingPortalView({ clientMode = false, blockSaturdays =
           </div>
 
           <p className="text-[10px] text-slate-400 text-center mt-6">
-            Dra. Fabrícia Rodrigues — Podologia & Saúde dos Pés
+            © 2026 Clínica Dra. Fabrícia Rodrigues. Todos os direitos reservados. • Desenvolvido por Luan Estifer Rodrigues Pereira (Software Engineer).
           </p>
         </div>
       </div>
@@ -996,10 +1114,10 @@ https://podologa-fabricia.web.app/cliente`}
                                   key={slot}
                                   type="button"
                                   onClick={() => setTime(slot)}
-                                  className={`text-center py-2.5 px-2 rounded-lg text-xs font-bold border transition-all cursor-pointer ${
-                                    isSelected
+                                  className={`text-center py-2.5 px-2 rounded-full text-xs font-bold border transition-all cursor-pointer active:scale-95 ${
+                                    time === slot
                                       ? "bg-brand text-white border-brand shadow-sm"
-                                      : "bg-white text-slate-700 border-slate-200 hover:border-gold/50 hover:bg-gold/5"
+                                      : "bg-white text-slate-700 border-slate-200 hover:border-brand hover:bg-brand/5 active:bg-brand/10"
                                   }`}
                                 >
                                   {slot}

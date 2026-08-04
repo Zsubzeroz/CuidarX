@@ -7,7 +7,19 @@ export interface WhatsAppAutoConfig {
   instanceId?: string;
   evolutionUrl?: string;
   clinicPhone?: string;
+  clientMessageTemplate?: string;
 }
+
+export const DEFAULT_CLIENT_MESSAGE_TEMPLATE =
+  `Olá, Dra. Fabrícia! 💐\n\n` +
+  `Acabei de agendar minha consulta de Podologia e envio o comprovante abaixo:\n\n` +
+  `👤 *Nome:* {nome}\n` +
+  `📅 *Data:* {data}\n` +
+  `🕐 *Horário:* {horario}\n` +
+  `🦶 *Procedimento:* {procedimento}\n` +
+  `💰 *Valor:* R$ {valor}\n\n` +
+  `Aguardo a confirmação. Obrigado(a)! 😊\n\n` +
+  `_📌 Comprovante gerado automaticamente pelo sistema de agendamento online._`;
 
 const STORAGE_KEY = "whatsapp_auto_config";
 
@@ -47,6 +59,37 @@ export function getClinicWhatsAppDisplay(): string {
     return `(${justDigits.slice(0, 2)}) ${justDigits.slice(2, 7)}-${justDigits.slice(7)}`;
   }
   return digits;
+}
+
+export function getClientMessageTemplate(): string {
+  try {
+    const config = getConfig();
+    if (config.clientMessageTemplate && config.clientMessageTemplate.trim()) {
+      return config.clientMessageTemplate;
+    }
+  } catch {}
+  return DEFAULT_CLIENT_MESSAGE_TEMPLATE;
+}
+
+export function saveClientMessageTemplate(template: string): void {
+  try {
+    saveConfig({ ...getConfig(), clientMessageTemplate: template });
+  } catch {}
+}
+
+export function buildClientMessage(vars: {
+  nome: string;
+  data: string;
+  horario: string;
+  procedimento: string;
+  valor?: string;
+}): string {
+  return getClientMessageTemplate()
+    .replace(/\{nome\}/g, vars.nome)
+    .replace(/\{data\}/g, vars.data)
+    .replace(/\{horario\}/g, vars.horario)
+    .replace(/\{procedimento\}/g, vars.procedimento)
+    .replace(/\{valor\}/g, vars.valor || "");
 }
 
 function buildPayload(

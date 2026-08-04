@@ -17,6 +17,7 @@ import {
   createOrUpdateService as fsCreateOrUpdateService,
   deleteService as fsDeleteService,
   createScheduleBlock as fsCreateScheduleBlock,
+  updateScheduleBlock as fsUpdateScheduleBlock,
   deleteScheduleBlock as fsDeleteScheduleBlock,
 } from "../services/firestoreService";
 import type { Patient, Appointment, FinanceRecord, ClinicService, ScheduleBlock } from "../types";
@@ -102,7 +103,7 @@ export function useRealtimeData() {
   }, [nativeBlocks, webAdminBlocks]);
 
   // ---- PATIENT HANDLERS ----
-  const handleAddPatient = useCallback(async (newPatientData: Omit<Patient, "id" | "createdAt" | "footIssues" | "evolutions">) => {
+  const handleAddPatient = useCallback(async (newPatientData: Omit<Patient, "id" | "createdAt" | "footIssues" | "evolutions">): Promise<string> => {
     setSyncStatus("syncing");
     const patient: Patient = {
       ...newPatientData,
@@ -118,6 +119,7 @@ export function useRealtimeData() {
       console.error(e);
       setSyncStatus("error");
     }
+    return patient.id;
   }, []);
 
   const handleUpdatePatient = useCallback(async (updatedPatient: Patient) => {
@@ -278,7 +280,7 @@ export function useRealtimeData() {
   }, []);
 
   // ---- SCHEDULE BLOCK HANDLERS ----
-  const handleAddScheduleBlock = useCallback(async (blockData: Omit<ScheduleBlock, "id" | "createdAt">) => {
+  const handleAddScheduleBlock = useCallback(async (blockData: Omit<ScheduleBlock, "id" | "createdAt">): Promise<ScheduleBlock> => {
     setSyncStatus("syncing");
     const block: ScheduleBlock = {
       ...blockData,
@@ -287,6 +289,18 @@ export function useRealtimeData() {
     };
     try {
       await fsCreateScheduleBlock(block);
+      setSyncStatus("synced");
+    } catch (e) {
+      console.error(e);
+      setSyncStatus("error");
+    }
+    return block;
+  }, []);
+
+  const handleUpdateScheduleBlock = useCallback(async (block: ScheduleBlock) => {
+    setSyncStatus("syncing");
+    try {
+      await fsUpdateScheduleBlock(block);
       setSyncStatus("synced");
     } catch (e) {
       console.error(e);
@@ -327,6 +341,7 @@ export function useRealtimeData() {
     handleDeleteService,
     scheduleBlocks,
     handleAddScheduleBlock,
+    handleUpdateScheduleBlock,
     handleDeleteScheduleBlock,
   };
 }

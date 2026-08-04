@@ -118,5 +118,7 @@ export interface ScheduleBlock {
   endTime: string;    // HH:MM
   reason: string;     // "Almoço", "Férias", "Reunião", etc.
   createdAt: string;  // ISO string
+  calendarEventId?: string; // Google Calendar event ID for sync
+  source?: "manual" | "google"; // Origin: manual (app) or google (imported from Google Calendar)
 }
 

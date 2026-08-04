@@ -1,6 +1,6 @@
 const CLIENT_ID = import.meta.env.VITE_GOOGLE_CALENDAR_CLIENT_ID || "";
 
-const SCOPES = "https://www.googleapis.com/auth/calendar https://www.googleapis.com/auth/calendar.events https://www.googleapis.com/auth/calendar.readonly";
+const SCOPES = "openid email profile https://www.googleapis.com/auth/calendar https://www.googleapis.com/auth/calendar.events https://www.googleapis.com/auth/calendar.readonly";
 
 const TOKEN_STORAGE_KEY = "google_calendar_access_token";
 const TOKEN_EXPIRY_KEY = "google_calendar_token_expiry";
@@ -117,6 +117,10 @@ export function isGoogleCalendarConfigured(): boolean {
 
 export function isGoogleCalendarConnected(): boolean {
   return !!accessToken;
+}
+
+export function getAccessToken(): string | null {
+  return accessToken;
 }
 
 export function hasPersistedToken(): boolean {
@@ -248,6 +252,20 @@ export interface GoogleCalendarEvent {
   calendarName?: string;
 }
 
+const SP_TZ_OFFSET = "-03:00";
+
+export function buildEventTimeRange(
+  date: string,
+  time: string,
+  durationMinutes: number
+): { start: string; end: string } {
+  const start = `${date}T${time}:00${SP_TZ_OFFSET}`;
+  const startMs = Date.parse(`${date}T${time}:00Z`);
+  const endDate = new Date(startMs + durationMinutes * 60000);
+  const end = endDate.toISOString().slice(0, 19) + SP_TZ_OFFSET;
+  return { start, end };
+}
+
 export async function fetchGoogleCalendarEvents(
   timeMin: string,
   timeMax: string
@@ -288,7 +306,9 @@ export async function fetchGoogleCalendarEvents(
     console.warn("Não foi possível listar sub-agendas, fallback para 'primary':", err);
   }
 
-  let permissionDenied = false;
+  // Only the primary calendar is a hard requirement. If a sub-agenda denies
+  // access (403) we skip just that calendar and keep everything else — a single
+  // unauthorized sub-calendar must never wipe out the whole agenda.
   const fetchPromises = calendarIds.map(async (cal) => {
     try {
       const response = await fetch(
@@ -296,8 +316,15 @@ export async function fetchGoogleCalendarEvents(
         { headers: { Authorization: `Bearer ${accessToken}` } }
       );
       if (response.status === 403) {
-        permissionDenied = true;
+        if (cal.id === "primary") {
+          throw new Error("PERMISSION_ERROR");
+        }
+        console.warn(`[GoogleCalendar] Sem permissão na sub-agenda "${cal.id}" — ignorando, mantendo as demais.`);
         return [];
+      }
+      if (response.status === 401) {
+        accessToken = null;
+        throw new Error("TOKEN_EXPIRED");
       }
       if (!response.ok) return [];
       const data = (await response.json()) as { items?: Array<Record<string, unknown>> };
@@ -315,18 +342,19 @@ export async function fetchGoogleCalendarEvents(
           endTimeRaw: endStr,
           colorId: event.colorId,
           calendarEventId: event.id,
-          calendarName: cal.summary,
+          calendarName: cal.summary || cal.id,
         });
         return acc;
       }, []);
-    } catch { return []; }
+    } catch (err: any) {
+      if (err?.message === "TOKEN_EXPIRED") throw err;
+      if (err?.message === "PERMISSION_ERROR") throw err;
+      console.warn(`[GoogleCalendar] Falha ao ler a sub-agenda "${cal.id}" — ignorando:`, err);
+      return [];
+    }
   });
 
   const results = await Promise.all(fetchPromises);
-
-  if (permissionDenied) {
-    throw new Error("PERMISSION_ERROR");
-  }
 
   const allEvents = results.flat();
 
@@ -342,8 +370,29 @@ export async function fetchGoogleCalendarEvents(
   return uniqueEvents;
 }
 
+export const BLOCK_EVENT_PREFIX = "Bloqueio:";
+export const BLOCK_COLOR_ID = "11"; // tomato/red — used to visually identify blocks in Google Calendar
+
+export function isBlockEventSummary(summary: string | null | undefined): boolean {
+  if (!summary) return false;
+  return summary.trim().toLowerCase().startsWith("bloqueio");
+}
+
+export function parseBlockReason(summary: string | null | undefined): string {
+  if (!summary) return "Bloqueio";
+  const trimmed = summary.trim();
+  const lower = trimmed.toLowerCase();
+  if (lower === "bloqueio" || lower === "bloqueio:") return "Bloqueio";
+  if (lower.startsWith("bloqueio:")) return trimmed.slice("bloqueio:".length).trim() || "Bloqueio";
+  return trimmed;
+}
+
+export function buildBlockEventSummary(reason: string): string {
+  return `${BLOCK_EVENT_PREFIX} ${reason.trim()}`.trim();
+}
+
 export async function createGoogleCalendarEvent(
-  summary: string, description: string, startTime: string, endTime: string
+  summary: string, description: string, startTime: string, endTime: string, colorId?: string
 ): Promise<string | null> {
   if (!accessToken) return null;
   const response = await fetch(
@@ -355,6 +404,7 @@ export async function createGoogleCalendarEvent(
         summary, description,
         start: { dateTime: startTime, timeZone: "America/Sao_Paulo" },
         end: { dateTime: endTime, timeZone: "America/Sao_Paulo" },
+        ...(colorId ? { colorId } : {}),
       }),
     }
   );

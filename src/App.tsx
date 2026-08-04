@@ -14,20 +14,40 @@ import {
   onTokenAcquired,
   onConnectingGoogleChange,
   silentConnectGoogle,
+  buildEventTimeRange,
+  isBlockEventSummary,
+  parseBlockReason,
   type GoogleCalendarEvent,
 } from "./services/googleCalendar";
 import {
   createAppointment as fsCreateAppointment,
   deleteAppointment as fsDeleteAppointment,
+  createScheduleBlock as fsCreateScheduleBlock,
+  updateScheduleBlock as fsUpdateScheduleBlock,
+  deleteScheduleBlock as fsDeleteScheduleBlock,
 } from "./services/firestoreService";
 import type { ScheduleBlock } from "./types";
 import {
   getConfig as getWhatsAppConfig,
   saveConfig as saveWhatsAppConfig,
   getClinicWhatsAppLink,
+  DEFAULT_CLIENT_MESSAGE_TEMPLATE,
   type WhatsAppAutoConfig,
   type WhatsAppProvider,
 } from "./services/whatsappAutoService";
+import {
+  loginWithGoogle,
+  trySilentLogin,
+  logout,
+  type AdminUser,
+} from "./services/googleAuth";
+import {
+  getLocalSettings as getLocalClinicSettings,
+  saveLocalSettings as saveLocalClinicSettings,
+  loadSettingsFromFirestore,
+  saveSettingsToFirestore,
+  type ClinicSettings,
+} from "./services/clinicSettingsService";
 import DashboardView from "./components/DashboardView";
 import PatientView from "./components/PatientView";
 import CalendarView from "./components/CalendarView";
@@ -57,6 +77,10 @@ import {
   Bell,
   Sun,
   Moon,
+  Link2,
+  LogOut,
+  Lock,
+  Clock,
 } from "lucide-react";
 
 export default function App() {
@@ -76,6 +100,14 @@ export default function App() {
     }
   });
 
+  // Google Admin Auth — conexão opcional com a Google Agenda
+  const [isLoggingIn, setIsLoggingIn] = useState(false);
+
+  // Admin login gate — somente o e-mail autorizado acessa o painel
+  const [adminUser, setAdminUser] = useState<AdminUser | null>(null);
+  const [authChecking, setAuthChecking] = useState(true);
+  const [authError, setAuthError] = useState<string | null>(null);
+
   useEffect(() => {
     const root = document.documentElement;
     if (isDarkMode) root.classList.add("dark");
@@ -94,8 +126,8 @@ export default function App() {
     isLoading,
     syncStatus,
     handleAddPatient,
+    handleUpdatePatient,
     handleDeletePatient,
-    handleUpdatePatientIssues,
     handleAddAppointment,
     handleUpdateAppointment,
     handleUpdateAppointmentStatus,
@@ -106,6 +138,7 @@ export default function App() {
     handleDeleteService,
     scheduleBlocks,
     handleAddScheduleBlock,
+    handleUpdateScheduleBlock,
     handleDeleteScheduleBlock,
   } = useRealtimeData();
 
@@ -145,6 +178,33 @@ export default function App() {
     } catch {}
   };
 
+  // Horário de expediente (início/fim) — persistido em localStorage + Firestore
+  const [clinicSettings, setClinicSettings] = useState<ClinicSettings>(() => getLocalClinicSettings());
+
+  useEffect(() => {
+    let mounted = true;
+    loadSettingsFromFirestore().then((remote) => {
+      if (!mounted || !remote) return;
+      setClinicSettings((prev) => {
+        const merged = {
+          expedienteStart: remote.expedienteStart || prev.expedienteStart,
+          expedienteEnd: remote.expedienteEnd || prev.expedienteEnd,
+        };
+        saveLocalClinicSettings(merged);
+        return merged;
+      });
+    });
+    return () => {
+      mounted = false;
+    };
+  }, []);
+
+  const handleSaveClinicSettings = (next: ClinicSettings) => {
+    setClinicSettings(next);
+    saveLocalClinicSettings(next);
+    saveSettingsToFirestore(next);
+  };
+
   // Register connecting callback
   useEffect(() => {
     onConnectingGoogleChange(setIsConnectingGoogle);
@@ -170,6 +230,24 @@ export default function App() {
       const today = new Date().toISOString().split("T")[0];
       handleSyncGoogleEvents(today);
     }
+  }, []);
+
+  // Admin login gate: tentar restaurar sessão autorizada silenciosamente
+  useEffect(() => {
+    if (isClienteRoute) return;
+    const init = async () => {
+      extractTokenFromUrl();
+      const user = await trySilentLogin();
+      setAdminUser(user);
+      setAuthChecking(false);
+      if (user) {
+        setIsGoogleConnected(true);
+        const today = new Date().toISOString().split("T")[0];
+        handleSyncGoogleEvents(today);
+      }
+    };
+    init();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   // Log Firestore data for diagnostics
@@ -239,6 +317,68 @@ export default function App() {
     setGoogleEvents([]);
   };
 
+  const handleGoogleLogin = async () => {
+    if (isLoggingIn) return;
+    setIsLoggingIn(true);
+    try {
+      await loginWithGoogle();
+      setIsGoogleConnected(true);
+      const today = new Date().toISOString().split("T")[0];
+      setTimeout(() => handleSyncGoogleEvents(today), 400);
+    } catch (err: any) {
+      if (typeof err?.message === "string" && err.message.startsWith("UNAUTHORIZED")) {
+        const attemptedEmail = err.message.split(":")[1] || "desconhecido";
+        alert("Acesso negado para: " + attemptedEmail);
+      } else if (err?.message === "REDIRECT_PENDING") {
+        return;
+      } else if (err?.message === "Popup bloqueado") {
+        alert("Permita pop-ups para este site e tente novamente.");
+      } else {
+        alert("Não foi possível conectar com o Google. Tente novamente.");
+      }
+    } finally {
+      setIsLoggingIn(false);
+    }
+  };
+
+  const handleAdminLogin = async () => {
+    if (isLoggingIn) return;
+    setIsLoggingIn(true);
+    setAuthError(null);
+    try {
+      const user = await loginWithGoogle();
+      setAdminUser(user);
+      setIsGoogleConnected(true);
+      const today = new Date().toISOString().split("T")[0];
+      setTimeout(() => handleSyncGoogleEvents(today), 400);
+    } catch (err: any) {
+      if (typeof err?.message === "string" && err.message.startsWith("UNAUTHORIZED")) {
+        const attemptedEmail = err.message.split(":")[1] || "desconhecido";
+        setAuthError(`Acesso negado para ${attemptedEmail}. Use o e-mail autorizado da clínica.`);
+      } else if (err?.message === "REDIRECT_PENDING") {
+        return;
+      } else if (err?.message === "Popup bloqueado") {
+        setAuthError("Permita pop-ups para este site e tente novamente.");
+      } else if (err?.message === "CONNECT_TIMEOUT") {
+        setAuthError("A janela do Google não respondeu. Tente novamente.");
+      } else if (err?.message === "INVALID_RESPONSE") {
+        setAuthError("Não foi possível confirmar a conta do Google. Tente novamente.");
+      } else {
+        setAuthError("Não foi possível entrar com o Google. Tente novamente.");
+      }
+    } finally {
+      setIsLoggingIn(false);
+    }
+  };
+
+  const handleAdminLogout = () => {
+    logout();
+    setAdminUser(null);
+    setIsGoogleConnected(false);
+    setGoogleEvents([]);
+    setActiveTab("agenda");
+  };
+
   const handleSyncGoogleEvents = async (date: string) => {
     if (!isGoogleConnected) return;
     setIsSyncingGoogle(true);
@@ -281,10 +421,11 @@ export default function App() {
     summary: string,
     description: string,
     startTime: string,
-    endTime: string
+    endTime: string,
+    colorId?: string
   ): Promise<string | null> => {
     try {
-      return await createGoogleCalendarEvent(summary, description, startTime, endTime);
+      return await createGoogleCalendarEvent(summary, description, startTime, endTime, colorId);
     } catch (err: any) {
       console.error("Error creating Google Calendar event:", err);
       return null;
@@ -300,19 +441,24 @@ export default function App() {
   };
 
   // Save Google Calendar events to Firestore 'appointments' collection
-  // so they appear everywhere (web admin, mobile, etc.)
+  // so they appear everywhere (web admin, mobile, etc.). Events whose summary
+  // starts with "Bloqueio:" are treated as schedule blocks and synced to the
+  // 'scheduleBlocks' collection instead — making blocks fully bidirectional.
   const syncGoogleEventsToFirestore = async (events: GoogleCalendarEvent[]) => {
     const currentAppointments = appointmentsRef.current;
+    const currentBlocks = scheduleBlocksRef.current;
 
-    // Build set of existing calendarEventIds to avoid duplicates
+    const blockEvents = events.filter((ge) => isBlockEventSummary(ge.summary));
+    const nonBlockEvents = events.filter((ge) => !isBlockEventSummary(ge.summary));
+
+    // --- A) Regular (non-block) events -> appointments ---
     const existingCalendarEventIds = new Set(
       currentAppointments
         .filter((a) => a.calendarEventId)
         .map((a) => a.calendarEventId!)
     );
 
-    // Create Firestore appointments for new Google events
-    for (const ge of events) {
+    for (const ge of nonBlockEvents) {
       if (existingCalendarEventIds.has(ge.id)) continue;
 
       const dateStr = ge.start?.slice(0, 10) || "";
@@ -340,12 +486,12 @@ export default function App() {
     }
 
     // Remove stale Google-sourced appointments (events deleted from Google Calendar)
-    const googleEventIds = new Set(events.map((ge) => ge.id));
+    const nonBlockEventIds = new Set(nonBlockEvents.map((ge) => ge.id));
     for (const appt of currentAppointments) {
       if (
         appt.source === "google" &&
         appt.calendarEventId &&
-        !googleEventIds.has(appt.calendarEventId)
+        !nonBlockEventIds.has(appt.calendarEventId)
       ) {
         try {
           await fsDeleteAppointment(appt.id);
@@ -354,11 +500,86 @@ export default function App() {
         }
       }
     }
+
+    // --- B) Block events (summary starts with "Bloqueio:") -> scheduleBlocks ---
+    const existingBlockEventIds = new Set(
+      currentBlocks
+        .filter((b) => b.calendarEventId)
+        .map((b) => b.calendarEventId!)
+    );
+
+    for (const ge of blockEvents) {
+      const dateStr = ge.start?.slice(0, 10) || "";
+      const timeStr = ge.start && ge.start.length > 10 ? ge.start.slice(11, 16) : "00:00";
+      const endTimeStr = ge.end && ge.end.length > 10 ? ge.end.slice(11, 16) : "23:59";
+      if (!dateStr) continue;
+
+      const reason = parseBlockReason(ge.summary);
+      const existing = currentBlocks.find((b) => b.calendarEventId === ge.id);
+
+      if (existing) {
+        // Update the local copy when the event changed in Google Calendar
+        if (
+          existing.date !== dateStr ||
+          existing.startTime !== timeStr ||
+          existing.endTime !== endTimeStr ||
+          existing.reason !== reason
+        ) {
+          try {
+            await fsUpdateScheduleBlock({
+              ...existing,
+              date: dateStr,
+              startTime: timeStr,
+              endTime: endTimeStr,
+              reason,
+            });
+          } catch (err) {
+            console.error("Error updating Google block in Firestore:", err);
+          }
+        }
+        continue;
+      }
+
+      try {
+        await fsCreateScheduleBlock({
+          id: `gcal-${ge.id}`,
+          date: dateStr,
+          startTime: timeStr,
+          endTime: endTimeStr,
+          reason,
+          createdAt: new Date().toISOString(),
+          calendarEventId: ge.id,
+          source: "google",
+        });
+      } catch (err) {
+        console.error("Error saving Google block to Firestore:", err);
+      }
+    }
+
+    // Remove stale Google-sourced blocks (block events deleted from Google Calendar)
+    const blockEventIds = new Set(blockEvents.map((ge) => ge.id));
+    for (const block of currentBlocks) {
+      if (
+        block.source === "google" &&
+        block.calendarEventId &&
+        !blockEventIds.has(block.calendarEventId)
+      ) {
+        try {
+          await fsDeleteScheduleBlock(block.id);
+        } catch (err) {
+          console.error("Error removing stale Google block:", err);
+        }
+      }
+    }
   };
 
   // Keep a ref to latest appointments for async sync operations
   const appointmentsRef = useRef(appointments);
   appointmentsRef.current = appointments;
+
+  // Keep a ref to latest schedule blocks for async sync operations
+  const scheduleBlocksRef = useRef(scheduleBlocks);
+  scheduleBlocksRef.current = scheduleBlocks;
 
   // Auto-sync: create Google Calendar events for appointments from the website (no calendarEventId)
   const initialLoadDone = useRef(false);
@@ -379,10 +600,11 @@ export default function App() {
 
       if (appt.calendarEventId) return;
 
-      const dtStart = `${appt.date}T${appt.time}:00-03:00`;
-      const [h, m] = appt.time.split(":").map(Number);
-      const endDate = new Date(new Date(`${appt.date}T${appt.time}:00`).getTime() + (appt.price > 150 ? 60 : 45) * 60000);
-      const dtEnd = endDate.toISOString().slice(0, 19) + "-03:00";
+      const apptService = services.find((s) => s.name === appt.service);
+      const durationMin = apptService?.duration && apptService.duration > 0
+        ? apptService.duration
+        : appt.price > 150 ? 60 : 45;
+      const { start: dtStart, end: dtEnd } = buildEventTimeRange(appt.date, appt.time, durationMin);
 
       try {
         const eventId = await handleCreateGoogleEvent(
@@ -411,10 +633,17 @@ export default function App() {
 
   // Public client portal — render BookingPortalView full-screen, no admin chrome
   if (isClienteRoute) {
-    return <BookingPortalView clientMode blockSaturdays={blockSaturdays} />;
+    return (
+      <BookingPortalView
+        clientMode
+        blockSaturdays={blockSaturdays}
+        expedienteStart={clinicSettings.expedienteStart}
+        expedienteEnd={clinicSettings.expedienteEnd}
+      />
+    );
   }
 
-  if (isLoading) {
+  if (authChecking || isLoading) {
     return (
       <div id="full-page-loading" className="flex flex-col items-center justify-center min-h-screen bg-[#F8FAFC] relative">
         {/* Decorative background */}
@@ -426,15 +655,15 @@ export default function App() {
           <div className="relative mb-6">
             <img
               src={clinicLogo}
-              alt="Podologia Fabrícia"
+              alt="Dra. Fabrícia Rodrigues"
               className="w-20 h-20 rounded-2xl object-cover border-2 border-[#C8A45A]/40 shadow-xl"
             />
             <div className="absolute -bottom-2 -right-2 w-7 h-7 bg-[#0F3B2E] rounded-full border-2 border-white flex items-center justify-center">
               <Activity className="w-3.5 h-3.5 text-[#C8A45A] animate-spin" />
             </div>
           </div>
-          <h1 className="text-lg font-bold text-[#0F3B2E] tracking-tight">FABRÍCIA RODRIGUES</h1>
-          <p className="text-[11px] text-[#C8A45A] font-semibold uppercase tracking-widest mt-1">Podologia • Saúde & Bem-Estar</p>
+          <h1 className="text-lg font-bold text-[#0F3B2E] tracking-tight">Dra. Fabrícia Rodrigues</h1>
+          <p className="text-[11px] text-[#C8A45A] font-semibold uppercase tracking-widest mt-1">Podologia & Enfermagem • Saúde & Bem-Estar</p>
           <div className="flex items-center gap-1.5 mt-6">
             {[0,1,2].map(i => (
               <div
@@ -447,6 +676,16 @@ export default function App() {
           <p className="text-[11px] text-slate-400 mt-3 font-medium">Sincronizando dados...</p>
         </div>
       </div>
+    );
+  }
+
+  if (!adminUser) {
+    return (
+      <AdminLoginScreen
+        onLogin={handleAdminLogin}
+        isLoggingIn={isLoggingIn}
+        error={authError}
+      />
     );
   }
 
@@ -468,6 +707,7 @@ export default function App() {
         onUpdateAppointmentStatus={handleUpdateAppointmentStatus}
         onDeleteAppointment={handleDeleteAppointment}
         onAddScheduleBlock={handleAddScheduleBlock}
+        onUpdateScheduleBlock={handleUpdateScheduleBlock}
         onDeleteScheduleBlock={handleDeleteScheduleBlock}
         scheduleFormRequest={scheduleFormRequest}
         googleEvents={googleEvents}
@@ -482,6 +722,8 @@ export default function App() {
         onCreateGoogleEvent={handleCreateGoogleEvent}
                   onDeleteGoogleEvent={handleDeleteGoogleEvent}
                   googlePermissionError={googlePermissionError}
+        expedienteStart={clinicSettings.expedienteStart}
+        expedienteEnd={clinicSettings.expedienteEnd}
         />
     );
 
@@ -527,8 +769,8 @@ export default function App() {
             referrerPolicy="no-referrer"
           />
           <div>
-            <h1 className="text-base md:text-lg font-bold text-white tracking-tight leading-none font-display">FABRÍCIA RODRIGUES</h1>
-            <p className="text-[10px] text-[#C8A45A] font-semibold mt-1 uppercase tracking-widest">Podologia • Saúde & Bem-Estar</p>
+            <h1 className="text-base md:text-lg font-bold text-white tracking-tight leading-none font-display">Dra. Fabrícia Rodrigues</h1>
+            <p className="text-[10px] text-[#C8A45A] font-semibold mt-1 uppercase tracking-widest">Podologia & Enfermagem • Saúde & Bem-Estar</p>
           </div>
         </div>
 
@@ -570,11 +812,32 @@ export default function App() {
               <span>Google Agenda Conectado</span>
             </div>
           ) : (
-            <div className="hidden sm:flex items-center gap-2 bg-[#0A2B21] px-3.5 py-1.5 rounded-full text-slate-300 border border-slate-600/40 text-[11px] font-bold">
-              <span className="w-2 h-2 rounded-full bg-slate-400" />
-              <span>Google Desconectado</span>
-            </div>
+            <button
+              onClick={handleGoogleLogin}
+              disabled={isLoggingIn}
+              className="flex items-center gap-1.5 bg-[#0A2B21] hover:bg-[#1B523E] border border-[#C8A45A]/40 text-[#C8A45A] px-3 py-2 rounded-full text-[11px] font-bold transition-all shadow-sm cursor-pointer disabled:opacity-60 disabled:cursor-not-allowed"
+              title="Conectar com a conta Google oficial da clínica"
+            >
+              {isLoggingIn ? (
+                <svg className="w-3.5 h-3.5 animate-spin" viewBox="0 0 24 24" fill="none">
+                  <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                  <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
+                </svg>
+              ) : (
+                <Link2 className="w-3.5 h-3.5 text-[#C8A45A]" />
+              )}
+              <span>{isLoggingIn ? "Conectando..." : "Conectar Google Agenda"}</span>
+            </button>
           )}
+
+          <button
+            onClick={handleAdminLogout}
+            title="Sair do painel administrativo"
+            className="flex items-center gap-1.5 bg-[#0A2B21] hover:bg-[#1B523E] border border-[#C8A45A]/40 text-[#C8A45A] px-3 py-2 rounded-full text-[11px] font-bold transition-all shadow-sm cursor-pointer"
+          >
+            <LogOut className="w-3.5 h-3.5 text-[#C8A45A]" />
+            <span className="hidden md:inline">{adminUser?.email || "Sair"}</span>
+          </button>
         </div>
       </header>
 
@@ -628,8 +891,8 @@ export default function App() {
                       />
                       <div>
                         <p className="text-[9px] uppercase tracking-widest font-bold text-[#C8A45A]">Menu Principal</p>
-                        <h3 className="text-sm font-bold text-white leading-tight mt-0.5">FABRÍCIA RODRIGUES</h3>
-                        <p className="text-[9px] text-[#C8A45A]/70 font-medium mt-0.5">Podologia • Saúde & Bem-Estar</p>
+                        <h3 className="text-sm font-bold text-white leading-tight mt-0.5">Dra. Fabrícia Rodrigues</h3>
+                        <p className="text-[9px] text-[#C8A45A]/70 font-medium mt-0.5">Podologia & Enfermagem • Saúde & Bem-Estar</p>
                       </div>
                     </div>
                     <button
@@ -805,6 +1068,39 @@ export default function App() {
                   <p className="text-[9px] text-slate-400 mt-1.5">Bloquear sábados automaticamente no agendamento online. Domingos ficam sempre bloqueados.</p>
                 </div>
 
+                {/* Horário de Expediente */}
+                <div className="p-4 bg-slate-50 rounded-xl border border-slate-100">
+                  <div className="flex items-center gap-2 mb-3">
+                    <Clock className="w-4 h-4 text-gold" />
+                    <p className="text-xs font-bold text-slate-700">Horário de Expediente</p>
+                  </div>
+                  <div className="grid grid-cols-2 gap-3">
+                    <div>
+                      <label className="block text-[9px] font-bold text-slate-500 uppercase mb-1">Início do Expediente</label>
+                      <input
+                        type="time"
+                        value={clinicSettings.expedienteStart}
+                        onChange={(e) =>
+                          handleSaveClinicSettings({ ...clinicSettings, expedienteStart: e.target.value })
+                        }
+                        className="w-full text-xs bg-white border border-slate-200 p-2.5 rounded-xl focus:outline-none focus:ring-1 focus:ring-gold"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-[9px] font-bold text-slate-500 uppercase mb-1">Fim do Expediente</label>
+                      <input
+                        type="time"
+                        value={clinicSettings.expedienteEnd}
+                        onChange={(e) =>
+                          handleSaveClinicSettings({ ...clinicSettings, expedienteEnd: e.target.value })
+                        }
+                        className="w-full text-xs bg-white border border-slate-200 p-2.5 rounded-xl focus:outline-none focus:ring-1 focus:ring-gold"
+                      />
+                    </div>
+                  </div>
+                  <p className="text-[9px] text-slate-400 mt-1.5">Define o horário exibido na grade da agenda e os horários liberados para agendamento online. Salvo automaticamente no dispositivo e no Firestore.</p>
+                </div>
+
                 {/* WhatsApp da Clínica */}
                 <div className="p-4 bg-slate-50 rounded-xl border border-slate-100">
                   <div className="flex items-center gap-2 mb-3">
@@ -899,6 +1195,40 @@ export default function App() {
                     </div>
                   )}
                 </div>
+
+                {/* Modelo de Mensagem do WhatsApp do Cliente */}
+                <div className="p-4 bg-slate-50 rounded-xl border border-slate-100">
+                  <div className="flex items-center gap-2 mb-1">
+                    <MessageCircle className="w-4 h-4 text-gold" />
+                    <p className="text-xs font-bold text-slate-700">Modelo de Mensagem do WhatsApp do Cliente</p>
+                  </div>
+                  <p className="text-[9px] text-slate-400 mb-3">
+                    Texto usado no botão "Enviar Comprovante para o WhatsApp" do portal do cliente. Edite livremente e personalize com as variáveis.
+                  </p>
+                  <textarea
+                    rows={10}
+                    value={whatsAppConfig.clientMessageTemplate ?? DEFAULT_CLIENT_MESSAGE_TEMPLATE}
+                    onChange={(e) => handleSaveWhatsAppConfig({ ...whatsAppConfig, clientMessageTemplate: e.target.value })}
+                    className="w-full text-[11px] bg-white border border-slate-200 p-3 rounded-xl focus:outline-none focus:ring-1 focus:ring-gold font-mono leading-relaxed resize-y"
+                  />
+                  <div className="flex flex-wrap items-center gap-2 mt-2">
+                    {["{nome}", "{data}", "{horario}", "{procedimento}", "{valor}"].map((v) => (
+                      <code key={v} className="text-[9px] font-mono font-bold bg-white border border-slate-200 text-emerald-700 px-1.5 py-0.5 rounded-md">
+                        {v}
+                      </code>
+                    ))}
+                  </div>
+                  <div className="flex flex-wrap items-center gap-2 mt-3">
+                    <button
+                      type="button"
+                      onClick={() => handleSaveWhatsAppConfig({ ...whatsAppConfig, clientMessageTemplate: DEFAULT_CLIENT_MESSAGE_TEMPLATE })}
+                      className="text-[10px] font-bold text-slate-500 bg-white border border-slate-200 hover:bg-slate-100 px-3 py-1.5 rounded-lg transition-all cursor-pointer"
+                    >
+                      Restaurar Modelo Padrão
+                    </button>
+                    <span className="text-[9px] text-emerald-600 font-semibold">Alterações salvas automaticamente.</span>
+                  </div>
+                </div>
               </div>
             </div>
           </div>
@@ -908,8 +1238,8 @@ export default function App() {
           <PatientView
             patients={patients}
             onAddPatient={handleAddPatient}
+            onUpdatePatient={handleUpdatePatient}
             onDeletePatient={handleDeletePatient}
-            onUpdatePatientIssues={handleUpdatePatientIssues}
           />
         )}
 
@@ -933,7 +1263,13 @@ export default function App() {
 
         {activeTab === "assistente" && <AiAssistantView patients={patients} />}
 
-        {activeTab === "portal" && <BookingPortalView blockSaturdays={blockSaturdays} />}
+        {activeTab === "portal" && (
+          <BookingPortalView
+            blockSaturdays={blockSaturdays}
+            expedienteStart={clinicSettings.expedienteStart}
+            expedienteEnd={clinicSettings.expedienteEnd}
+          />
+        )}
       </ErrorBoundary></main>
 
       {/* Mobile Support Footer */}
@@ -952,13 +1288,92 @@ export default function App() {
       <footer className="bg-white dark:bg-slate-900 border-t border-slate-100 dark:border-slate-800 py-6 px-4">
         <div className="divider-gold mb-4" />
         <div className="max-w-[1600px] mx-auto flex flex-col sm:flex-row items-center justify-between gap-2 text-[10px] text-slate-400 font-medium">
-          <p>© 2026 <span className="text-[#0F3B2E] font-semibold">Clínica Podologia Fabrícia</span>. Todos os direitos reservados.</p>
-          <p className="flex items-center gap-1.5">
-            <span className="w-1.5 h-1.5 rounded-full bg-[#C8A45A] inline-block" />
-            Desenvolvido com IA Google Gemini
-          </p>
+          <p>© 2026 <span className="text-[#0F3B2E] font-semibold">Clínica Dra. Fabrícia Rodrigues</span>. Todos os direitos reservados. • Desenvolvido por Luan Estifer Rodrigues Pereira (Software Engineer).</p>
         </div>
       </footer>
+    </div>
+  );
+}
+
+function AdminLoginScreen({
+  onLogin,
+  isLoggingIn,
+  error,
+}: {
+  onLogin: () => void;
+  isLoggingIn: boolean;
+  error: string | null;
+}) {
+  return (
+    <div id="admin-login-screen" className="min-h-screen bg-[#F8FAFC] dark:bg-[#0D1512] flex flex-col items-center justify-center p-4 relative">
+      <div className="absolute inset-0 overflow-hidden pointer-events-none bg-dots-gold">
+        <div className="absolute -top-32 -left-32 w-96 h-96 rounded-full bg-[#0F3B2E]/5 blur-3xl" />
+        <div className="absolute -bottom-32 -right-32 w-96 h-96 rounded-full bg-[#C8A45A]/5 blur-3xl" />
+      </div>
+
+      <div className="relative w-full max-w-md">
+        <div className="bg-white dark:bg-slate-900 rounded-3xl shadow-xl border border-slate-100 dark:border-slate-800 overflow-hidden">
+          <div className="bg-gradient-to-br from-[#0F3B2E] to-[#0A2B21] p-8 text-center text-white relative">
+            <div className="absolute inset-0 bg-black opacity-10 bg-[radial-gradient(#fff_1px,transparent_1px)] [background-size:16px_16px]" />
+            <div className="relative z-10 space-y-3">
+              <img
+                src={clinicLogo}
+                alt="Dra. Fabrícia Rodrigues"
+                className="w-20 h-20 rounded-full object-cover border-2 border-[#C8A45A]/50 shadow-lg mx-auto"
+                referrerPolicy="no-referrer"
+              />
+              <h1 className="text-lg font-bold tracking-tight">Dra. Fabrícia Rodrigues</h1>
+              <p className="text-[10px] text-[#C8A45A] font-semibold uppercase tracking-widest">Podologia & Enfermagem • Saúde & Bem-Estar</p>
+              <div className="inline-flex items-center gap-1.5 bg-white/10 border border-[#C8A45A]/30 text-[#C8A45A] text-[10px] font-bold px-3 py-1 rounded-full uppercase tracking-wider mt-1">
+                <Lock className="w-3 h-3" /> Acesso Restrito
+              </div>
+            </div>
+          </div>
+
+          <div className="p-6 space-y-4">
+            <p className="text-xs text-slate-500 dark:text-slate-400 leading-relaxed">
+              Este painel é de uso exclusivo da clínica. Entre com a conta Google oficial da clínica
+              para acessar a agenda, os prontuários e o financeiro.
+            </p>
+
+            <button
+              onClick={onLogin}
+              disabled={isLoggingIn}
+              className="w-full flex items-center justify-center gap-2.5 bg-[#0F3B2E] hover:bg-[#1B523E] text-white font-bold py-3 px-4 rounded-xl shadow-sm hover:shadow transition-all text-xs cursor-pointer disabled:opacity-60 disabled:cursor-not-allowed"
+            >
+              {isLoggingIn ? (
+                <>
+                  <svg className="w-4 h-4 animate-spin" viewBox="0 0 24 24" fill="none">
+                    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                    <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
+                  </svg>
+                  Entrando...
+                </>
+              ) : (
+                <>
+                  <svg className="w-4 h-4" viewBox="0 0 24 24">
+                    <path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z" />
+                    <path fill="#34A853" d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z" />
+                    <path fill="#FBBC05" d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z" />
+                    <path fill="#EA4335" d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z" />
+                  </svg>
+                  Entrar com a Conta Google da Clínica
+                </>
+              )}
+            </button>
+
+            {error && (
+              <div className="bg-rose-50 border border-rose-200 rounded-xl p-3 text-[11px] text-rose-700 font-semibold">
+                {error}
+              </div>
+            )}
+
+            <p className="text-[10px] text-slate-400 dark:text-slate-500 text-center">
+              Acesso autorizado apenas para <strong className="text-slate-500 dark:text-slate-400">fabriciapodologa@gmail.com</strong>
+            </p>
+          </div>
+        </div>
+      </div>
     </div>
   );
 }

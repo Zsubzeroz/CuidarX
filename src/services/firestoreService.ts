@@ -65,7 +65,12 @@ export async function updatePatient(patient: Patient): Promise<void> {
   if (!isFirebaseConfigured || !db) return;
   const docRef = doc(db, "patients", patient.id);
   const { id, ...data } = patient;
-  await updateDoc(docRef, data as any);
+  // Firestore's updateDoc throws on undefined values, which occur when
+  // optional fields (cpf, email, address, responsable*) are missing.
+  const cleanData = Object.fromEntries(
+    Object.entries(data).filter(([, value]) => value !== undefined)
+  );
+  await updateDoc(docRef, cleanData as any);
 }
 
 export async function deletePatient(id: string): Promise<void> {
@@ -167,6 +172,13 @@ export async function createScheduleBlock(block: ScheduleBlock): Promise<void> {
   const docRef = doc(db, "scheduleBlocks", block.id);
   const { id, ...data } = block;
   await setDoc(docRef, data);
+}
+
+export async function updateScheduleBlock(block: ScheduleBlock): Promise<void> {
+  if (!isFirebaseConfigured || !db) return;
+  const docRef = doc(db, "scheduleBlocks", block.id);
+  const { id, ...data } = block;
+  await updateDoc(docRef, data as any);
 }
 
 export async function deleteScheduleBlock(id: string): Promise<void> {

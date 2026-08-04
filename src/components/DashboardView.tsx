@@ -116,7 +116,7 @@ export default function DashboardView({
           />
           <div>
             <p className="text-[10px] uppercase tracking-widest text-[#C8A45A] font-semibold mb-1">Bem-vinda, Doutora</p>
-            <h2 className="text-xl md:text-2xl font-bold tracking-tight font-display">Fabrícia Rodrigues 👋</h2>
+            <h2 className="text-xl md:text-2xl font-bold tracking-tight font-display">Dra. Fabrícia Rodrigues 👋</h2>
             <p className="text-white/60 text-xs mt-1">
               Seu consultório está pronto para os atendimentos de hoje.
             </p>

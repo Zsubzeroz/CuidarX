@@ -1,6 +1,7 @@
 import express, { Request, Response } from "express";
 import path from "path";
 import fs from "fs";
+import http from "http";
 import { createServer as createViteServer } from "vite";
 import { GoogleGenAI } from "@google/genai";
 import dotenv from "dotenv";
@@ -473,7 +474,7 @@ app.post("/api/gemini", async (req: Request, res: Response) => {
 
     if (!apiKeySet) {
       // Simulate highly advanced intelligent responses in Portuguese if API key is not yet configured
-      let simulatedResponse = "Olá! Eu sou o Assistente Clínico IA da Podologia Fabrícia. ";
+      let simulatedResponse = "Olá! Eu sou o Assistente Clínico IA da Dra. Fabrícia Rodrigues. ";
       
       if (isScheduleQuery) {
         simulatedResponse = `### 📅 Agenda de Atendimentos para Hoje (${targetDate}):\n\n` +
@@ -598,6 +599,108 @@ Por favor, responda sempre em português brasileiro de forma clara e formatada c
   } catch (error: any) {
     console.error("Gemini API Error:", error);
     res.status(500).json({ error: error.message || "Erro de conexão com o assistente de IA." });
+  }
+});
+
+// Server-side Local AI (Ollama) Endpoint — roda 100% offline no seu computador
+const OLLAMA_HOST = process.env.OLLAMA_HOST || "http://localhost:11434";
+const DEFAULT_OLLAMA_MODEL = process.env.OLLAMA_MODEL || "qwen2.5-coder:7b";
+
+function getAvailableOllamaModel(models: { name: string }[]): string | null {
+  const order = [DEFAULT_OLLAMA_MODEL, "codestral:latest", "deepseek-coder-v2:latest", "qwen2.5-coder:7b", "llama3:latest"];
+  for (const m of order) {
+    if (models.some((model) => model.name === m)) return m;
+  }
+  return models[0]?.name || null;
+}
+
+async function fetchOllamaModels(): Promise<{ name: string }[]> {
+  return new Promise((resolve, reject) => {
+    const req = http.request(`${OLLAMA_HOST}/api/tags`, { method: "GET" }, (res) => {
+      let data = "";
+      res.on("data", (chunk) => (data += chunk));
+      res.on("end", () => {
+        try {
+          resolve(JSON.parse(data).models || []);
+        } catch (e) {
+          reject(e);
+        }
+      });
+    });
+    req.on("error", reject);
+    req.setTimeout(3000, () => req.destroy(new Error("timeout")));
+    req.end();
+  });
+}
+
+async function chatWithOllama(model: string, systemPrompt: string, prompt: string): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const body = JSON.stringify({
+      model,
+      messages: [
+        { role: "system", content: systemPrompt },
+        { role: "user", content: prompt },
+      ],
+      stream: false,
+      options: { temperature: 0.7 },
+    });
+
+    const req = http.request(`${OLLAMA_HOST}/api/chat`, { method: "POST", headers: { "Content-Type": "application/json" } }, (res) => {
+      let data = "";
+      res.on("data", (chunk) => (data += chunk));
+      res.on("end", () => {
+        try {
+          const parsed = JSON.parse(data);
+          if (parsed.error) return reject(new Error(parsed.error));
+          resolve(parsed.message?.content || "");
+        } catch (e) {
+          reject(e);
+        }
+      });
+    });
+    req.on("error", reject);
+    req.write(body);
+    req.end();
+  });
+}
+
+app.post("/api/ollama", async (req: Request, res: Response) => {
+  const { prompt, systemPrompt, patientContext } = req.body;
+
+  if (!prompt || typeof prompt !== "string") {
+    return res.status(400).json({ error: "O campo 'prompt' é obrigatório." });
+  }
+
+  try {
+    const models = await fetchOllamaModels();
+    const model = getAvailableOllamaModel(models);
+    if (!model) {
+      return res.status(503).json({ error: "Nenhum modelo encontrado no Ollama. Rode 'ollama pull qwen2.5-coder:7b'." });
+    }
+
+    db = isFirebaseEnabled ? (await fetchFromFirestore() || loadClinicData()) : loadClinicData();
+
+    const defaultSystem = `Você é o Assistente Clínico Inteligente da Dra. Fabrícia, uma podóloga especialista em saúde dos pés.
+Você é uma ferramenta de apoio. Sempre termine recomendações clínicas complexas com: "Esta é uma sugestão da IA. A decisão final e o diagnóstico cabem exclusivamente à Dra. Fabrícia."
+Responda sempre em português brasileiro de forma clara e formatada com Markdown.
+
+### CONTEXTO DA CLÍNICA EM TEMPO REAL:
+Pacientes Cadastrados:
+${db.patients.map((p: Patient) => `- ID: ${p.id}, Nome: ${p.name}, WhatsApp: ${p.phone}, Diabético: ${p.isDiabetic ? "Sim" : "Não"}, Problemas Ativos: ${JSON.stringify(p.footIssues?.filter((i: any) => i.status === "active").map((i: any) => `${i.condition} no pé ${i.foot === "right" ? "direito" : "esquerdo"}`) || [])}`).join("\n")}
+
+Agendamentos Totais:
+${db.appointments.map((a: any) => `- Paciente: ${a.patientName}, Data: ${a.date}, Hora: ${a.time}, Procedimento: ${a.service}, Status: ${a.status}`).join("\n")}`;
+
+    const effectiveSystem = systemPrompt || defaultSystem;
+    const contents = patientContext
+      ? `Contexto do Paciente Específico Selecionado:\n${JSON.stringify(patientContext, null, 2)}\n\nPergunta do Podólogo:\n${prompt}`
+      : prompt;
+
+    const text = await chatWithOllama(model, effectiveSystem, contents);
+    res.json({ text, model });
+  } catch (error: any) {
+    console.error("Ollama API Error:", error);
+    res.status(500).json({ error: "Erro ao conectar com o Ollama local. Certifique-se de que 'ollama serve' está rodando." });
   }
 });
 

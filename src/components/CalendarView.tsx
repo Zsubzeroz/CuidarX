@@ -1,6 +1,12 @@
-import React, { useState, useEffect, useRef } from "react";
+import React, { useState, useEffect, useRef, useMemo } from "react";
 import { Patient, Appointment, ClinicService, ScheduleBlock } from "../types";
-import { GoogleCalendarEvent, updateGoogleCalendarEvent } from "../services/googleCalendar";
+import {
+  GoogleCalendarEvent,
+  updateGoogleCalendarEvent,
+  buildEventTimeRange,
+  buildBlockEventSummary,
+  BLOCK_COLOR_ID,
+} from "../services/googleCalendar";
 import {
   Calendar,
   Clock,
@@ -40,8 +46,9 @@ interface CalendarViewProps {
   onUpdateAppointment: (appointment: Appointment) => void;
   onUpdateAppointmentStatus: (id: string, status: Appointment["status"]) => void;
   onDeleteAppointment: (id: string) => void;
-  onAddPatient?: (patient: Omit<Patient, "id">) => Promise<void>;
+  onAddPatient?: (patient: Omit<Patient, "id">) => Promise<string>;
   onAddScheduleBlock?: (block: Omit<ScheduleBlock, "id" | "createdAt">) => void;
+  onUpdateScheduleBlock?: (block: ScheduleBlock) => void;
   onDeleteScheduleBlock?: (id: string) => void;
   scheduleFormRequest?: number;
   googleEvents: GoogleCalendarEvent[];
@@ -54,9 +61,218 @@ interface CalendarViewProps {
   onGoogleLoginBrowser?: () => void;
   onDisconnectGoogle: () => void;
   onSyncGoogleEvents: (date: string) => void;
-  onCreateGoogleEvent: (summary: string, description: string, startTime: string, endTime: string) => Promise<string | null>;
+  onCreateGoogleEvent: (summary: string, description: string, startTime: string, endTime: string, colorId?: string) => Promise<string | null>;
   onDeleteGoogleEvent: (eventId: string) => Promise<void>;
+  expedienteStart?: string;
+  expedienteEnd?: string;
 }
+
+interface ScheduleFormProps {
+  onSubmit: React.FormEventHandler<HTMLFormElement>;
+  editingAppt: Appointment | null;
+  patients: Patient[];
+  services: ClinicService[];
+  servicePrices: Record<string, number>;
+  dayHours: string[];
+  showNewPatient: boolean;
+  newPatientName: string;
+  newPatientPhone: string;
+  patientId: string;
+  time: string;
+  price: number;
+  quantity: number;
+  service: string;
+  notes: string;
+  onToggleNewPatient: (v: boolean) => void;
+  onNewPatientName: (v: string) => void;
+  onNewPatientPhone: (v: string) => void;
+  onPatientId: (v: string) => void;
+  onTime: (v: string) => void;
+  onPrice: (v: number) => void;
+  onQuantity: (v: number) => void;
+  onServiceChange: (v: string) => void;
+  onNotes: (v: string) => void;
+}
+
+// Hoisted to module scope: defined OUTSIDE the CalendarView component so its
+// type is stable across renders. A nested component would be recreated on every
+// render, forcing React to unmount/remount the form and lose input focus.
+const ScheduleForm = ({
+  onSubmit,
+  editingAppt,
+  patients,
+  services,
+  servicePrices,
+  dayHours,
+  showNewPatient,
+  newPatientName,
+  newPatientPhone,
+  patientId,
+  time,
+  price,
+  quantity,
+  service,
+  notes,
+  onToggleNewPatient,
+  onNewPatientName,
+  onNewPatientPhone,
+  onPatientId,
+  onTime,
+  onPrice,
+  onQuantity,
+  onServiceChange,
+  onNotes,
+}: ScheduleFormProps) => (
+  <form onSubmit={onSubmit} className="space-y-3">
+    {editingAppt && (
+      <div className="bg-blue-50 border border-blue-200 rounded-xl p-2.5 text-[10px] font-bold text-blue-700 flex items-center gap-1.5">
+        <Pencil className="w-3 h-3" /> Editando agendamento de {editingAppt.patientName}
+      </div>
+    )}
+
+    <div>
+      <label className="block text-[10px] font-bold text-slate-500 uppercase mb-1">Paciente:</label>
+      {showNewPatient ? (
+        <div className="space-y-2">
+          <input
+            type="text"
+            value={newPatientName}
+            onChange={(e) => onNewPatientName(e.target.value)}
+            placeholder="Nome completo do novo paciente"
+            className="w-full text-xs bg-slate-50 border border-slate-200 p-2.5 rounded-xl focus:outline-none focus:ring-1 focus:ring-gold"
+            autoFocus
+          />
+          <input
+            type="tel"
+            value={newPatientPhone}
+            onChange={(e) => onNewPatientPhone(e.target.value)}
+            placeholder="WhatsApp (opcional)"
+            className="w-full text-xs bg-slate-50 border border-slate-200 p-2.5 rounded-xl focus:outline-none focus:ring-1 focus:ring-gold"
+          />
+          <button
+            type="button"
+            onClick={() => onToggleNewPatient(false)}
+            className="text-[9px] font-bold text-slate-500 hover:text-slate-700 underline cursor-pointer"
+          >
+            Selecionar paciente existente
+          </button>
+        </div>
+      ) : (
+        <div className="flex gap-2">
+          <select
+            value={patientId}
+            onChange={(e) => onPatientId(e.target.value)}
+            className="flex-1 text-xs bg-slate-50 border border-slate-200 p-2.5 rounded-xl focus:outline-none focus:ring-1 focus:ring-gold"
+          >
+            {patients.map((p) => (
+              <option key={p.id} value={p.id}>
+                {p.name} {p.isDiabetic ? " (Diabético)" : ""}
+              </option>
+            ))}
+            {editingAppt && !patients.some((p) => p.id === editingAppt.patientId) && (
+              <option value={editingAppt.patientId}>{editingAppt.patientName}</option>
+            )}
+          </select>
+          <button
+            type="button"
+            onClick={() => { onToggleNewPatient(true); onNewPatientName(""); onNewPatientPhone(""); }}
+            className="shrink-0 text-[9px] font-bold text-emerald-700 bg-emerald-50 hover:bg-emerald-100 px-2.5 py-1.5 rounded-xl border border-emerald-100 transition-all cursor-pointer"
+            title="Cadastrar novo paciente"
+          >
+            + Novo
+          </button>
+        </div>
+      )}
+    </div>
+
+    <div className="grid grid-cols-3 gap-2">
+      <div>
+        <label className="block text-[10px] font-bold text-slate-500 uppercase mb-1">Horário:</label>
+        <select
+          value={time}
+          onChange={(e) => onTime(e.target.value)}
+          className="w-full text-xs bg-slate-50 border border-slate-200 p-2.5 rounded-xl focus:outline-none focus:ring-1 focus:ring-gold"
+        >
+          {dayHours.map((h) => (
+            <option key={h} value={h}>{h}</option>
+          ))}
+        </select>
+      </div>
+      <div>
+        <label className="block text-[10px] font-bold text-slate-500 uppercase mb-1">Valor (R$):</label>
+        <input
+          type="number"
+          value={price}
+          onChange={(e) => onPrice(Number(e.target.value))}
+          className="w-full text-xs bg-slate-50 border border-slate-200 p-2.5 rounded-xl focus:outline-none focus:ring-1 focus:ring-gold"
+        />
+      </div>
+      <div>
+        <label className="block text-[10px] font-bold text-slate-500 uppercase mb-1">Sessões:</label>
+        <div className="flex items-center gap-1">
+          <button
+            type="button"
+            onClick={() => onQuantity(Math.max(1, (quantity || 1) - 1))}
+            className="w-7 h-8 shrink-0 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-600 text-sm font-bold cursor-pointer"
+          >
+            −
+          </button>
+          <input
+            type="number"
+            min={1}
+            value={quantity || 1}
+            onChange={(e) => onQuantity(Math.max(1, Number(e.target.value)))}
+            className="w-full min-w-0 text-xs bg-slate-50 border border-slate-200 py-2 px-1 rounded-xl focus:outline-none focus:ring-1 focus:ring-gold text-center"
+          />
+          <button
+            type="button"
+            onClick={() => onQuantity((quantity || 1) + 1)}
+            className="w-7 h-8 shrink-0 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-600 text-sm font-bold cursor-pointer"
+          >
+            +
+          </button>
+        </div>
+      </div>
+    </div>
+
+    <div>
+      <label className="block text-[10px] font-bold text-slate-500 uppercase mb-1">Serviço / Procedimento:</label>
+      <select
+        value={service}
+        onChange={(e) => onServiceChange(e.target.value)}
+        className="w-full text-xs bg-slate-50 border border-slate-200 p-2.5 rounded-xl focus:outline-none focus:ring-1 focus:ring-gold"
+      >
+        {services.length > 0 ? (
+          services.map((s) => (
+            <option key={s.id} value={s.name}>{s.name} (R$ {s.price})</option>
+          ))
+        ) : (
+          Object.keys(servicePrices).map((srv) => (
+            <option key={srv} value={srv}>{srv}</option>
+          ))
+        )}
+      </select>
+    </div>
+
+    <div>
+      <label className="block text-[10px] font-bold text-slate-500 uppercase mb-1">Observações:</label>
+      <textarea
+        value={notes}
+        onChange={(e) => onNotes(e.target.value)}
+        placeholder="Ex: Primeira consulta de espiculotomia..."
+        rows={2}
+        className="w-full text-xs bg-slate-50 border border-slate-200 p-2.5 rounded-xl focus:outline-none focus:ring-1 focus:ring-gold"
+      />
+    </div>
+
+    <button
+      type="submit"
+      className="w-full text-center text-xs font-bold text-white bg-brand hover:bg-brand-700 py-2.5 rounded-xl shadow-sm transition-colors cursor-pointer"
+    >
+      {editingAppt ? "Atualizar Agendamento" : "Confirmar Agendamento"}
+    </button>
+  </form>
+);
 
 export default function CalendarView({
   patients,
@@ -69,6 +285,7 @@ export default function CalendarView({
   onDeleteAppointment,
   onAddPatient,
   onAddScheduleBlock,
+  onUpdateScheduleBlock,
   onDeleteScheduleBlock,
   scheduleFormRequest = 0,
   googleEvents,
@@ -83,6 +300,8 @@ export default function CalendarView({
   onSyncGoogleEvents,
   onCreateGoogleEvent,
   onDeleteGoogleEvent,
+  expedienteStart = "08:00",
+  expedienteEnd = "20:00",
 }: CalendarViewProps) {
   const [selectedDate, setSelectedDate] = useState(new Date().toISOString().split("T")[0]);
   const [showAddForm, setShowAddForm] = useState(false);
@@ -103,12 +322,14 @@ export default function CalendarView({
   const [newPatientPhone, setNewPatientPhone] = useState("");
   const [showTomorrowReminders, setShowTomorrowReminders] = useState(false);
   const [showBlockModal, setShowBlockModal] = useState(false);
+  const [editingBlock, setEditingBlock] = useState<ScheduleBlock | null>(null);
   const [blockDate, setBlockDate] = useState(new Date().toISOString().split("T")[0]);
   const [blockStart, setBlockStart] = useState("12:00");
   const [blockEnd, setBlockEnd] = useState("13:30");
   const [blockReason, setBlockReason] = useState("Almoço");
   const [blockAllDay, setBlockAllDay] = useState(false);
   const [feedback, setFeedback] = useState<{ type: "success" | "error"; message: string } | null>(null);
+  const [viewMode, setViewMode] = useState<"app" | "google">("app");
 
   useEffect(() => {
     if (!feedback) return;
@@ -213,14 +434,23 @@ export default function CalendarView({
     }
   };
 
+  const getServiceDuration = (): number => {
+    const srv = services.find((s) => s.name === service);
+    if (srv?.duration && srv.duration > 0) return srv.duration;
+    return price > 150 ? 60 : 45;
+  };
+
   const handleScheduleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (!selectedDate) { alert("Selecione uma data."); return; }
+    if (!time) { alert("Selecione um horário."); return; }
+    if (!service) { alert("Selecione um serviço."); return; }
+
     let resolvedPatientId = patientId;
     let resolvedPatientName = "";
 
     if (showNewPatient) {
       if (!newPatientName.trim()) { alert("Informe o nome do novo paciente."); return; }
-      const newId = `pat-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`;
       const patientData: Omit<Patient, "id"> = {
         name: newPatientName.trim(),
         phone: newPatientPhone.trim(),
@@ -236,13 +466,12 @@ export default function CalendarView({
         createdAt: new Date().toISOString(),
       };
       if (onAddPatient) {
-        await onAddPatient(patientData);
-        resolvedPatientId = newId;
-        resolvedPatientName = newPatientName.trim();
+        // O hook gera e persiste o id real do paciente; usá-lo no agendamento
+        resolvedPatientId = await onAddPatient(patientData);
       } else {
-        resolvedPatientId = newId;
-        resolvedPatientName = newPatientName.trim();
+        resolvedPatientId = `pat-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`;
       }
+      resolvedPatientName = newPatientName.trim();
     } else {
       const patientObj = patients.find((p) => p.id === patientId);
       if (patientObj) {
@@ -270,16 +499,12 @@ export default function CalendarView({
       await onUpdateAppointment(updatedAppt);
 
       if (editingAppt.calendarEventId && isGoogleConnected) {
-        const dtStart = `${selectedDate}T${time}:00-03:00`;
-        const endDate = new Date(new Date(`${selectedDate}T${time}:00`).getTime() + (price > 150 ? 60 : 45) * 60000);
-        const dtEnd = endDate.toISOString().slice(0, 19) + "-03:00";
+        const { start: dtStart, end: dtEnd } = buildEventTimeRange(selectedDate, time, getServiceDuration());
         await onEditGoogleEvent(editingAppt.calendarEventId, `${service} - ${resolvedPatientName}`, notes || "", dtStart, dtEnd);
         onSyncGoogleEvents(selectedDate);
       }
     } else {
-      const dtStart = `${selectedDate}T${time}:00-03:00`;
-      const endDate = new Date(new Date(`${selectedDate}T${time}:00`).getTime() + (price > 150 ? 60 : 45) * 60000);
-      const dtEnd = endDate.toISOString().slice(0, 19) + "-03:00";
+      const { start: dtStart, end: dtEnd } = buildEventTimeRange(selectedDate, time, getServiceDuration());
 
       let calendarEventId: string | undefined = undefined;
       if (isGoogleConnected) {
@@ -399,15 +624,10 @@ export default function CalendarView({
           .replace(/^Status: .*\n?/, "")
           .trim();
 
-        const start = existingGe?.startTimeRaw || `${appt.date}T${appt.time}:00-03:00`;
-        const end =
-          existingGe?.endTimeRaw ||
-          (() => {
-            const endDate = new Date(
-              new Date(`${appt.date}T${appt.time}:00`).getTime() + (appt.price > 150 ? 60 : 45) * 60000
-            );
-            return endDate.toISOString().slice(0, 19) + "-03:00";
-          })();
+        const { start, end } =
+          existingGe?.startTimeRaw && existingGe?.endTimeRaw
+            ? { start: existingGe.startTimeRaw, end: existingGe.endTimeRaw }
+            : buildEventTimeRange(appt.date, appt.time, appt.price > 150 ? 60 : 45);
 
         const newSummary = `${STATUS_ICONS[newStatus]} ${baseSummary}`;
         const statusLine = `Status: ${STATUS_LABELS[newStatus]}`;
@@ -424,17 +644,114 @@ export default function CalendarView({
     }
   };
 
-  const handleCreateBlock = (e: React.FormEvent) => {
+  const getBlockDurationMinutes = (): number => {
+    const startT = blockAllDay ? "00:00" : blockStart;
+    const endT = blockAllDay ? "23:59" : blockEnd;
+    const [sh, sm] = startT.split(":").map(Number);
+    const [eh, em] = endT.split(":").map(Number);
+    return eh * 60 + em - (sh * 60 + sm);
+  };
+
+  const handleCreateBlock = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!onAddScheduleBlock) return;
-    onAddScheduleBlock({
-      date: blockDate,
-      startTime: blockAllDay ? "00:00" : blockStart,
-      endTime: blockAllDay ? "23:59" : blockEnd,
-      reason: blockReason,
-    });
+    if (!onAddScheduleBlock && !onUpdateScheduleBlock) return;
+    if (!blockDate) { alert("Selecione a data do bloqueio."); return; }
+
+    const startTime = blockAllDay ? "00:00" : blockStart;
+    const endTime = blockAllDay ? "23:59" : blockEnd;
+    const durationMin = getBlockDurationMinutes();
+    if (durationMin <= 0) { alert("O horário final deve ser depois do inicial."); return; }
+
+    const reason = blockReason.trim() || "Bloqueio";
+    const { start: dtStart, end: dtEnd } = buildEventTimeRange(blockDate, startTime, durationMin);
+
+    try {
+      if (editingBlock) {
+        let calendarEventId = editingBlock.calendarEventId;
+        if (isGoogleConnected) {
+          if (calendarEventId) {
+            try {
+              await onEditGoogleEvent(calendarEventId, buildBlockEventSummary(reason), `Bloqueio criado no app · ${reason}`, dtStart, dtEnd);
+            } catch (err) {
+              console.error("Erro ao atualizar bloqueio no Google Calendar:", err);
+            }
+          } else {
+            const newId = await onCreateGoogleEvent(
+              buildBlockEventSummary(reason),
+              `Bloqueio criado no app · ${reason}`,
+              dtStart,
+              dtEnd,
+              BLOCK_COLOR_ID
+            );
+            if (newId) calendarEventId = newId;
+          }
+        }
+        await onUpdateScheduleBlock?.({
+          ...editingBlock,
+          date: blockDate,
+          startTime,
+          endTime,
+          reason,
+          calendarEventId,
+        });
+        setFeedback({ type: "success", message: `Bloqueio atualizado: ${reason}` });
+      } else {
+        let calendarEventId: string | undefined = undefined;
+        if (isGoogleConnected) {
+          const result = await onCreateGoogleEvent(
+            buildBlockEventSummary(reason),
+            `Bloqueio criado no app · ${reason}`,
+            dtStart,
+            dtEnd,
+            BLOCK_COLOR_ID
+          );
+          if (result) calendarEventId = result;
+        }
+        await onAddScheduleBlock?.({
+          date: blockDate,
+          startTime,
+          endTime,
+          reason,
+          calendarEventId,
+        });
+        setFeedback({ type: "success", message: `Horário bloqueado: ${reason}` });
+      }
+    } catch (err) {
+      console.error("Erro ao salvar bloqueio:", err);
+      setFeedback({ type: "error", message: "Erro ao salvar bloqueio" });
+    }
+
     setShowBlockModal(false);
+    setEditingBlock(null);
     setBlockAllDay(false);
+  };
+
+  const handleEditBlock = (block: ScheduleBlock) => {
+    setEditingBlock(block);
+    setBlockDate(block.date);
+    setBlockStart(block.startTime === "00:00" ? "12:00" : block.startTime);
+    setBlockEnd(block.endTime === "23:59" ? "13:30" : block.endTime);
+    setBlockReason(block.reason);
+    setBlockAllDay(block.startTime === "00:00" && block.endTime === "23:59");
+    setShowBlockModal(true);
+  };
+
+  const handleDeleteBlock = async (block: ScheduleBlock) => {
+    if (!confirm(`Excluir bloqueio "${block.reason}"?`)) return;
+    try {
+      if (block.calendarEventId && isGoogleConnected) {
+        try {
+          await onDeleteGoogleEvent(block.calendarEventId);
+        } catch (err) {
+          console.error("Erro ao excluir bloqueio do Google Calendar:", err);
+        }
+      }
+      await onDeleteScheduleBlock?.(block.id);
+      setFeedback({ type: "success", message: "Bloqueio removido" });
+    } catch (err) {
+      console.error("Erro ao excluir bloqueio:", err);
+      setFeedback({ type: "error", message: "Erro ao excluir bloqueio" });
+    }
   };
 
   const dayBlocks = scheduleBlocks.filter((b) => b.date === selectedDate);
@@ -461,12 +778,21 @@ export default function CalendarView({
     }
   };
 
-  const dayHours = [
-    "08:00", "08:30", "09:00", "09:30", "10:00", "10:30",
-    "11:00", "11:30", "12:00", "13:00", "13:30", "14:00",
-    "14:30", "15:00", "15:30", "16:00", "16:30", "17:00",
-    "17:30", "18:00",
-  ];
+  const dayHours = useMemo(() => {
+    const toMinutes = (t: string) => {
+      const [h, m] = t.split(":").map(Number);
+      return (isNaN(h) ? 8 : h) * 60 + (isNaN(m) ? 0 : m);
+    };
+    const startMin = toMinutes(expedienteStart);
+    const endMin = toMinutes(expedienteEnd);
+    const hours: string[] = [];
+    for (let min = startMin; min < endMin; min += 30) {
+      const hh = String(Math.floor(min / 60)).padStart(2, "0");
+      const mm = String(min % 60).padStart(2, "0");
+      hours.push(`${hh}:${mm}`);
+    }
+    return hours;
+  }, [expedienteStart, expedienteEnd]);
 
   const dailyAppointments = appointments.filter((a) => a.date === selectedDate);
 
@@ -484,6 +810,29 @@ export default function CalendarView({
       return new Date(dateStr + "T00:00:00").toLocaleDateString("pt-BR");
     } catch { return dateStr; }
   };
+
+  // Official Google Calendar embed (100% fidelity with Google Agenda web)
+  const googleEmbedCalendarId =
+    import.meta.env.VITE_GOOGLE_CALENDAR_EMBED_ID || "fabriciapodologa@gmail.com";
+
+  const getEmbedWeekDates = (dateStr: string) => {
+    const d = new Date(dateStr + "T12:00:00-03:00");
+    if (isNaN(d.getTime())) return "";
+    const day = d.getDay();
+    const monday = new Date(d);
+    monday.setDate(d.getDate() - ((day + 6) % 7));
+    const sunday = new Date(monday);
+    sunday.setDate(monday.getDate() + 6);
+    const fmt = (dt: Date) =>
+      `${dt.getFullYear()}${String(dt.getMonth() + 1).padStart(2, "0")}${String(dt.getDate()).padStart(2, "0")}`;
+    return `${fmt(monday)}/${fmt(sunday)}`;
+  };
+
+  const googleEmbedUrl = (() => {
+    const base = `https://calendar.google.com/calendar/embed?src=${encodeURIComponent(googleEmbedCalendarId)}&ctz=America%2FSao_Paulo&hl=pt_BR&mode=WEEK`;
+    const dates = getEmbedWeekDates(selectedDate);
+    return dates ? `${base}&dates=${dates}` : base;
+  })();
 
   const formatPhoneForWa = (phone: string) => {
     const digits = phone.replace(/\D/g, "");
@@ -567,160 +916,121 @@ export default function CalendarView({
   );
   const unlinkedAppts = dailyAppointments.filter((a) => !a.calendarEventId || !dayGoogleEventIds.size);
 
-  const ScheduleForm = ({ isMobile = false }: { isMobile?: boolean }) => (
-    <form onSubmit={handleScheduleSubmit} className="space-y-3">
-      {editingAppt && (
-        <div className="bg-blue-50 border border-blue-200 rounded-xl p-2.5 text-[10px] font-bold text-blue-700 flex items-center gap-1.5">
-          <Pencil className="w-3 h-3" /> Editando agendamento de {editingAppt.patientName}
-        </div>
-      )}
-
-      <div>
-        <label className="block text-[10px] font-bold text-slate-500 uppercase mb-1">Paciente:</label>
-        {showNewPatient ? (
-          <div className="space-y-2">
-            <input
-              type="text"
-              value={newPatientName}
-              onChange={(e) => setNewPatientName(e.target.value)}
-              placeholder="Nome completo do novo paciente"
-              className="w-full text-xs bg-slate-50 border border-slate-200 p-2.5 rounded-xl focus:outline-none focus:ring-1 focus:ring-gold"
-              autoFocus
-            />
-            <input
-              type="tel"
-              value={newPatientPhone}
-              onChange={(e) => setNewPatientPhone(e.target.value)}
-              placeholder="WhatsApp (opcional)"
-              className="w-full text-xs bg-slate-50 border border-slate-200 p-2.5 rounded-xl focus:outline-none focus:ring-1 focus:ring-gold"
-            />
-            <button
-              type="button"
-              onClick={() => setShowNewPatient(false)}
-              className="text-[9px] font-bold text-slate-500 hover:text-slate-700 underline cursor-pointer"
-            >
-              Selecionar paciente existente
-            </button>
-          </div>
-        ) : (
-          <div className="flex gap-2">
-            <select
-              value={patientId}
-              onChange={(e) => setPatientId(e.target.value)}
-              className="flex-1 text-xs bg-slate-50 border border-slate-200 p-2.5 rounded-xl focus:outline-none focus:ring-1 focus:ring-gold"
-            >
-              {patients.map((p) => (
-                <option key={p.id} value={p.id}>
-                  {p.name} {p.isDiabetic ? " (Diabético)" : ""}
-                </option>
-              ))}
-              {editingAppt && !patients.some((p) => p.id === editingAppt.patientId) && (
-                <option value={editingAppt.patientId}>{editingAppt.patientName}</option>
-              )}
-            </select>
-            <button
-              type="button"
-              onClick={() => { setShowNewPatient(true); setNewPatientName(""); setNewPatientPhone(""); }}
-              className="shrink-0 text-[9px] font-bold text-emerald-700 bg-emerald-50 hover:bg-emerald-100 px-2.5 py-1.5 rounded-xl border border-emerald-100 transition-all cursor-pointer"
-              title="Cadastrar novo paciente"
-            >
-              + Novo
-            </button>
-          </div>
-        )}
-      </div>
-
-      <div className="grid grid-cols-3 gap-2">
-        <div>
-          <label className="block text-[10px] font-bold text-slate-500 uppercase mb-1">Horário:</label>
-          <select
-            value={time}
-            onChange={(e) => setTime(e.target.value)}
-            className="w-full text-xs bg-slate-50 border border-slate-200 p-2.5 rounded-xl focus:outline-none focus:ring-1 focus:ring-gold"
-          >
-            {dayHours.map((h) => (
-              <option key={h} value={h}>{h}</option>
-            ))}
-          </select>
-        </div>
-        <div>
-          <label className="block text-[10px] font-bold text-slate-500 uppercase mb-1">Valor (R$):</label>
-          <input
-            type="number"
-            value={price}
-            onChange={(e) => setPrice(Number(e.target.value))}
-            className="w-full text-xs bg-slate-50 border border-slate-200 p-2.5 rounded-xl focus:outline-none focus:ring-1 focus:ring-gold"
-          />
-        </div>
-        <div>
-          <label className="block text-[10px] font-bold text-slate-500 uppercase mb-1">Sessões:</label>
-          <div className="flex items-center gap-1">
-            <button
-              type="button"
-              onClick={() => setQuantity(Math.max(1, (quantity || 1) - 1))}
-              className="w-7 h-8 shrink-0 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-600 text-sm font-bold cursor-pointer"
-            >
-              −
-            </button>
-            <input
-              type="number"
-              min={1}
-              value={quantity || 1}
-              onChange={(e) => setQuantity(Math.max(1, Number(e.target.value)))}
-              className="w-full min-w-0 text-xs bg-slate-50 border border-slate-200 py-2 px-1 rounded-xl focus:outline-none focus:ring-1 focus:ring-gold text-center"
-            />
-            <button
-              type="button"
-              onClick={() => setQuantity((quantity || 1) + 1)}
-              className="w-7 h-8 shrink-0 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-600 text-sm font-bold cursor-pointer"
-            >
-              +
-            </button>
-          </div>
-        </div>
-      </div>
-
-      <div>
-        <label className="block text-[10px] font-bold text-slate-500 uppercase mb-1">Serviço / Procedimento:</label>
-        <select
-          value={service}
-          onChange={(e) => handleServiceChange(e.target.value)}
-          className="w-full text-xs bg-slate-50 border border-slate-200 p-2.5 rounded-xl focus:outline-none focus:ring-1 focus:ring-gold"
-        >
-          {services.length > 0 ? (
-            services.filter((s) => s.isActive || s.name === service).map((s) => (
-              <option key={s.id} value={s.name}>{s.name} (R$ {s.price})</option>
-            ))
-          ) : (
-            Object.keys(servicePrices).map((srv) => (
-              <option key={srv} value={srv}>{srv}</option>
-            ))
-          )}
-        </select>
-      </div>
-
-      <div>
-        <label className="block text-[10px] font-bold text-slate-500 uppercase mb-1">Observações:</label>
-        <textarea
-          value={notes}
-          onChange={(e) => setNotes(e.target.value)}
-          placeholder="Ex: Primeira consulta de espiculotomia..."
-          rows={2}
-          className="w-full text-xs bg-slate-50 border border-slate-200 p-2.5 rounded-xl focus:outline-none focus:ring-1 focus:ring-gold"
-        />
-      </div>
-
-      <button
-        type="submit"
-        className="w-full text-center text-xs font-bold text-white bg-brand hover:bg-brand-700 py-2.5 rounded-xl shadow-sm transition-colors cursor-pointer"
-      >
-        {editingAppt ? "Atualizar Agendamento" : "Confirmar Agendamento"}
-      </button>
-    </form>
+  const ScheduleFormElement = (
+    <ScheduleForm
+      onSubmit={handleScheduleSubmit}
+      editingAppt={editingAppt}
+      patients={patients}
+      services={services}
+      servicePrices={servicePrices}
+      dayHours={dayHours}
+      showNewPatient={showNewPatient}
+      newPatientName={newPatientName}
+      newPatientPhone={newPatientPhone}
+      patientId={patientId}
+      time={time}
+      price={price}
+      quantity={quantity}
+      service={service}
+      notes={notes}
+      onToggleNewPatient={setShowNewPatient}
+      onNewPatientName={setNewPatientName}
+      onNewPatientPhone={setNewPatientPhone}
+      onPatientId={setPatientId}
+      onTime={setTime}
+      onPrice={setPrice}
+      onQuantity={setQuantity}
+      onServiceChange={handleServiceChange}
+      onNotes={setNotes}
+    />
   );
 
   return (
-    <div id="calendar-tab" className="grid grid-cols-1 md:grid-cols-12 gap-6 items-start">
+    <>
+      {/* View mode toggle: Visualização do App x Google Agenda Oficial */}
+      <div className="w-full mb-5">
+        <div className="inline-flex items-center gap-1 p-1 bg-white dark:bg-slate-900 rounded-2xl border border-slate-100 dark:border-slate-800 shadow-sm">
+          <button
+            onClick={() => setViewMode("app")}
+            className={`flex items-center gap-1.5 px-4 py-2 rounded-xl text-[11px] font-bold transition-all cursor-pointer ${
+              viewMode === "app"
+                ? "bg-brand text-white shadow-sm"
+                : "text-slate-500 hover:bg-slate-50 dark:text-slate-400 dark:hover:bg-slate-800"
+            }`}
+          >
+            <Calendar className="w-3.5 h-3.5" /> Visualização do App
+          </button>
+          <button
+            onClick={() => setViewMode("google")}
+            className={`flex items-center gap-1.5 px-4 py-2 rounded-xl text-[11px] font-bold transition-all cursor-pointer ${
+              viewMode === "google"
+                ? "bg-brand text-white shadow-sm"
+                : "text-slate-500 hover:bg-slate-50 dark:text-slate-400 dark:hover:bg-slate-800"
+            }`}
+          >
+            <ExternalLink className="w-3.5 h-3.5" /> Google Agenda Oficial
+          </button>
+        </div>
+        <p className="text-[9px] text-slate-400 mt-1.5">
+          {viewMode === "app"
+            ? "Grade inteligente com bloqueios, status e integração WhatsApp."
+            : "Calendário oficial do Google embutido via iframe — fidelidade 100% com o Google Agenda web."}
+        </p>
+      </div>
+
+      {viewMode === "google" ? (
+        <div id="calendar-tab" className="w-full">
+          <div className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-100 dark:border-slate-800 shadow-sm overflow-hidden">
+            <div className="flex items-center justify-between gap-3 px-5 py-4 border-b border-slate-100 dark:border-slate-800 flex-wrap">
+              <div className="flex items-center gap-2">
+                <Calendar className="w-4 h-4 text-gold" />
+                <h3 className="text-xs font-bold text-slate-800 dark:text-slate-100 uppercase tracking-wider">
+                  Google Agenda Oficial
+                </h3>
+                <span className="text-[9px] font-bold text-gold bg-emerald-50 dark:bg-emerald-50 px-2 py-0.5 rounded-full border border-emerald-100">
+                  Semana de {formatDateBR(selectedDate)}
+                </span>
+              </div>
+              <div className="flex items-center gap-2">
+                <button
+                  onClick={() => changeDate(-7)}
+                  className="text-[10px] font-bold text-slate-600 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-800 px-3 py-1.5 rounded-lg border border-slate-100 dark:border-slate-700 flex items-center gap-1 cursor-pointer"
+                >
+                  <ChevronLeft className="w-3.5 h-3.5" /> Semana anterior
+                </button>
+                <button
+                  onClick={() => changeDate(7)}
+                  className="text-[10px] font-bold text-slate-600 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-800 px-3 py-1.5 rounded-lg border border-slate-100 dark:border-slate-700 flex items-center gap-1 cursor-pointer"
+                >
+                  Próxima semana <ChevronRight className="w-3.5 h-3.5" />
+                </button>
+              </div>
+            </div>
+            <div className="relative w-full">
+              {!isGoogleConfigured && (
+                <div className="absolute inset-0 z-10 flex items-center justify-center bg-slate-50/80 backdrop-blur-sm">
+                  <p className="text-[11px] font-bold text-slate-500 bg-white px-4 py-2.5 rounded-xl border border-slate-200 shadow-sm">
+                    Configure <code className="font-mono text-gold">VITE_GOOGLE_CALENDAR_EMBED_ID</code> para exibir a agenda oficial.
+                  </p>
+                </div>
+              )}
+              <iframe
+                src={googleEmbedUrl}
+                title="Google Agenda Oficial - Dra. Fabrícia Rodrigues"
+                className="w-full h-[82vh] min-h-[480px] border-0"
+                allow="autoplay; clipboard-write; encrypted-media; fullscreen; picture-in-picture"
+                referrerPolicy="no-referrer-when-downgrade"
+              />
+            </div>
+            <div className="px-5 py-3 border-t border-slate-100 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-900">
+              <p className="text-[9px] text-slate-400">
+                Visualização ao vivo do calendário oficial <strong className="text-slate-500">{googleEmbedCalendarId}</strong> — fonte da verdade absoluta da agenda.
+              </p>
+            </div>
+          </div>
+        </div>
+      ) : (
+      <div id="calendar-tab" className="grid grid-cols-1 md:grid-cols-12 gap-6 items-start">
       {/* Status feedback toast */}
       {feedback && (
         <div className={`fixed top-4 right-4 z-[70] flex items-center gap-2 px-4 py-3 rounded-xl shadow-xl text-xs font-bold text-white page-enter ${feedback.type === "success" ? "bg-emerald-600" : "bg-rose-600"}`}>
@@ -963,7 +1273,7 @@ export default function CalendarView({
               Cadastre ao menos um paciente para agendar.
             </div>
           ) : (
-            <ScheduleForm />
+            ScheduleFormElement
           )}
         </div>
       </div>
@@ -1056,7 +1366,7 @@ export default function CalendarView({
         <div className="mb-4 space-y-2">
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
             <button
-              onClick={() => setShowBlockModal(true)}
+              onClick={() => { setEditingBlock(null); setShowBlockModal(true); }}
               className="w-full flex items-center justify-center gap-2 bg-rose-50 hover:bg-rose-100 text-rose-700 border border-rose-200 hover:border-rose-300 font-bold text-xs py-3 rounded-xl transition-all shadow-sm cursor-pointer"
             >
               <Lock className="w-4 h-4 text-rose-500" />
@@ -1078,7 +1388,15 @@ export default function CalendarView({
                   {b.startTime}–{b.endTime} · {b.reason}
                   <button
                     type="button"
-                    onClick={() => onDeleteScheduleBlock?.(b.id)}
+                    onClick={() => handleEditBlock(b)}
+                    className="text-rose-400 hover:text-rose-700 cursor-pointer"
+                    title="Editar bloqueio"
+                  >
+                    <Pencil className="w-3 h-3" />
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => handleDeleteBlock(b)}
                     className="ml-0.5 text-rose-400 hover:text-rose-700 cursor-pointer"
                     title="Remover bloqueio"
                   >
@@ -1093,18 +1411,18 @@ export default function CalendarView({
         {/* Bloquear Horário Modal */}
         {showBlockModal && (
           <>
-            <div className="fixed inset-0 z-50 bg-slate-900/40 backdrop-blur-sm" onClick={() => setShowBlockModal(false)} />
-            <div className="fixed inset-0 z-50 flex items-center justify-center p-4" onClick={() => setShowBlockModal(false)}>
+            <div className="fixed inset-0 z-50 bg-slate-900/40 backdrop-blur-sm" onClick={() => { setShowBlockModal(false); setEditingBlock(null); }} />
+            <div className="fixed inset-0 z-50 flex items-center justify-center p-4" onClick={() => { setShowBlockModal(false); setEditingBlock(null); }}>
               <div className="bg-white dark:bg-slate-900 rounded-3xl shadow-2xl max-w-md w-full max-h-[85vh] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
                 <div className="bg-brand text-white p-5 rounded-t-3xl flex items-center justify-between">
                   <div className="flex items-center gap-2.5">
                     <Lock className="w-5 h-5 text-gold" />
                     <div>
-                      <h3 className="text-sm font-bold">Bloquear Horário</h3>
+                      <h3 className="text-sm font-bold">{editingBlock ? "Editar Bloqueio" : "Bloquear Horário"}</h3>
                       <p className="text-[10px] text-gold/70">{new Date(blockDate + "T00:00:00").toLocaleDateString("pt-BR", { weekday: "long", day: "2-digit", month: "long" })}</p>
                     </div>
                   </div>
-                  <button onClick={() => setShowBlockModal(false)} className="text-white/70 hover:text-white p-1 cursor-pointer">
+                  <button onClick={() => { setShowBlockModal(false); setEditingBlock(null); }} className="text-white/70 hover:text-white p-1 cursor-pointer">
                     <XCircle className="w-5 h-5" />
                   </button>
                 </div>
@@ -1188,7 +1506,7 @@ export default function CalendarView({
                   )}
 
                   <button type="submit" className="w-full bg-brand hover:bg-brand-700 text-white font-bold py-3 rounded-xl text-xs shadow-sm transition-all cursor-pointer">
-                    Confirmar Bloqueio
+                    {editingBlock ? "Atualizar Bloqueio" : "Confirmar Bloqueio"}
                   </button>
                 </form>
               </div>
@@ -1779,10 +2097,12 @@ export default function CalendarView({
                 <XCircle className="w-4 h-4" />
               </button>
             </div>
-            <ScheduleForm isMobile />
+            {ScheduleFormElement}
           </div>
         </div>
       )}
     </div>
+      )}
+    </>
   );
 }

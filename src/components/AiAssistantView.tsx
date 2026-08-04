@@ -1,6 +1,5 @@
 import React, { useState, useRef, useEffect } from "react";
 import { Patient } from "../types";
-import { GoogleGenAI } from "@google/genai";
 import {
   Cpu,
   Send,
@@ -12,15 +11,6 @@ import {
   AlertTriangle,
   Lightbulb,
 } from "lucide-react";
-
-const GEMINI_API_KEY = import.meta.env.VITE_GEMINI_API_KEY as string;
-
-function getGeminiClient() {
-  if (!GEMINI_API_KEY || GEMINI_API_KEY === "COLE_SUA_CHAVE_GEMINI_AQUI") {
-    return null;
-  }
-  return new GoogleGenAI({ apiKey: GEMINI_API_KEY });
-}
 
 const SYSTEM_PROMPT = `Você é o Assistente Clínico Inteligente da Dra. Fabrícia, uma podóloga especialista em saúde dos pés.
 Sua missão é auxiliar na gestão da clínica, análise de prontuários e suporte à decisão clínica.
@@ -57,7 +47,7 @@ export default function AiAssistantView({ patients }: AiAssistantProps) {
     {
       id: "msg-welcome",
       sender: "ai",
-      text: "Olá! Sou o **Assistente Clínico IA da Podologia Fabrícia**. \n\nPosso ajudar você a gerar guias de cuidados pós-operatórios para seus pacientes, sintetizar anotações rápidas de procedimentos ou dar conselhos sobre podopediatria e acompanhamento de pé diabético. \n\nComo posso ajudar você hoje?",
+      text: "Olá! Sou o **Assistente Clínico IA da Dra. Fabrícia Rodrigues**. \n\nPosso ajudar você a gerar guias de cuidados pós-operatórios para seus pacientes, sintetizar anotações rápidas de procedimentos ou dar conselhos sobre podopediatria e acompanhamento de pé diabético. \n\nComo posso ajudar você hoje?",
       timestamp: new Date(),
     },
   ]);
@@ -87,54 +77,35 @@ export default function AiAssistantView({ patients }: AiAssistantProps) {
     if (!customPrompt) setInputText("");
     setIsSending(true);
 
-    const gemini = getGeminiClient();
-
-    if (!gemini) {
-      const errorMsg: Message = {
-        id: `ai-err-${Date.now()}`,
-        sender: "ai",
-        text: "⚠️ **Chave de API não configurada.**\\n\\nAdicione sua `VITE_GEMINI_API_KEY` no arquivo `.env` e reinicie o servidor.\\n\\nObtenha uma chave em: https://aistudio.google.com/apikey",
-        timestamp: new Date(),
-      };
-      setMessages((prev) => [...prev, errorMsg]);
-      setIsSending(false);
-      return;
-    }
-
     try {
-      let contextPrompt = textToSend;
+      let patientContext: Patient | null = null;
       if (activePatient) {
-        const activeIssues = activePatient.footIssues
-          ?.filter((i) => i.status === "active")
-          .map((i) => `${i.condition} no pé ${i.foot === "right" ? "direito" : "esquerdo"}: ${i.notes || "Sem detalhes"}`)
-          .join("; ") || "Nenhum";
-
-        contextPrompt = `CONTEXTO DO PACIENTE:
-- Nome: ${activePatient.name}
-- Idade: ${new Date().getFullYear() - new Date(activePatient.dob).getFullYear()} anos
-- Diabético: ${activePatient.isDiabetic ? "Sim" : "Não"}
-- Problemas circulatórios: ${activePatient.hasCirculatoryIssues ? "Sim" : "Não"}
-- Alergias: ${activePatient.hasAllergies || "Nenhuma informada"}
-- Observações: ${activePatient.observations || "Nenhuma"}
-- Problemas ativos nos pés: ${activeIssues}
-
-PERGUNTA DA DRA. FABRÍCIA:
-${textToSend}`;
+        patientContext = activePatient;
       }
 
-      const response = await gemini.models.generateContent({
-        model: "gemini-2.0-flash",
-        contents: contextPrompt,
-        config: {
-          systemInstruction: SYSTEM_PROMPT,
-          temperature: 0.7,
-        },
+      // Try local Ollama (via server) first — 100% offline
+      const ollamaRes = await fetch("/api/ollama", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          prompt: textToSend,
+          systemPrompt: SYSTEM_PROMPT,
+          patientContext: patientContext ? { name: activePatient.name, isDiabetic: activePatient.isDiabetic, hasCirculatoryIssues: activePatient.hasCirculatoryIssues, hasAllergies: activePatient.hasAllergies, observations: activePatient.observations, footIssues: activePatient.footIssues } : undefined,
+        }),
       });
+
+      let aiText: string;
+      if (ollamaRes.ok) {
+        const data = await ollamaRes.json();
+        aiText = data.text || "Desculpe, não consegui gerar uma resposta.";
+      } else {
+        aiText = "⚠️ **Ollama local indisponível.**\\n\\nO servidor não conseguiu acessar o Ollama em `localhost:11434`. Verifique se ele está rodando com `ollama serve`.";
+      }
 
       const aiMsg: Message = {
         id: `ai-${Date.now()}`,
         sender: "ai",
-        text: response.text || "Desculpe, não consegui gerar uma resposta.",
+        text: aiText,
         timestamp: new Date(),
       };
       setMessages((prev) => [...prev, aiMsg]);
@@ -143,7 +114,7 @@ ${textToSend}`;
       const errorMsg: Message = {
         id: `ai-err-${Date.now()}`,
         sender: "ai",
-        text: "Houve um erro ao conectar com o Gemini. Verifique sua chave de API e tente novamente.",
+        text: "Houve um erro ao conectar com o assistente de IA local. Certifique-se de que o Ollama está rodando (`ollama serve`).",
         timestamp: new Date(),
       };
       setMessages((prev) => [...prev, errorMsg]);
@@ -264,7 +235,7 @@ ${textToSend}`;
             <h3 className="text-sm font-bold text-slate-800">Trabalho Auxiliado por IA</h3>
           </div>
           <span className="text-[10px] font-bold text-emerald-700 bg-emerald-50 px-2 py-1 rounded-full uppercase">
-            Gemini 2.0 Flash
+            Ollama · Offline
           </span>
         </div>
 
