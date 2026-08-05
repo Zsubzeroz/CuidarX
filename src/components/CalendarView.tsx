@@ -94,6 +94,14 @@ interface ScheduleFormProps {
   onNotes: (v: string) => void;
 }
 
+// Convert "HH:MM" -> minutes since midnight (NaN if invalid)
+const timeToMinutes = (t: string): number => {
+  if (!t) return NaN;
+  const [h, m] = t.split(":").map(Number);
+  if (isNaN(h) || isNaN(m)) return NaN;
+  return h * 60 + m;
+};
+
 // Hoisted to module scope: defined OUTSIDE the CalendarView component so its
 // type is stable across renders. A nested component would be recreated on every
 // render, forcing React to unmount/remount the form and lose input focus.
@@ -363,6 +371,21 @@ export default function CalendarView({
     }
   }, [showBlockModal, selectedDate]);
 
+  // Ao trocar de dia (ou atualizar eventos Google), reposiciona o horário do
+  // formulário para o primeiro slot realmente livre — nunca deixa um horário
+  // bloqueado selecionado como padrão em um novo agendamento.
+  useEffect(() => {
+    if (editingAppt) return;
+    const hours = editingAppt
+      ? dayHours
+      : dayHours.filter((h) => !getBlockForHour(h) && !getGoogleEventForHour(h));
+    const first = hours[0];
+    if (first && !hours.includes(time)) {
+      setTime(first);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedDate, googleEvents, scheduleBlocks]);
+
   // Local safety timeout for Google connect spinner (3s max)
   const [localConnecting, setLocalConnecting] = useState(false);
   const connectingTimerRef = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
@@ -445,6 +468,35 @@ export default function CalendarView({
     if (!selectedDate) { alert("Selecione uma data."); return; }
     if (!time) { alert("Selecione um horário."); return; }
     if (!service) { alert("Selecione um serviço."); return; }
+
+    // BLOQUEIO RÍGIDO: nenhum agendamento pode cair sobre evento do Google Agenda ou bloqueio.
+    const [sh, sm] = time.split(":").map(Number);
+    const apptStartMin = sh * 60 + sm;
+    const apptEndMin = apptStartMin + getServiceDuration();
+
+    const dayGoogleEvents = googleEvents.filter((ge) => ge.start?.slice(0, 10) === selectedDate);
+    const conflictingGoogleEvent = dayGoogleEvents.find((ge) => {
+      if (editingAppt && editingAppt.calendarEventId === ge.id) return false;
+      const geStart = timeToMinutes(formatGoogleTime(ge.start));
+      const geEnd = timeToMinutes(formatGoogleTime(ge.end));
+      if (isNaN(geStart) || geEnd <= geStart) return false;
+      return apptStartMin < geEnd && apptEndMin > geStart;
+    });
+    if (conflictingGoogleEvent) {
+      alert(`Este horário coincide com o evento do Google Agenda "${conflictingGoogleEvent.summary}" (${formatGoogleTime(conflictingGoogleEvent.start)} - ${formatGoogleTime(conflictingGoogleEvent.end)}). Escolha outro horário.`);
+      return;
+    }
+
+    const conflictingBlock = dayBlocks.find((b) => {
+      const bStart = timeToMinutes(b.startTime);
+      const bEnd = timeToMinutes(b.endTime);
+      if (isNaN(bStart)) return false;
+      return apptStartMin < bEnd && apptEndMin > bStart;
+    });
+    if (conflictingBlock) {
+      alert(`Este horário está dentro do bloqueio "${conflictingBlock.reason}" (${conflictingBlock.startTime} - ${conflictingBlock.endTime}).`);
+      return;
+    }
 
     let resolvedPatientId = patientId;
     let resolvedPatientName = "";
@@ -884,15 +936,30 @@ export default function CalendarView({
   const getGoogleEventForHour = (hour: string) => {
     if (!isGoogleConnected) return undefined;
     const [sh, sm] = hour.split(":").map(Number);
-    const slotMinutes = sh * 60 + sm;
+    const slotStart = sh * 60 + sm;
+    const slotEnd = slotStart + 30;
     const dayGoogleEvents = googleEvents.filter((ge) => ge.start?.slice(0, 10) === selectedDate);
+    // Bloqueio RÍGIDO: o evento ocupa QUALQUER slot com sobreposição real de intervalo
+    // (ex.: "Estágio 07:00–12:00" bloqueia 07:00, 07:30, ..., 11:30 — não apenas o início).
     return dayGoogleEvents.find((ge) => {
-      const geTime = formatGoogleTime(ge.start);
-      if (!geTime) return false;
-      const [geh, gem] = geTime.split(":").map(Number);
-      const geMin = geh * 60 + gem;
-      return geMin >= slotMinutes && geMin < slotMinutes + 30;
+      const geStart = timeToMinutes(formatGoogleTime(ge.start));
+      const geEnd = timeToMinutes(formatGoogleTime(ge.end));
+      if (isNaN(geStart)) return false;
+      if (geEnd <= geStart) return false; // all-day ou horário inválido não ocupa slot
+      return slotStart < geEnd && slotEnd > geStart;
     });
+  };
+
+  // True quando o horário de início do evento Google cai DENTRO deste slot
+  // (usado para diferenciar o slot inicial — que mostra o card completo — dos
+  // slots de continuação, que são exibidos como horário bloqueado).
+  const googleEventStartsInSlot = (googleEvt: GoogleCalendarEvent | undefined, hour: string): boolean => {
+    if (!googleEvt) return false;
+    const [sh, sm] = hour.split(":").map(Number);
+    const slotStart = sh * 60 + sm;
+    const geStart = timeToMinutes(formatGoogleTime(googleEvt.start));
+    if (isNaN(geStart)) return false;
+    return geStart >= slotStart && geStart < slotStart + 30;
   };
 
   const matchedApptIds = new Set<string>();
@@ -916,6 +983,13 @@ export default function CalendarView({
   );
   const unlinkedAppts = dailyAppointments.filter((a) => !a.calendarEventId || !dayGoogleEventIds.size);
 
+  // Horários realmente livres para novos agendamentos (sem eventos Google nem bloqueios).
+  // Ao editar, mantém todos para preservar o horário atual do agendamento.
+  const availableHours = editingAppt
+    ? dayHours
+    : dayHours.filter((h) => !getBlockForHour(h) && !getGoogleEventForHour(h));
+  const formDayHours = availableHours.length >= 1 ? availableHours : dayHours;
+
   const ScheduleFormElement = (
     <ScheduleForm
       onSubmit={handleScheduleSubmit}
@@ -923,7 +997,7 @@ export default function CalendarView({
       patients={patients}
       services={services}
       servicePrices={servicePrices}
-      dayHours={dayHours}
+      dayHours={formDayHours}
       showNewPatient={showNewPatient}
       newPatientName={newPatientName}
       newPatientPhone={newPatientPhone}
@@ -1614,6 +1688,7 @@ export default function CalendarView({
             const patientObj = appt ? patients.find((p) => p.id === appt.patientId) : null;
             const isDuplicate = appt?.calendarEventId && googleEvt;
             const blocked = getBlockForHour(hour);
+            const googleEvtStartsHere = googleEventStartsInSlot(googleEvt, hour);
 
             if (blocked) {
               return (
@@ -1630,6 +1705,30 @@ export default function CalendarView({
                       </span>
                       <span className="text-[9px] text-rose-400 font-medium">
                         {blocked.startTime} – {blocked.endTime}
+                      </span>
+                    </div>
+                  </div>
+                </div>
+              );
+            }
+
+            // Slot de continuação de um evento do Google que começou antes —
+            // exibido como HORÁRIO BLOQUEADO, impedindo qualquer agendamento.
+            if (googleEvt && !appt && !googleEvtStartsHere) {
+              return (
+                <div key={hour} className="flex gap-3 items-start p-3 rounded-xl border border-gold/30 bg-gold/5">
+                  <div className="flex items-center gap-1.5 w-14 shrink-0 text-gold font-bold text-[11px] pt-1">
+                    <Clock className="w-3 h-3" />
+                    <span>{hour}</span>
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center gap-2">
+                      <span className="flex items-center gap-1 text-[10px] font-bold text-amber-700 bg-white border border-gold/30 px-2 py-1 rounded-lg">
+                        <Ban className="w-3 h-3 text-amber-500" />
+                        {googleEvt.summary}
+                      </span>
+                      <span className="text-[9px] text-slate-500 font-medium">
+                        {formatGoogleTime(googleEvt.start)} – {formatGoogleTime(googleEvt.end)}
                       </span>
                     </div>
                   </div>

@@ -1,5 +1,6 @@
 import React, { useState, useRef, useEffect } from "react";
 import { Patient } from "../types";
+import { generateAIResponse } from "../services/aiService";
 import {
   Cpu,
   Send,
@@ -12,14 +13,27 @@ import {
   Lightbulb,
 } from "lucide-react";
 
-const SYSTEM_PROMPT = `Você é o Assistente Clínico Inteligente da Dra. Fabrícia, uma podóloga especialista em saúde dos pés.
-Sua missão é auxiliar na gestão da clínica, análise de prontuários e suporte à decisão clínica.
+const SYSTEM_PROMPT = `Você é o Assistente Virtual e Recepcionista da clínica da Dra. Fabrícia Rodrigues — Podologia & Enfermagem.
+Você combina duas funções: (1) recepcionista virtual e especialista no sistema de gestão da clínica e (2) assistente clínico de podologia para apoiar a Dra. Fabrícia.
+
+### DADOS OFICIAIS DA CLÍNICA (responda com precisão sempre que perguntado):
+- ENDEREÇO: Rua Papa João Paulo II, 256 — Artur Nogueira/SP.
+- WHATSAPP: 19 99727-0910 (fale "clínica" ou "agendamento" para ser direcionado ao contato).
+- HORÁRIO DE FUNCIONAMENTO: Segunda a sábado, das 08:00 às 20:00. FECHADA aos domingos.
+- REGRA DE AGENDAMENTO ONLINE: O agendamento pelo portal online exige no mínimo 24 horas de antecedência.
+
+### DÚVIDAS SOBRE O APP / SISTEMA DE GESTÃO:
+1. COMO AGENDAR: No menu superior, entre em "Minha Agenda" e clique em um horário livre da grade ou use o botão "Novo Agendamento". Selecione o cliente, o serviço, a data e o horário e confirme.
+2. AGENDA SINCRONIZADA COM O GOOGLE CALENDAR: A agenda exibe automaticamente os eventos do Google Calendar (ex.: "Estágio 07:00–12:00" aparece bloqueado na grade). O agendamento cria o evento no Google Calendar e a conexão é feita pelo botão "Conectar Google Agenda" no topo do painel.
+3. CADASTRO DE CLIENTES: No menu "Clientes", clique em "Novo Cliente", preencha nome, telefone, data de nascimento e anamnese, e salve. O histórico e prontuário ficam registrados para consulta futura.
+4. WHATSAPP 1-CLIQUE: Na ficha do cliente ou no agendamento há um botão de WhatsApp que abre a conversa direta com o número do cliente em um clique, facilitando confirmações e envio de orientações.
 
 ### DIRETRIZES DE ATUAÇÃO:
-1. CONHECIMENTO ESPECIALIZADO: Você domina assuntos como: Pé Diabético, Onicocriptose (unhas encravadas), Onicomicose, Calosidades, e biomecânica da pisada.
-2. TOM DE VOZ: Profissional, empático, organizado e técnico (mas acessível).
-3. PRIVACIDADE: Você nunca compartilha dados de um paciente com outro.
-4. PADRÃO DE PRONTUÁRIO: Quando solicitado para criar um resumo de atendimento, utilize o método SOAP (Subjetivo, Objetivo, Avaliação e Plano).
+1. RECEPÇÃO: Ao responder perguntas sobre horários, endereço, valores ou regras, use os dados oficiais acima e seja acolhedor(a) e objetivo(a).
+2. CONHECIMENTO ESPECIALIZADO: Você domina assuntos clínicos como: Pé Diabético, Onicocriptose (unhas encravadas), Onicomicose, Calosidades, e biomecânica da pisada.
+3. TOM DE VOZ: Profissional, empático, organizado e técnico (mas acessível).
+4. PRIVACIDADE: Você nunca compartilha dados de um paciente com outro.
+5. PADRÃO DE PRONTUÁRIO: Quando solicitado para criar um resumo de atendimento, utilize o método SOAP (Subjetivo, Objetivo, Avaliação e Plano).
 
 ### FUNÇÕES PRINCIPAIS:
 - RESUMO DE CASOS: Analisar o histórico de consultas do paciente e destacar alertas.
@@ -47,7 +61,7 @@ export default function AiAssistantView({ patients }: AiAssistantProps) {
     {
       id: "msg-welcome",
       sender: "ai",
-      text: "Olá! Sou o **Assistente Clínico IA da Dra. Fabrícia Rodrigues**. \n\nPosso ajudar você a gerar guias de cuidados pós-operatórios para seus pacientes, sintetizar anotações rápidas de procedimentos ou dar conselhos sobre podopediatria e acompanhamento de pé diabético. \n\nComo posso ajudar você hoje?",
+      text: "Olá! Sou o **Assistente Virtual da Dra. Fabrícia Rodrigues** 🤖✨\n\nPosso ajudar com dúvidas sobre o **sistema** (como agendar, ver a agenda sincronizada com o Google Calendar, cadastrar clientes, usar o WhatsApp 1-clique) e sobre a **clínica** (endereço, horários, regras de agendamento).\n\nTambém sou assistente clínico: gero guias de cuidados pós-operatórios, sintetizo prontuários e apoio no acompanhamento de pé diabético.\n\nComo posso ajudar você hoje?",
       timestamp: new Date(),
     },
   ]);
@@ -83,29 +97,25 @@ export default function AiAssistantView({ patients }: AiAssistantProps) {
         patientContext = activePatient;
       }
 
-      // Try local Ollama (via server) first — 100% offline
-      const ollamaRes = await fetch("/api/ollama", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          prompt: textToSend,
-          systemPrompt: SYSTEM_PROMPT,
-          patientContext: patientContext ? { name: activePatient.name, isDiabetic: activePatient.isDiabetic, hasCirculatoryIssues: activePatient.hasCirculatoryIssues, hasAllergies: activePatient.hasAllergies, observations: activePatient.observations, footIssues: activePatient.footIssues } : undefined,
-        }),
+      const ollamaRes = await generateAIResponse({
+        prompt: textToSend,
+        systemPrompt: SYSTEM_PROMPT,
+        patientContext: patientContext
+          ? {
+              name: activePatient.name,
+              isDiabetic: activePatient.isDiabetic,
+              hasCirculatoryIssues: activePatient.hasCirculatoryIssues,
+              hasAllergies: activePatient.hasAllergies,
+              observations: activePatient.observations,
+              footIssues: activePatient.footIssues,
+            }
+          : undefined,
       });
-
-      let aiText: string;
-      if (ollamaRes.ok) {
-        const data = await ollamaRes.json();
-        aiText = data.text || "Desculpe, não consegui gerar uma resposta.";
-      } else {
-        aiText = "⚠️ **Ollama local indisponível.**\\n\\nO servidor não conseguiu acessar o Ollama em `localhost:11434`. Verifique se ele está rodando com `ollama serve`.";
-      }
 
       const aiMsg: Message = {
         id: `ai-${Date.now()}`,
         sender: "ai",
-        text: aiText,
+        text: ollamaRes,
         timestamp: new Date(),
       };
       setMessages((prev) => [...prev, aiMsg]);
@@ -114,7 +124,7 @@ export default function AiAssistantView({ patients }: AiAssistantProps) {
       const errorMsg: Message = {
         id: `ai-err-${Date.now()}`,
         sender: "ai",
-        text: "Houve um erro ao conectar com o assistente de IA local. Certifique-se de que o Ollama está rodando (`ollama serve`).",
+        text: "Houve um erro ao conectar com o assistente de IA. Verifique se a chave **Gemini (Google AI Studio)** está configurada no build.",
         timestamp: new Date(),
       };
       setMessages((prev) => [...prev, errorMsg]);
@@ -124,6 +134,11 @@ export default function AiAssistantView({ patients }: AiAssistantProps) {
   };
 
   const quickPrompts = [
+    {
+      title: "Dúvidas da Clínica",
+      prompt: "Quais são o endereço, o WhatsApp, o horário de funcionamento e as regras de agendamento online da clínica?",
+      icon: <Lightbulb className="w-4 h-4 text-amber-500" />,
+    },
     {
       title: "Guia Pós-Operatório",
       prompt: "Gere recomendações pós-operatório (onicocriptose/unha encravada) completas e fáceis de ler para enviar ao WhatsApp do paciente.",
@@ -235,7 +250,7 @@ export default function AiAssistantView({ patients }: AiAssistantProps) {
             <h3 className="text-sm font-bold text-slate-800">Trabalho Auxiliado por IA</h3>
           </div>
           <span className="text-[10px] font-bold text-emerald-700 bg-emerald-50 px-2 py-1 rounded-full uppercase">
-            Ollama · Offline
+            Gemini · Nuvem
           </span>
         </div>
 

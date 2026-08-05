@@ -29,6 +29,7 @@ import {
 // @ts-ignore
 import clinicLogo from "../assets/images/clinic_logo_1783686122531.jpg";
 import { getClinicWhatsAppLink, buildClientMessage } from "../services/whatsappAutoService";
+import AiReceptionistWidget from "./AiReceptionistWidget";
 import {
   fetchGoogleCalendarEvents,
   isGoogleCalendarConnected,

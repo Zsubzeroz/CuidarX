@@ -6,8 +6,11 @@ import {
 } from "./googleCalendar";
 
 const AUTH_STORAGE_KEY = "google_admin_auth";
-const AUTHORIZED_EMAIL =
-  import.meta.env.VITE_AUTHORIZED_ADMIN_EMAIL || "fabriciapodologa@gmail.com";
+
+// Whitelist estrita de administradores — somente este e-mail acessa o painel
+const ADMIN_EMAILS: string[] = [
+  "fabriciapodologa@gmail.com",
+];
 
 export interface AdminUser {
   email: string;
@@ -16,13 +19,14 @@ export interface AdminUser {
   loginAt: string;
 }
 
-export function getAuthorizedEmail(): string {
-  return AUTHORIZED_EMAIL.toLowerCase();
+export function getAuthorizedEmails(): string[] {
+  return [...ADMIN_EMAILS];
 }
 
 export function isAuthorizedEmail(email: string | null | undefined): boolean {
   if (!email) return false;
-  return email.trim().toLowerCase() === AUTHORIZED_EMAIL.toLowerCase();
+  const normalized = email.trim().toLowerCase();
+  return ADMIN_EMAILS.some((admin) => admin === normalized);
 }
 
 export function getCurrentUser(): AdminUser | null {

@@ -45,13 +45,13 @@ export function useRealtimeData() {
       }
     };
 
-    // Safety timeout: force-load after 2s even if some listeners haven't responded
+    // Safety timeout: force-load after 3s even if some listeners haven't responded
     const safetyTimer = setTimeout(() => {
       if (loadedCount < totalCollections) {
         console.warn(`[useRealtimeData] Safety timeout: only ${loadedCount}/${totalCollections} collections loaded, forcing UI ready`);
         setIsLoading(false);
       }
-    }, 2000);
+    }, 3000);
 
     const unsubPatients = listenPatients(
       (data) => { console.log(`[useRealtimeData] patients update: ${data.length} records`); setPatients(data); setSyncStatus("synced"); checkLoaded(); },

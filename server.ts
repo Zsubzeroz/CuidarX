@@ -18,7 +18,7 @@ import {
 dotenv.config();
 
 const app = express();
-const PORT = 3000;
+const PORT = Number(process.env.PORT) || 3000;
 const DATA_FILE = path.join(process.cwd(), "clinic_data.json");
 
 // Initialize Gemini SDK lazily
@@ -587,7 +587,7 @@ Por favor, responda sempre em português brasileiro de forma clara e formatada c
       : prompt;
 
     const response = await aiClient.models.generateContent({
-      model: "gemini-2.0-flash",
+      model: "gemini-3.5-flash",
       contents,
       config: {
         systemInstruction: systemPrompt,

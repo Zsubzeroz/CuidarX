@@ -179,7 +179,7 @@ export async function connectGoogleCalendar(): Promise<string> {
     const token = await Promise.race([
       requestToken(client),
       new Promise<string>((_, reject) =>
-        setTimeout(() => reject(new Error("CONNECT_TIMEOUT")), 4000)
+        setTimeout(() => reject(new Error("CONNECT_TIMEOUT")), 60000)
       ),
     ]);
 
