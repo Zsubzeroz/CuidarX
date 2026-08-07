@@ -50,3 +50,18 @@ temp/
 
 # Firebase deploy cache
 .firebase/
+.aider*
+
+# Python/Django (local dev only)
+venv/
+__pycache__/
+*.pyc
+db.sqlite3
+backend/
+cliente/
+clinica_fabricia/
+core/
+integracoes/
+profissional/
+manage.py
+requirements.txt
