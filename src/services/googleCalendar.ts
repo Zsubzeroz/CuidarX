@@ -6,6 +6,13 @@ const TOKEN_STORAGE_KEY = "google_calendar_access_token";
 const TOKEN_EXPIRY_KEY = "google_calendar_token_expiry";
 const GIS_SCRIPT_URL = "https://accounts.google.com/gsi/client";
 
+// Detecta se está rodando no Capacitor (Android/iOS)
+export function isNativePlatform(): boolean {
+  try {
+    return !!(window as any).Capacitor || navigator.userAgent.includes("Capacitor");
+  } catch { return false; }
+}
+
 let tokenClient: any = null;
 let accessToken: string | null = (() => {
   try {
@@ -176,6 +183,21 @@ export async function connectGoogleCalendar(): Promise<string> {
     await loadGIScript();
     const client = await getTokenClient();
 
+    // No Android (Capacitor), popup não funciona — redireciona direto
+    if (isNativePlatform()) {
+      const authUrl =
+        `https://accounts.google.com/o/oauth2/v2/auth` +
+        `?client_id=${encodeURIComponent(CLIENT_ID)}` +
+        `&redirect_uri=${encodeURIComponent(window.location.href)}` +
+        `&response_type=token` +
+        `&scope=${encodeURIComponent(SCOPES)}` +
+        `&prompt=consent` +
+        `&include_granted_scopes=true`;
+      window.location.href = authUrl;
+      // A app vai recarregar e extractTokenFromUrl() vai extrair o token
+      throw new Error("REDIRECT_PENDING");
+    }
+
     const token = await Promise.race([
       requestToken(client),
       new Promise<string>((_, reject) =>
@@ -207,7 +229,12 @@ function requestToken(client: any): Promise<string> {
     };
 
     try {
-      client.requestAccessToken({ prompt: "consent" });
+      // No Android (Capacitor), popup não funciona — usa redirect
+      if (isNativePlatform()) {
+        client.requestAccessToken({ prompt: "consent", ux_mode: "redirect", redirect_uri: window.location.origin });
+      } else {
+        client.requestAccessToken({ prompt: "consent" });
+      }
     } catch (e) {
       reject(new Error("Popup bloqueado"));
     }

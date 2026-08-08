@@ -3,11 +3,23 @@ import {
   disconnectGoogleCalendar,
   getAccessToken,
   silentConnectGoogle,
+  isNativePlatform,
 } from "./googleCalendar";
+
+export { isNativePlatform } from "./googleCalendar";
+import { auth, googleProvider } from "./firebase";
+import {
+  signInWithPopup,
+  signInWithRedirect,
+  signInWithEmailAndPassword,
+  getRedirectResult,
+  signOut as firebaseSignOut,
+  onAuthStateChanged,
+  type User as FirebaseUser,
+} from "firebase/auth";
 
 const AUTH_STORAGE_KEY = "google_admin_auth";
 
-// Whitelist estrita de administradores — somente este e-mail acessa o painel
 const ADMIN_EMAILS: string[] = [
   "fabriciapodologa@gmail.com",
 ];
@@ -44,6 +56,21 @@ export function getCurrentUser(): AdminUser | null {
   }
 }
 
+function firebaseUserToAdminUser(firebaseUser: FirebaseUser): AdminUser {
+  return {
+    email: firebaseUser.email || "",
+    name: firebaseUser.displayName || undefined,
+    picture: firebaseUser.photoURL || undefined,
+    loginAt: new Date().toISOString(),
+  };
+}
+
+function saveAdminUser(user: AdminUser): void {
+  try {
+    localStorage.setItem(AUTH_STORAGE_KEY, JSON.stringify(user));
+  } catch {}
+}
+
 export async function fetchGoogleUserInfo(
   token: string
 ): Promise<{ email: string; name?: string; picture?: string } | null> {
@@ -58,8 +85,71 @@ export async function fetchGoogleUserInfo(
   }
 }
 
+// ====== FIREBASE AUTH (Android / Native) ======
+
+export async function loginWithEmailPassword(email: string, password: string): Promise<AdminUser> {
+  const result = await signInWithEmailAndPassword(auth, email, password);
+  const user = result.user;
+  if (!user?.email || !isAuthorizedEmail(user.email)) {
+    await firebaseSignOut(auth);
+    throw new Error("UNAUTHORIZED:" + (user?.email || "unknown"));
+  }
+  const adminUser = firebaseUserToAdminUser(user);
+  saveAdminUser(adminUser);
+  return adminUser;
+}
+
+export async function loginWithFirebasePopup(): Promise<AdminUser> {
+  const result = await signInWithPopup(auth, googleProvider);
+  const user = result.user;
+  if (!user?.email || !isAuthorizedEmail(user.email)) {
+    await firebaseSignOut(auth);
+    throw new Error("UNAUTHORIZED:" + (user?.email || "unknown"));
+  }
+  const adminUser = firebaseUserToAdminUser(user);
+  saveAdminUser(adminUser);
+  return adminUser;
+}
+
+export function loginWithFirebaseRedirect(): void {
+  signInWithRedirect(auth, googleProvider);
+}
+
+export async function handleFirebaseRedirectResult(): Promise<AdminUser | null> {
+  try {
+    const result = await getRedirectResult(auth);
+    if (!result?.user) return null;
+    const user = result.user;
+    if (!user?.email || !isAuthorizedEmail(user.email)) {
+      await firebaseSignOut(auth);
+      throw new Error("UNAUTHORIZED:" + (user?.email || "unknown"));
+    }
+    const adminUser = firebaseUserToAdminUser(user);
+    saveAdminUser(adminUser);
+    return adminUser;
+  } catch {
+    return null;
+  }
+}
+
+export function onAuthStateChange(callback: (user: FirebaseUser | null) => void) {
+  return onAuthStateChanged(auth, callback);
+}
+
+export async function logoutFirebase(): Promise<void> {
+  try {
+    await firebaseSignOut(auth);
+  } catch {}
+}
+
+// ====== LEGACY (GIS Popup — web only) ======
+
 export async function loginWithGoogle(): Promise<AdminUser> {
-  const token = await connectGoogleCalendar();
+  let token = getAccessToken();
+
+  if (!token) {
+    token = await connectGoogleCalendar();
+  }
 
   const info = await fetchGoogleUserInfo(token);
   if (!info?.email) {
@@ -79,10 +169,7 @@ export async function loginWithGoogle(): Promise<AdminUser> {
     loginAt: new Date().toISOString(),
   };
 
-  try {
-    localStorage.setItem(AUTH_STORAGE_KEY, JSON.stringify(user));
-  } catch {}
-
+  saveAdminUser(user);
   return user;
 }
 
@@ -106,9 +193,7 @@ export async function trySilentLogin(): Promise<AdminUser | null> {
       picture: info.picture,
       loginAt: new Date().toISOString(),
     };
-    try {
-      localStorage.setItem(AUTH_STORAGE_KEY, JSON.stringify(user));
-    } catch {}
+    saveAdminUser(user);
     return user;
   } catch {
     return null;
@@ -117,6 +202,7 @@ export async function trySilentLogin(): Promise<AdminUser | null> {
 
 export function logout(): void {
   disconnectGoogleCalendar();
+  logoutFirebase();
   try {
     localStorage.removeItem(AUTH_STORAGE_KEY);
   } catch {}

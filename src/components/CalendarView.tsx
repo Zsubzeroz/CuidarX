@@ -994,10 +994,10 @@ export default function CalendarView({
     return blockStart >= slotStart && blockStart < slotStart + 30;
   };
 
-  // Calcula altura mínima do card baseada na duração em minutos (30min = 60px)
+  // Calcula altura mínima do card baseada na duração em minutos (30min = 80px)
   const getSlotHeight = (durationMin: number): string => {
     const units = Math.max(1, Math.round(durationMin / 30));
-    return `${units * 60}px`;
+    return `${units * 80}px`;
   };
 
   const matchedApptIds = new Set<string>();
@@ -1059,37 +1059,6 @@ export default function CalendarView({
 
   return (
     <>
-      {/* View mode toggle: Visualização do App x Google Agenda Oficial */}
-      <div className="w-full mb-5">
-        <div className="inline-flex items-center gap-1 p-1 bg-white dark:bg-slate-900 rounded-2xl border border-slate-100 dark:border-slate-800 shadow-sm">
-          <button
-            onClick={() => setViewMode("app")}
-            className={`flex items-center gap-1.5 px-4 py-2 rounded-xl text-[11px] font-bold transition-all cursor-pointer ${
-              viewMode === "app"
-                ? "bg-brand text-white shadow-sm"
-                : "text-slate-500 hover:bg-slate-50 dark:text-slate-400 dark:hover:bg-slate-800"
-            }`}
-          >
-            <Calendar className="w-3.5 h-3.5" /> Visualização do App
-          </button>
-          <button
-            onClick={() => setViewMode("google")}
-            className={`flex items-center gap-1.5 px-4 py-2 rounded-xl text-[11px] font-bold transition-all cursor-pointer ${
-              viewMode === "google"
-                ? "bg-brand text-white shadow-sm"
-                : "text-slate-500 hover:bg-slate-50 dark:text-slate-400 dark:hover:bg-slate-800"
-            }`}
-          >
-            <ExternalLink className="w-3.5 h-3.5" /> Google Agenda Oficial
-          </button>
-        </div>
-        <p className="text-[9px] text-slate-400 mt-1.5">
-          {viewMode === "app"
-            ? "Grade inteligente com bloqueios, status e integração WhatsApp."
-            : "Calendário oficial do Google embutido via iframe — fidelidade 100% com o Google Agenda web."}
-        </p>
-      </div>
-
       {viewMode === "google" ? (
         <div id="calendar-tab" className="w-full">
           <div className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-100 dark:border-slate-800 shadow-sm overflow-hidden">
@@ -1118,7 +1087,8 @@ export default function CalendarView({
                 </button>
               </div>
             </div>
-            <div className="relative w-full">
+            {/* Desktop only: iframe Google Calendar */}
+            <div className="relative w-full hidden lg:block">
               {!isGoogleConfigured && (
                 <div className="absolute inset-0 z-10 flex items-center justify-center bg-slate-50/80 backdrop-blur-sm">
                   <p className="text-[11px] font-bold text-slate-500 bg-white px-4 py-2.5 rounded-xl border border-slate-200 shadow-sm">
@@ -1133,11 +1103,6 @@ export default function CalendarView({
                 allow="autoplay; clipboard-write; encrypted-media; fullscreen; picture-in-picture"
                 referrerPolicy="no-referrer-when-downgrade"
               />
-            </div>
-            <div className="px-5 py-3 border-t border-slate-100 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-900">
-              <p className="text-[9px] text-slate-400">
-                Visualização ao vivo do calendário oficial <strong className="text-slate-500">{googleEmbedCalendarId}</strong> — fonte da verdade absoluta da agenda.
-              </p>
             </div>
           </div>
         </div>
@@ -1392,6 +1357,37 @@ export default function CalendarView({
 
       {/* RIGHT: Hourly agenda */}
       <div className="md:col-span-7 lg:col-span-8 bg-white dark:bg-slate-900 p-6 rounded-2xl border border-slate-100 dark:border-slate-800 shadow-sm text-left order-1 lg:order-2">
+        {/* View mode toggle — centralizado acima do titulo (apenas desktop) */}
+        <div className="hidden lg:flex lg:flex-col lg:items-center lg:gap-1.5 lg:mb-5">
+          <div className="inline-flex items-center gap-1 p-1 bg-slate-50 rounded-2xl border border-slate-100 shadow-sm">
+            <button
+              onClick={() => setViewMode("app")}
+              className={`flex items-center gap-1.5 px-4 py-2 rounded-xl text-[11px] font-bold transition-all cursor-pointer ${
+                viewMode === "app"
+                  ? "bg-brand text-white shadow-sm"
+                  : "text-slate-500 hover:bg-white dark:text-slate-400 dark:hover:bg-slate-800"
+              }`}
+            >
+              <Calendar className="w-3.5 h-3.5" /> Visualização do App
+            </button>
+            <button
+              onClick={() => setViewMode("google")}
+              className={`flex items-center gap-1.5 px-4 py-2 rounded-xl text-[11px] font-bold transition-all cursor-pointer ${
+                viewMode === "google"
+                  ? "bg-brand text-white shadow-sm"
+                  : "text-slate-500 hover:bg-white dark:text-slate-400 dark:hover:bg-slate-800"
+              }`}
+            >
+              <ExternalLink className="w-3.5 h-3.5" /> Google Agenda Oficial
+            </button>
+          </div>
+          <p className="text-[9px] text-slate-400">
+            {viewMode === "app"
+              ? "Grade inteligente com bloqueios, status e integração WhatsApp."
+              : "Calendário oficial do Google embutido via iframe — fidelidade 100%."}
+          </p>
+        </div>
+
         {/* Mobile Google status bar */}
         <div className="md:hidden mb-4">
           {isGoogleConnected && googlePermissionError ? (
@@ -1721,11 +1717,46 @@ export default function CalendarView({
           )}
 
           {(() => {
+            // Pre-group long events: only render the start slot with full height.
+            // Build a map of eventId -> { startMin, endMin, durationMin } so we can
+            // detect continuation slots and skip them.
+            const longEventGroups = new Map<string, { startMin: number; endMin: number; durationMin: number }>();
+
+            // Google events
+            googleEvents
+              .filter((ge) => ge.start?.slice(0, 10) === selectedDate)
+              .forEach((ge) => {
+                const gStart = timeToMinutes(formatGoogleTime(ge.start));
+                const gEnd = timeToMinutes(formatGoogleTime(ge.end));
+                if (isNaN(gStart) || isNaN(gEnd) || gEnd <= gStart) return;
+                const duration = gEnd - gStart;
+                if (!longEventGroups.has(ge.id)) {
+                  longEventGroups.set(ge.id, { startMin: gStart, endMin: gEnd, durationMin: duration });
+                }
+              });
+
+            // Local appointments
+            dailyAppointments.forEach((appt) => {
+              if (!appt.time) return;
+              const [ah, am] = appt.time.split(":").map(Number);
+              const apptStart = ah * 60 + am;
+              const apptEnd = apptStart + getServiceDuration();
+              const duration = apptEnd - apptStart;
+              if (!longEventGroups.has(appt.id)) {
+                longEventGroups.set(appt.id, { startMin: apptStart, endMin: apptEnd, durationMin: duration });
+              }
+            });
+
             // Track which blocks/events have been rendered to avoid duplicates
             const renderedBlockIds = new Set<string>();
             const renderedGoogleIds = new Set<string>();
-            
+            const renderedApptIds = new Set<string>();
+
             return dayHours.map((hour) => {
+              const [sh, sm] = hour.split(":").map(Number);
+              const slotStart = sh * 60 + sm;
+              const slotEnd = slotStart + 30;
+
               const googleEvt = getGoogleEventForHour(hour);
               const appt = getApptForHour(hour);
               const patientObj = appt ? patients.find((p) => p.id === appt.patientId) : null;
@@ -1733,7 +1764,18 @@ export default function CalendarView({
               const blocked = getBlockForHour(hour);
               const googleEvtStartsHere = googleEventStartsInSlot(googleEvt, hour);
 
-              // Bloqueios: renderiza apenas no slot de início, com altura proporcional
+              // --- Long event handling ---
+              // If we already rendered this Google event at its start slot, skip continuation slots.
+              if (googleEvt && renderedGoogleIds.has(googleEvt.id)) {
+                return null;
+              }
+
+              // If we already rendered this appointment at its start slot, skip continuation slots.
+              if (appt && !googleEvt && renderedApptIds.has(appt.id)) {
+                return null;
+              }
+
+              // --- Bloqueios: renderiza apenas no slot de início, com altura proporcional ---
               if (blocked && !renderedBlockIds.has(blocked.id)) {
                 renderedBlockIds.add(blocked.id);
                 const [bh, bm] = blocked.startTime.split(":").map(Number);
@@ -1765,7 +1807,7 @@ export default function CalendarView({
                 return null;
               }
 
-              // Eventos Google: renderiza apenas no slot de início, com altura proporcional
+              // --- Eventos Google (não duplicados): renderiza apenas no slot de início ---
               if (googleEvt && !appt && !renderedGoogleIds.has(googleEvt.id)) {
                 if (googleEvtStartsHere) {
                   renderedGoogleIds.add(googleEvt.id);
@@ -1796,134 +1838,280 @@ export default function CalendarView({
                 // Google event overlaps but doesn't start here — skip continuation
                 return null;
               }
-              // Slot de continuação de evento Google — pula
-              if (googleEvt && !appt && renderedGoogleIds.has(googleEvt.id)) {
-                return null;
+
+              // --- Duplicate case: both Google event AND local appointment ---
+              // Mark as rendered at the start slot, then render the full card.
+              if (isDuplicate && googleEvt && appt) {
+                if (!renderedGoogleIds.has(googleEvt.id)) {
+                  renderedGoogleIds.add(googleEvt.id);
+                  renderedApptIds.add(appt.id);
+                }
+                // For long duplicate events: skip continuation slots
+                const group = longEventGroups.get(googleEvt.id);
+                if (group && group.durationMin > 30 && slotStart !== group.startMin) {
+                  return null;
+                }
               }
 
-            return (
-              <div
-                key={hour}
-                className={`flex gap-3 items-start p-3 rounded-xl border transition-all ${
-                  googleEvt
-                    ? isDuplicate
-                      ? "bg-emerald-50/10 border-emerald-100/70"
-                      : "bg-gold/5 border-gold/20"
-                    : appt
-                    ? appt.source === "google"
-                      ? "bg-gold/5 border-gold/20"
-                      : appt.status === "completed"
-                      ? "bg-emerald-50/10 border-emerald-100/70"
-                      : appt.status === "confirmed"
-                      ? "bg-emerald-50/10 border-emerald-100/70"
-                    : appt.status === "canceled"
-                    ? "bg-slate-50 border-slate-100 opacity-60"
-                    : "bg-[#0F3B2E]/5 border-[#0F3B2E]/15"
-                    : "border-slate-50 bg-slate-50/20"
-                }`}
-              >
-                <div className="flex items-center gap-1.5 w-14 shrink-0 text-slate-500 font-bold text-[11px] pt-1">
-                  <Clock className="w-3 h-3 text-slate-400" />
-                  <span>{hour}</span>
-                </div>
+              // --- Local-only appointment: mark as rendered and set dynamic height ---
+              if (appt && !googleEvt && !renderedApptIds.has(appt.id)) {
+                renderedApptIds.add(appt.id);
+              }
 
-                <div className="flex-1 min-w-0">
-                  {googleEvt ? (
-                    <div className="space-y-1.5 text-xs">
-                      <div className="flex justify-between items-start gap-2">
-                        <div className="min-w-0">
-                          <div className="flex items-center gap-1.5 flex-wrap">
-                            <span className="text-[8px] font-bold text-gold bg-gold-subtle px-1.5 py-0.5 rounded uppercase border border-gold/10">
+              // Calculate dynamic min-height for the start slot of a long event
+              let dynamicMinHeightStyle: React.CSSProperties = {};
+              if (googleEvt && isDuplicate && appt) {
+                const group = longEventGroups.get(googleEvt.id);
+                if (group && group.durationMin > 30) {
+                  dynamicMinHeightStyle = { minHeight: getSlotHeight(group.durationMin) };
+                }
+              } else if (appt && !googleEvt) {
+                const group = longEventGroups.get(appt.id);
+                if (group && group.durationMin > 30) {
+                  dynamicMinHeightStyle = { minHeight: getSlotHeight(group.durationMin) };
+                }
+              }
+
+              return (
+                <div
+                  key={hour}
+                  style={dynamicMinHeightStyle}
+                  className={`flex flex-col gap-3 items-start p-3 rounded-xl border transition-all ${
+                    googleEvt
+                      ? isDuplicate
+                        ? "bg-emerald-50/10 border-emerald-100/70"
+                      : "bg-gold/5 border-gold/20"
+                      : appt
+                      ? appt.source === "google"
+                        ? "bg-gold/5 border-gold/20"
+                        : appt.status === "completed"
+                        ? "bg-emerald-50/10 border-emerald-100/70"
+                        : appt.status === "confirmed"
+                        ? "bg-emerald-50/10 border-emerald-100/70"
+                      : appt.status === "canceled"
+                      ? "bg-slate-50 border-slate-100 opacity-60"
+                      : "bg-[#0F3B2E]/5 border-[#0F3B2E]/15"
+                      : "border-slate-50 bg-slate-50/20"
+                  }`}
+                >
+                  <div className="flex items-center gap-1.5 w-14 shrink-0 text-slate-500 font-bold text-[11px] pt-1">
+                    <Clock className="w-3 h-3 text-slate-400" />
+                    <span>{hour}</span>
+                  </div>
+
+                  <div className="flex-1 min-w-0">
+                    {googleEvt ? (
+                      <div className="space-y-1.5 text-xs">
+                        <div className="flex justify-between items-start gap-2">
+                          <div className="min-w-0">
+                            <div className="flex items-center gap-1.5 flex-wrap">
+                              <span className="text-[8px] font-bold text-gold bg-gold-subtle px-1.5 py-0.5 rounded uppercase border border-gold/10">
+                                Google
+                              </span>
+                              <span className="font-bold text-slate-800 truncate">{googleEvt.summary}</span>
+                            </div>
+                            <p className="text-[9px] text-gold/70 mt-0.5">
+                              {formatGoogleTime(googleEvt.start)} - {formatGoogleTime(googleEvt.end)}
+                            </p>
+                            {googleEvt.description && (
+                              <p className="text-[9px] text-slate-500 italic mt-0.5">{googleEvt.description}</p>
+                            )}
+                          </div>
+
+                          {isDuplicate ? (
+                            <span className="text-[8px] px-2 py-0.5 rounded-full font-bold uppercase tracking-wide border shrink-0 bg-emerald-50 text-emerald-700 border-emerald-200">
+                              Sincronizado
+                            </span>
+                          ) : (
+                            <span className="text-[8px] px-2 py-0.5 rounded-full font-bold uppercase tracking-wide border shrink-0 bg-gold-subtle text-gold border-gold/30">
                               Google
                             </span>
-                            <span className="font-bold text-slate-800 truncate">{googleEvt.summary}</span>
-                          </div>
-                          <p className="text-[9px] text-gold/70 mt-0.5">
-                            {formatGoogleTime(googleEvt.start)} - {formatGoogleTime(googleEvt.end)}
-                          </p>
-                          {googleEvt.description && (
-                            <p className="text-[9px] text-slate-500 italic mt-0.5">{googleEvt.description}</p>
                           )}
                         </div>
 
-                        {isDuplicate ? (
-                          <span className="text-[8px] px-2 py-0.5 rounded-full font-bold uppercase tracking-wide border shrink-0 bg-emerald-50 text-emerald-700 border-emerald-200">
-                            Sincronizado
-                          </span>
-                        ) : (
-                          <span className="text-[8px] px-2 py-0.5 rounded-full font-bold uppercase tracking-wide border shrink-0 bg-gold-subtle text-gold border-gold/30">
-                            Google
-                          </span>
+                        {!isDuplicate && editingGoogleEvent?.id === googleEvt.id && (
+                          <div className="mt-2 p-2.5 bg-white rounded-xl border border-gold/20 space-y-2 shadow-sm">
+                            <input
+                              type="text"
+                              value={geEditSummary}
+                              onChange={(e) => setGeEditSummary(e.target.value)}
+                              className="w-full text-xs p-2 border border-slate-200 rounded-lg focus:outline-none focus:ring-1 focus:ring-gold"
+                              placeholder="Título do evento"
+                            />
+                            <textarea
+                              value={geEditDescription}
+                              onChange={(e) => setGeEditDescription(e.target.value)}
+                              className="w-full text-xs p-2 border border-slate-200 rounded-lg focus:outline-none focus:ring-1 focus:ring-gold resize-none"
+                              rows={2}
+                              placeholder="Descrição..."
+                            />
+                            <div className="flex gap-1.5">
+                              <button
+                                onClick={handleSaveGoogleEvent}
+                                className="flex-1 text-[9px] font-bold text-white bg-brand hover:bg-brand-700 px-2 py-1.5 rounded-lg transition-colors flex items-center justify-center gap-1 cursor-pointer"
+                              >
+                                <Save className="w-3 h-3" /> Salvar
+                              </button>
+                              <button
+                                onClick={handleCancelEditGoogleEvent}
+                                className="flex-1 text-[9px] font-bold text-slate-600 bg-slate-100 hover:bg-slate-200 px-2 py-1.5 rounded-lg transition-colors cursor-pointer"
+                              >
+                                Cancelar
+                              </button>
+                            </div>
+                          </div>
+                        )}
+
+                        {!isDuplicate && editingGoogleEvent?.id !== googleEvt.id && (
+                          <div className="flex flex-wrap gap-1 pt-1.5 border-t border-gold/10">
+                            <button
+                              onClick={() => handleStartEditGoogleEvent(googleEvt)}
+                              className="text-[9px] font-bold text-blue-600 bg-blue-50 hover:bg-blue-500 hover:text-white px-2 py-1 rounded transition-colors cursor-pointer"
+                            >
+                              <Pencil className="w-3 h-3 inline" /> Editar
+                            </button>
+                            <button
+                              onClick={() => handleDeleteGoogleEventFn(googleEvt)}
+                              className="text-[9px] font-bold text-rose-600 bg-rose-50 hover:bg-rose-600 hover:text-white px-2 py-1 rounded transition-colors ml-auto cursor-pointer"
+                            >
+                              <Trash2 className="w-3 h-3 inline" /> Excluir
+                            </button>
+                          </div>
+                        )}
+
+                        {isDuplicate && patientObj && (
+                          <div className="flex flex-wrap gap-1 items-center">
+                            <span className="text-[9px] text-slate-500 bg-white border border-slate-100 px-1.5 py-0.5 rounded font-medium">
+                              {appt.service}
+                            </span>
+                            <span className="text-[9px] font-bold text-slate-700 bg-slate-50 px-1.5 py-0.5 rounded border border-slate-100">
+                              R$ {appt.price}
+                            </span>
+                            {patientObj.isDiabetic && (
+                              <span className="bg-amber-100 text-amber-800 text-[7px] px-1 rounded font-bold uppercase">
+                                Diabético(a)
+                              </span>
+                            )}
+                          </div>
+                        )}
+
+                        {isDuplicate && appt && (
+                          <div className="flex flex-wrap gap-1 pt-1.5 border-t border-slate-100/40">
+                            {patientObj?.phone && (
+                              <>
+                                <a
+                                  href={buildWhatsAppConfirmUrl(appt.patientName, patientObj.phone, appt.date, appt.time)}
+                                  target="_blank"
+                                  rel="noreferrer"
+                                  className="text-[9px] font-bold text-emerald-700 bg-emerald-50 hover:bg-brand hover:text-white px-2 py-1 rounded transition-colors flex items-center gap-0.5"
+                                >
+                                  <Send className="w-3 h-3" /> WhatsApp Confirmar
+                                </a>
+                                <a
+                                  href={buildWhatsAppDetailsUrl(appt.patientName, patientObj.phone, appt.date, appt.time, appt.service, appt.price)}
+                                  target="_blank"
+                                  rel="noreferrer"
+                                  className="text-[9px] font-bold text-slate-600 bg-white border border-slate-200 hover:bg-slate-50 px-2 py-1 rounded transition-colors flex items-center gap-0.5"
+                                >
+                                  <MessageCircle className="w-3 h-3" /> Detalhes
+                                </a>
+                              </>
+                            )}
+                            {appt.status !== "completed" && appt.status !== "canceled" && (
+                              <>
+                                <button
+                                  onClick={() => handleStatusChange(appt, "confirmed")}
+                                  className="text-[9px] font-bold text-emerald-700 bg-emerald-50/50 hover:bg-brand hover:text-white px-2 py-1 rounded transition-colors cursor-pointer"
+                                >
+                                  Confirmar
+                                </button>
+                                <button
+                                  onClick={() => handleStatusChange(appt, "completed")}
+                                  className="text-[9px] font-bold text-emerald-700 bg-emerald-50/50 hover:bg-brand hover:text-white px-2 py-1 rounded transition-colors flex items-center gap-0.5 cursor-pointer"
+                                >
+                                  <CheckCircle2 className="w-3 h-3" /> Concluir
+                                </button>
+                              </>
+                            )}
+                            <button
+                              onClick={() => handleEditAppointment(appt)}
+                              className="text-[9px] font-bold text-blue-600 bg-blue-50 hover:bg-blue-500 hover:text-white px-2 py-1 rounded transition-colors cursor-pointer"
+                            >
+                              <Pencil className="w-3 h-3 inline" /> Editar
+                            </button>
+                            <button
+                              onClick={() => handleDelete(appt)}
+                              className="text-[9px] font-bold text-rose-600 bg-rose-50 hover:bg-rose-600 hover:text-white px-2 py-1 rounded transition-colors ml-auto cursor-pointer"
+                            >
+                              <Trash2 className="w-3 h-3 inline" /> Excluir
+                            </button>
+                          </div>
                         )}
                       </div>
-
-                      {!isDuplicate && editingGoogleEvent?.id === googleEvt.id && (
-                        <div className="mt-2 p-2.5 bg-white rounded-xl border border-gold/20 space-y-2 shadow-sm">
-                          <input
-                            type="text"
-                            value={geEditSummary}
-                            onChange={(e) => setGeEditSummary(e.target.value)}
-                            className="w-full text-xs p-2 border border-slate-200 rounded-lg focus:outline-none focus:ring-1 focus:ring-gold"
-                            placeholder="Título do evento"
-                          />
-                          <textarea
-                            value={geEditDescription}
-                            onChange={(e) => setGeEditDescription(e.target.value)}
-                            className="w-full text-xs p-2 border border-slate-200 rounded-lg focus:outline-none focus:ring-1 focus:ring-gold resize-none"
-                            rows={2}
-                            placeholder="Descrição..."
-                          />
-                          <div className="flex gap-1.5">
-                            <button
-                              onClick={handleSaveGoogleEvent}
-                              className="flex-1 text-[9px] font-bold text-white bg-brand hover:bg-brand-700 px-2 py-1.5 rounded-lg transition-colors flex items-center justify-center gap-1 cursor-pointer"
-                            >
-                              <Save className="w-3 h-3" /> Salvar
-                            </button>
-                            <button
-                              onClick={handleCancelEditGoogleEvent}
-                              className="flex-1 text-[9px] font-bold text-slate-600 bg-slate-100 hover:bg-slate-200 px-2 py-1.5 rounded-lg transition-colors cursor-pointer"
-                            >
-                              Cancelar
-                            </button>
+                    ) : appt ? (
+                      <div className="space-y-1.5 text-xs">
+                        <div className="flex justify-between items-start gap-2">
+                          <div className="min-w-0">
+                            <div className="flex items-center gap-1.5 flex-wrap">
+                              <span className={`text-[8px] font-bold px-1.5 py-0.5 rounded uppercase ${
+                                appt.source === "google"
+                                  ? "text-gold bg-gold-subtle border border-gold/10"
+                                  : "text-brand bg-brand-50 border border-brand-100"
+                              }`}>
+                                {appt.source === "google" ? "Google" : "Local"}
+                              </span>
+                              <span className="font-bold text-slate-800 truncate">{appt.patientName}</span>
+                              {patientObj?.isDiabetic && (
+                                <span className="bg-amber-100 text-amber-800 text-[7px] px-1 rounded font-bold uppercase shrink-0">
+                                  Diabético(a)
+                                </span>
+                              )}
+                            </div>
+                            <div className="flex flex-wrap gap-1 mt-1 items-center">
+                              <span className="text-[9px] text-slate-500 bg-white border border-slate-100 px-1.5 py-0.5 rounded font-medium">
+                                {appt.service}
+                              </span>
+                              <span className="text-[9px] font-bold text-slate-700 bg-slate-50 px-1.5 py-0.5 rounded border border-slate-100">
+                                R$ {appt.price}
+                              </span>
+                              {(appt.quantity && appt.quantity > 1) && (
+                                <span className="text-[9px] font-bold text-gold bg-gold-subtle px-1.5 py-0.5 rounded border border-gold/30 flex items-center gap-0.5">
+                                  <Layers className="w-3 h-3" /> {appt.quantity} sessões
+                                </span>
+                              )}
+                            </div>
+                            {patientObj?.phone && (
+                              <p className="text-[9px] text-slate-400 mt-0.5">{patientObj.phone}</p>
+                            )}
                           </div>
-                        </div>
-                      )}
 
-                      {!isDuplicate && editingGoogleEvent?.id !== googleEvt.id && (
-                        <div className="flex flex-wrap gap-1 pt-1.5 border-t border-gold/10">
-                          <button
-                            onClick={() => handleStartEditGoogleEvent(googleEvt)}
-                            className="text-[9px] font-bold text-blue-600 bg-blue-50 hover:bg-blue-500 hover:text-white px-2 py-1 rounded transition-colors cursor-pointer"
+                          <span
+                            className={`text-[8px] px-2 py-0.5 rounded-full font-bold uppercase tracking-wide border shrink-0 ${
+                              appt.status === "completed"
+                                ? "bg-emerald-50 text-emerald-700 border-emerald-200"
+                                : appt.status === "confirmed"
+                                ? "bg-emerald-50 text-emerald-700 border-emerald-200"
+                                : appt.status === "canceled"
+                                ? "bg-slate-100 text-slate-500 border-slate-200"
+                                : "bg-[#0F3B2E]/10 text-[#0F3B2E] border-[#0F3B2E]/20"
+                            }`}
                           >
-                            <Pencil className="w-3 h-3 inline" /> Editar
-                          </button>
-                          <button
-                            onClick={() => handleDeleteGoogleEventFn(googleEvt)}
-                            className="text-[9px] font-bold text-rose-600 bg-rose-50 hover:bg-rose-600 hover:text-white px-2 py-1 rounded transition-colors ml-auto cursor-pointer"
-                          >
-                            <Trash2 className="w-3 h-3 inline" /> Excluir
-                          </button>
-                        </div>
-                      )}
-
-                      {isDuplicate && patientObj && (
-                        <div className="flex flex-wrap gap-1 items-center">
-                          <span className="text-[9px] text-slate-500 bg-white border border-slate-100 px-1.5 py-0.5 rounded font-medium">
-                            {appt.service}
+                            {appt.status === "completed"
+                              ? "Concluído"
+                              : appt.status === "confirmed"
+                              ? "Confirmado"
+                              : appt.status === "canceled"
+                              ? "Cancelado"
+                              : "Agendado"}
                           </span>
-                          <span className="text-[9px] font-bold text-slate-700 bg-slate-50 px-1.5 py-0.5 rounded border border-slate-100">
-                            R$ {appt.price}
-                          </span>
-                          {patientObj.isDiabetic && (
-                            <span className="bg-amber-100 text-amber-800 text-[7px] px-1 rounded font-bold uppercase">
-                              Diabético(a)
-                            </span>
-                          )}
                         </div>
-                      )}
 
-                      {isDuplicate && appt && (
+                        {appt.notes && (
+                          <p className="text-[9px] text-slate-500 italic bg-white p-1.5 rounded border border-slate-100">
+                            {appt.notes}
+                          </p>
+                        )}
+
                         <div className="flex flex-wrap gap-1 pt-1.5 border-t border-slate-100/40">
                           {patientObj?.phone && (
                             <>
@@ -1961,6 +2149,14 @@ export default function CalendarView({
                               </button>
                             </>
                           )}
+                          {appt.status !== "canceled" && (
+                            <button
+                              onClick={() => handleStatusChange(appt, "canceled")}
+                              className="text-[9px] font-bold text-slate-600 bg-slate-100 hover:bg-slate-200 px-2 py-1 rounded transition-colors cursor-pointer"
+                            >
+                              Cancelar
+                            </button>
+                          )}
                           <button
                             onClick={() => handleEditAppointment(appt)}
                             className="text-[9px] font-bold text-blue-600 bg-blue-50 hover:bg-blue-500 hover:text-white px-2 py-1 rounded transition-colors cursor-pointer"
@@ -1974,140 +2170,16 @@ export default function CalendarView({
                             <Trash2 className="w-3 h-3 inline" /> Excluir
                           </button>
                         </div>
-                      )}
-                    </div>
-                  ) : appt ? (
-                    <div className="space-y-1.5 text-xs">
-                      <div className="flex justify-between items-start gap-2">
-                        <div className="min-w-0">
-                          <div className="flex items-center gap-1.5 flex-wrap">
-                            <span className={`text-[8px] font-bold px-1.5 py-0.5 rounded uppercase ${
-                              appt.source === "google"
-                                ? "text-gold bg-gold-subtle border border-gold/10"
-                                : "text-brand bg-brand-50 border border-brand-100"
-                            }`}>
-                              {appt.source === "google" ? "Google" : "Local"}
-                            </span>
-                            <span className="font-bold text-slate-800 truncate">{appt.patientName}</span>
-                            {patientObj?.isDiabetic && (
-                              <span className="bg-amber-100 text-amber-800 text-[7px] px-1 rounded font-bold uppercase shrink-0">
-                                Diabético(a)
-                              </span>
-                            )}
-                          </div>
-                          <div className="flex flex-wrap gap-1 mt-1 items-center">
-                            <span className="text-[9px] text-slate-500 bg-white border border-slate-100 px-1.5 py-0.5 rounded font-medium">
-                              {appt.service}
-                            </span>
-                            <span className="text-[9px] font-bold text-slate-700 bg-slate-50 px-1.5 py-0.5 rounded border border-slate-100">
-                              R$ {appt.price}
-                            </span>
-                            {(appt.quantity && appt.quantity > 1) && (
-                              <span className="text-[9px] font-bold text-gold bg-gold-subtle px-1.5 py-0.5 rounded border border-gold/30 flex items-center gap-0.5">
-                                <Layers className="w-3 h-3" /> {appt.quantity} sessões
-                              </span>
-                            )}
-                          </div>
-                          {patientObj?.phone && (
-                            <p className="text-[9px] text-slate-400 mt-0.5">{patientObj.phone}</p>
-                          )}
-                        </div>
-
-                        <span
-                          className={`text-[8px] px-2 py-0.5 rounded-full font-bold uppercase tracking-wide border shrink-0 ${
-                            appt.status === "completed"
-                              ? "bg-emerald-50 text-emerald-700 border-emerald-200"
-                              : appt.status === "confirmed"
-                              ? "bg-emerald-50 text-emerald-700 border-emerald-200"
-                              : appt.status === "canceled"
-                              ? "bg-slate-100 text-slate-500 border-slate-200"
-                              : "bg-[#0F3B2E]/10 text-[#0F3B2E] border-[#0F3B2E]/20"
-                          }`}
-                        >
-                          {appt.status === "completed"
-                            ? "Concluído"
-                            : appt.status === "confirmed"
-                            ? "Confirmado"
-                            : appt.status === "canceled"
-                            ? "Cancelado"
-                            : "Agendado"}
-                        </span>
                       </div>
-
-                      {appt.notes && (
-                        <p className="text-[9px] text-slate-500 italic bg-white p-1.5 rounded border border-slate-100">
-                          {appt.notes}
-                        </p>
-                      )}
-
-                      <div className="flex flex-wrap gap-1 pt-1.5 border-t border-slate-100/40">
-                        {patientObj?.phone && (
-                          <>
-                            <a
-                              href={buildWhatsAppConfirmUrl(appt.patientName, patientObj.phone, appt.date, appt.time)}
-                              target="_blank"
-                              rel="noreferrer"
-                              className="text-[9px] font-bold text-emerald-700 bg-emerald-50 hover:bg-brand hover:text-white px-2 py-1 rounded transition-colors flex items-center gap-0.5"
-                            >
-                              <Send className="w-3 h-3" /> WhatsApp Confirmar
-                            </a>
-                            <a
-                              href={buildWhatsAppDetailsUrl(appt.patientName, patientObj.phone, appt.date, appt.time, appt.service, appt.price)}
-                              target="_blank"
-                              rel="noreferrer"
-                              className="text-[9px] font-bold text-slate-600 bg-white border border-slate-200 hover:bg-slate-50 px-2 py-1 rounded transition-colors flex items-center gap-0.5"
-                            >
-                              <MessageCircle className="w-3 h-3" /> Detalhes
-                            </a>
-                          </>
-                        )}
-                        {appt.status !== "completed" && appt.status !== "canceled" && (
-                          <>
-                            <button
-                              onClick={() => handleStatusChange(appt, "confirmed")}
-                              className="text-[9px] font-bold text-emerald-700 bg-emerald-50/50 hover:bg-brand hover:text-white px-2 py-1 rounded transition-colors cursor-pointer"
-                            >
-                              Confirmar
-                            </button>
-                            <button
-                              onClick={() => handleStatusChange(appt, "completed")}
-                              className="text-[9px] font-bold text-emerald-700 bg-emerald-50/50 hover:bg-brand hover:text-white px-2 py-1 rounded transition-colors flex items-center gap-0.5 cursor-pointer"
-                            >
-                              <CheckCircle2 className="w-3 h-3" /> Concluir
-                            </button>
-                          </>
-                        )}
-                        {appt.status !== "canceled" && (
-                          <button
-                            onClick={() => handleStatusChange(appt, "canceled")}
-                            className="text-[9px] font-bold text-slate-600 bg-slate-100 hover:bg-slate-200 px-2 py-1 rounded transition-colors cursor-pointer"
-                          >
-                            Cancelar
-                          </button>
-                        )}
-                        <button
-                          onClick={() => handleEditAppointment(appt)}
-                          className="text-[9px] font-bold text-blue-600 bg-blue-50 hover:bg-blue-500 hover:text-white px-2 py-1 rounded transition-colors cursor-pointer"
-                        >
-                          <Pencil className="w-3 h-3 inline" /> Editar
-                        </button>
-                        <button
-                          onClick={() => handleDelete(appt)}
-                          className="text-[9px] font-bold text-rose-600 bg-rose-50 hover:bg-rose-600 hover:text-white px-2 py-1 rounded transition-colors ml-auto cursor-pointer"
-                        >
-                          <Trash2 className="w-3 h-3 inline" /> Excluir
-                        </button>
+                    ) : (
+                      <div className="flex items-center justify-center py-2 text-slate-300 text-[11px] font-medium border-2 border-dashed border-slate-50/40 rounded-xl bg-slate-50/5">
+                        Horário disponível
                       </div>
-                    </div>
-                  ) : (
-                    <div className="flex items-center justify-center py-2 text-slate-300 text-[11px] font-medium border-2 border-dashed border-slate-50/40 rounded-xl bg-slate-50/5">
-                      Horário disponível
-                    </div>
-                  )}
+                    )}
+                  </div>
                 </div>
-              </div>
-            );
-          });
+              );
+            });
           })()}
 
           {/* Google Calendar events outside grid hours */}

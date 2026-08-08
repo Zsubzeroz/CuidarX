@@ -37,8 +37,14 @@ import {
 } from "./services/whatsappAutoService";
 import {
   loginWithGoogle,
+  loginWithEmailPassword,
+  loginWithFirebasePopup,
+  loginWithFirebaseRedirect,
+  handleFirebaseRedirectResult,
+  getCurrentUser,
   trySilentLogin,
   logout,
+  isNativePlatform,
   type AdminUser,
 } from "./services/googleAuth";
 import {
@@ -249,9 +255,37 @@ export default function App() {
   useEffect(() => {
     if (isClienteRoute) return;
     const init = async () => {
-      extractTokenFromUrl();
+      // Check Firebase Auth redirect result (Android)
+      const redirectUser = await handleFirebaseRedirectResult();
+      if (redirectUser) {
+        setAdminUser(redirectUser);
+        setIsGoogleConnected(true);
+        setAuthChecking(false);
+        const today = new Date().toISOString().split("T")[0];
+        handleSyncGoogleEvents(today);
+        return;
+      }
+
+      // Check localStorage for persisted session
+      const persisted = getCurrentUser();
+      if (persisted) {
+        setAdminUser(persisted);
+        setIsGoogleConnected(true);
+        setAuthChecking(false);
+        const today = new Date().toISOString().split("T")[0];
+        handleSyncGoogleEvents(today);
+        return;
+      }
+
+      // Legacy: GIS token in URL (web redirect flow)
+      const cameFromRedirect = extractTokenFromUrl();
       try {
-        const user = await trySilentLogin();
+        let user: AdminUser | null = null;
+        if (cameFromRedirect) {
+          user = await loginWithGoogle();
+        } else {
+          user = await trySilentLogin();
+        }
         setAdminUser(user);
         if (user) {
           setIsGoogleConnected(true);
@@ -365,10 +399,42 @@ export default function App() {
     }
   };
 
+  const [loginEmail, setLoginEmail] = useState("");
+  const [loginPassword, setLoginPassword] = useState("");
+
   const handleAdminLogin = async () => {
     if (isLoggingIn) return;
     setIsLoggingIn(true);
     setAuthError(null);
+
+    if (isNativePlatform()) {
+      // Android: email/password login
+      if (!loginEmail || !loginPassword) {
+        setAuthError("Preencha o email e a senha.");
+        setIsLoggingIn(false);
+        return;
+      }
+      try {
+        const user = await loginWithEmailPassword(loginEmail, loginPassword);
+        setAdminUser(user);
+        setIsGoogleConnected(true);
+        const today = new Date().toISOString().split("T")[0];
+        setTimeout(() => handleSyncGoogleEvents(today), 400);
+      } catch (err: any) {
+        if (typeof err?.message === "string" && err.message.startsWith("UNAUTHORIZED")) {
+          setAuthError("Acesso negado. Use o email autorizado da clínica.");
+        } else if (err?.code === "auth/invalid-credential" || err?.code === "auth/wrong-password" || err?.code === "auth/user-not-found") {
+          setAuthError("Email ou senha incorretos.");
+        } else {
+          setAuthError("Não foi possível entrar. Tente novamente.");
+        }
+      } finally {
+        setIsLoggingIn(false);
+      }
+      return;
+    }
+
+    // Web: Google popup
     try {
       const user = await loginWithGoogle();
       setAdminUser(user);
@@ -716,6 +782,10 @@ export default function App() {
         onLogin={handleAdminLogin}
         isLoggingIn={isLoggingIn}
         error={authError}
+        loginEmail={loginEmail}
+        setLoginEmail={setLoginEmail}
+        loginPassword={loginPassword}
+        setLoginPassword={setLoginPassword}
       />
     );
   }
@@ -783,100 +853,109 @@ export default function App() {
   return (
     <div id="app-root-container" className="min-h-screen bg-[#F8FAFC] dark:bg-[#0D1512] flex flex-col font-sans">
       {/* Header */}
-      <header className="bg-[#0F3B2E] border-b border-[#C8A45A]/30 sticky top-0 z-50 shadow-md px-4 md:px-8 py-4 flex items-center justify-between transition-all">
-        <div className="flex items-center gap-3">
-          {/* Hamburger menu button - mobile & tablet only */}
+      <header className="bg-[#0F3B2E] border-b border-[#C8A45A]/30 sticky top-0 z-50 shadow-md px-2 sm:px-3 md:px-6 py-1.5 sm:py-2 md:py-3 flex items-center justify-between gap-1 sm:gap-2 transition-all">
+        {/* LEFT: Logo + Name */}
+        <div className="flex items-center gap-1.5 sm:gap-2 min-w-0">
+          {/* Hamburger menu - mobile & tablet only */}
           <button
             onClick={() => setIsMobileMenuOpen(!isMobileMenuOpen)}
-            className="lg:hidden p-2 -ml-2 rounded-xl hover:bg-[#1B523E] text-white active:scale-95 transition-all cursor-pointer"
+            className="lg:hidden p-1 -ml-0.5 rounded-lg hover:bg-[#1B523E] text-white active:scale-95 transition-all cursor-pointer shrink-0"
             aria-label="Abrir menu"
           >
-            <Menu className="w-5 h-5 text-[#C8A45A]" />
+            <Menu className="w-4 h-4 text-[#C8A45A]" />
           </button>
           <img
             src={clinicLogo}
             alt="Dra. Fabrícia Rodrigues"
-            className="w-11 h-11 rounded-2xl object-cover border-2 border-[#C8A45A]/60 shadow-sm"
+            className="w-8 h-8 lg:w-10 lg:h-10 rounded-xl lg:rounded-2xl object-cover border border-[#C8A45A]/60 shadow-sm shrink-0"
             referrerPolicy="no-referrer"
           />
-          <div>
-            <h1 className="text-base md:text-lg font-bold text-white tracking-tight leading-none font-display">Dra. Fabrícia Rodrigues</h1>
-            <p className="text-[10px] text-[#C8A45A] font-semibold mt-1 uppercase tracking-widest">Podologia & Enfermagem • Saúde & Bem-Estar</p>
+          <div className="min-w-0">
+            <h1 className="text-[11px] sm:text-xs lg:text-base font-bold text-white tracking-tight leading-none font-display truncate">Dra. Fabrícia Rodrigues</h1>
+            <p className="text-[8px] sm:text-[9px] lg:text-[10px] text-[#C8A45A] font-semibold mt-px uppercase tracking-wider lg:tracking-widest">
+              <span className="hidden lg:inline">Podologia & Enfermagem • Saúde & Bem-Estar</span>
+              <span className="lg:hidden">Podologia & Enfermagem</span>
+            </p>
           </div>
         </div>
 
-        <div className="flex items-center gap-3">
-          {/* Toggle de Tema (Dark / Light) */}
+        {/* RIGHT: Status Badges — icon-only on mobile/tablet */}
+        <div className="flex items-center gap-1 sm:gap-1.5 shrink-0">
+          {/* Dark mode toggle */}
           <button
             onClick={() => setIsDarkMode((prev) => !prev)}
-            className="flex items-center gap-2 bg-[#0A2B21] hover:bg-[#1B523E] border border-[#C8A45A]/40 px-3 py-2 rounded-full text-xs font-bold transition-all shadow-sm cursor-pointer"
+            className="flex items-center justify-center bg-[#0A2B21] hover:bg-[#1B523E] border border-[#C8A45A]/40 w-7 h-7 sm:w-8 sm:h-8 lg:w-auto lg:h-auto lg:px-3 lg:py-2 rounded-full transition-all shadow-sm cursor-pointer"
             title={isDarkMode ? "Ativar modo claro" : "Ativar modo escuro"}
             aria-label="Alternar tema claro/escuro"
           >
             {isDarkMode ? (
-              <Sun className="w-4 h-4 text-[#C8A45A]" />
+              <Sun className="w-3.5 h-3.5 text-[#C8A45A]" />
             ) : (
-              <Moon className="w-4 h-4 text-[#C8A45A]" />
+              <Moon className="w-3.5 h-3.5 text-[#C8A45A]" />
             )}
-            <span className="hidden sm:inline text-[#C8A45A]">{isDarkMode ? "Claro" : "Escuro"}</span>
+            <span className="hidden lg:inline text-xs font-bold text-[#C8A45A] ml-1.5">{isDarkMode ? "Claro" : "Escuro"}</span>
           </button>
 
+          {/* WhatsApp / Suporte */}
           <a
             href={getClinicWhatsAppLink()}
             target="_blank"
             rel="noopener noreferrer"
-            className="hidden sm:flex items-center gap-2 bg-[#0A2B21] hover:bg-[#1B523E] border border-[#C8A45A]/40 text-[#C8A45A] px-4 py-2 rounded-full text-xs font-bold transition-all shadow-sm cursor-pointer"
+            className="flex items-center justify-center bg-[#0A2B21] hover:bg-[#1B523E] border border-[#C8A45A]/40 text-[#C8A45A] w-7 h-7 sm:w-8 sm:h-8 lg:w-auto lg:h-auto lg:px-3 lg:py-2 rounded-full transition-all shadow-sm cursor-pointer"
             title="Falar com o suporte"
           >
             <Phone className="w-3.5 h-3.5 text-[#C8A45A]" />
-            <span>Suporte: (19) 99722-2694</span>
+            <span className="hidden lg:inline text-xs font-bold ml-1.5">Suporte: (19) 99722-2694</span>
           </a>
 
+          {/* Tempo Real (desktop only) */}
           <div className="hidden lg:flex items-center gap-2 bg-[#0A2B21] px-3.5 py-1.5 rounded-full text-[#C8A45A] border border-[#C8A45A]/40 shadow-sm shadow-[#C8A45A]/10 text-xs font-bold">
             <span className={`w-2 h-2 rounded-full bg-[#C8A45A] ${syncStatus === "synced" ? "animate-pulse" : ""}`} />
             <span>{syncStatus === "synced" ? "Tempo Real Ativo" : syncStatus === "syncing" ? "Sincronizando..." : "Modo Offline"}</span>
           </div>
 
+          {/* Google Calendar status */}
           {isGoogleConnected ? (
-            <div className="hidden sm:flex items-center gap-2 bg-[#0A2B21] px-3.5 py-1.5 rounded-full text-emerald-300 border border-emerald-500/30 text-[11px] font-bold">
-              <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
-              <span>Google Agenda Conectado</span>
+            <div className="flex items-center justify-center bg-[#0A2B21] w-7 h-7 sm:w-8 sm:h-8 lg:w-auto lg:h-auto lg:px-3 lg:py-1.5 rounded-full border border-emerald-500/30 transition-all shadow-sm">
+              <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse shrink-0" />
+              <span className="hidden lg:inline text-[11px] font-bold text-emerald-300 ml-1.5">Google Agenda Conectado</span>
             </div>
           ) : (
             <button
               onClick={handleGoogleLogin}
               disabled={isLoggingIn}
-              className="flex items-center gap-1.5 bg-[#0A2B21] hover:bg-[#1B523E] border border-[#C8A45A]/40 text-[#C8A45A] px-3 py-2 rounded-full text-[11px] font-bold transition-all shadow-sm cursor-pointer disabled:opacity-60 disabled:cursor-not-allowed"
+              className="flex items-center justify-center bg-[#0A2B21] hover:bg-[#1B523E] border border-[#C8A45A]/40 text-[#C8A45A] w-7 h-7 sm:w-8 sm:h-8 lg:w-auto lg:h-auto lg:px-3 lg:py-2 rounded-full transition-all shadow-sm cursor-pointer disabled:opacity-60 disabled:cursor-not-allowed"
               title="Conectar com a conta Google oficial da clínica"
             >
               {isLoggingIn ? (
-                <svg className="w-3.5 h-3.5 animate-spin" viewBox="0 0 24 24" fill="none">
+                <svg className="w-3 h-3 animate-spin" viewBox="0 0 24 24" fill="none">
                   <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
                   <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
                 </svg>
               ) : (
                 <Link2 className="w-3.5 h-3.5 text-[#C8A45A]" />
               )}
-              <span>{isLoggingIn ? "Conectando..." : "Conectar Google Agenda"}</span>
+              <span className="hidden lg:inline text-[11px] font-bold ml-1.5">{isLoggingIn ? "Conectando..." : "Conectar Google Agenda"}</span>
             </button>
           )}
 
+          {/* Logout */}
           <button
             onClick={handleAdminLogout}
             title="Sair do painel administrativo"
-            className="flex items-center gap-1.5 bg-[#0A2B21] hover:bg-[#1B523E] border border-[#C8A45A]/40 text-[#C8A45A] px-3 py-2 rounded-full text-[11px] font-bold transition-all shadow-sm cursor-pointer"
+            className="flex items-center justify-center bg-[#0A2B21] hover:bg-[#1B523E] border border-[#C8A45A]/40 text-[#C8A45A] w-7 h-7 sm:w-8 sm:h-8 lg:w-auto lg:h-auto lg:px-3 lg:py-2 rounded-full transition-all shadow-sm cursor-pointer"
           >
             <LogOut className="w-3.5 h-3.5 text-[#C8A45A]" />
-            <span className="hidden md:inline">{adminUser?.email || "Sair"}</span>
+            <span className="hidden lg:inline text-[11px] font-bold ml-1.5">{adminUser?.email || "Sair"}</span>
           </button>
         </div>
       </header>
 
       {/* Navigation */}
       <div className="bg-white dark:bg-slate-900 border-b border-slate-200/70 dark:border-slate-800 shadow-sm">
-        <div className="max-w-[1600px] w-full mx-auto px-4 md:px-8 py-3.5">
+        <div className="max-w-[1600px] w-full mx-auto px-2 sm:px-4 md:px-8 py-2 sm:py-2.5 md:py-3.5">
           {/* Desktop navigation buttons */}
-          <div className="hidden lg:flex flex-wrap gap-2 justify-start">
+          <div className="hidden lg:flex flex-wrap gap-1.5 sm:gap-2 justify-start">
             {navigationItems.map((item) => {
               const ItemIcon = item.icon;
               const isSelected = item.id === activeTab;
@@ -884,18 +963,18 @@ export default function App() {
                 <button
                   key={item.id}
                   onClick={() => setActiveTab(item.id)}
-                  className={`relative flex items-center gap-2 px-4 py-2.5 rounded-xl text-xs font-bold transition-all duration-200 cursor-pointer ${
+                  className={`relative flex items-center gap-1.5 sm:gap-2 px-3 sm:px-4 py-2 sm:py-2.5 rounded-xl text-[10px] sm:text-xs font-bold transition-all duration-200 cursor-pointer ${
                     isSelected
                       ? "bg-[#0F3B2E] text-white border border-[#C8A45A]/70 shadow-md"
                       : "bg-transparent text-slate-500 hover:bg-slate-50 hover:text-slate-800 dark:text-slate-400 dark:hover:bg-slate-800 dark:hover:text-slate-100 border border-transparent hover:border-slate-200 dark:hover:border-slate-700"
                   }`}
                 >
-                  <ItemIcon className={`w-4 h-4 transition-colors ${
+                  <ItemIcon className={`w-3.5 h-3.5 sm:w-4 sm:h-4 transition-colors ${
                     isSelected ? "text-[#C8A45A]" : "text-slate-400 group-hover:text-slate-600"
                   }`} />
                   <span>{item.label}</span>
                   {isSelected && (
-                    <span className="absolute -bottom-[17px] left-1/2 -translate-x-1/2 w-10 h-1 bg-[#C8A45A] rounded-full shadow-sm shadow-[#C8A45A]/50" />
+                    <span className="absolute -bottom-[15px] left-1/2 -translate-x-1/2 w-8 sm:w-10 h-1 bg-[#C8A45A] rounded-full shadow-sm shadow-[#C8A45A]/50" />
                   )}
                 </button>
               );
@@ -1332,11 +1411,21 @@ function AdminLoginScreen({
   onLogin,
   isLoggingIn,
   error,
+  loginEmail,
+  setLoginEmail,
+  loginPassword,
+  setLoginPassword,
 }: {
   onLogin: () => void;
   isLoggingIn: boolean;
   error: string | null;
+  loginEmail: string;
+  setLoginEmail: (v: string) => void;
+  loginPassword: string;
+  setLoginPassword: (v: string) => void;
 }) {
+  const isNative = isNativePlatform();
+
   return (
     <div id="admin-login-screen" className="min-h-screen bg-[#F8FAFC] dark:bg-[#0D1512] flex flex-col items-center justify-center p-4 relative">
       <div className="absolute inset-0 overflow-hidden pointer-events-none bg-dots-gold">
@@ -1365,9 +1454,36 @@ function AdminLoginScreen({
 
           <div className="p-6 space-y-4">
             <p className="text-xs text-slate-500 dark:text-slate-400 leading-relaxed">
-              Este painel é de uso exclusivo da clínica. Entre com a conta Google oficial da clínica
-              para acessar a agenda, os prontuários e o financeiro.
+              {isNative
+                ? "Este é o dispositivo oficial da clínica. Entre com as credenciais de administrador."
+                : "Este painel é de uso exclusivo da clínica. Entre com a conta Google oficial da clínica para acessar a agenda, os prontuários e o financeiro."}
             </p>
+
+            {isNative ? (
+              <div className="space-y-3">
+                <div>
+                  <label className="block text-[10px] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider mb-1.5">Email</label>
+                  <input
+                    type="email"
+                    value={loginEmail}
+                    onChange={(e) => setLoginEmail(e.target.value)}
+                    placeholder="fabriciapodologa@gmail.com"
+                    className="w-full px-3.5 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-sm text-slate-800 dark:text-slate-200 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-[#0F3B2E]/30 focus:border-[#0F3B2E] transition-all"
+                  />
+                </div>
+                <div>
+                  <label className="block text-[10px] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider mb-1.5">Senha</label>
+                  <input
+                    type="password"
+                    value={loginPassword}
+                    onChange={(e) => setLoginPassword(e.target.value)}
+                    placeholder="••••••••"
+                    onKeyDown={(e) => { if (e.key === "Enter") onLogin(); }}
+                    className="w-full px-3.5 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-sm text-slate-800 dark:text-slate-200 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-[#0F3B2E]/30 focus:border-[#0F3B2E] transition-all"
+                  />
+                </div>
+              </div>
+            ) : null}
 
             <button
               onClick={onLogin}
@@ -1380,7 +1496,7 @@ function AdminLoginScreen({
                     <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
                     <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
                   </svg>
-                  <span className="flex-1">Entrando com o Google...</span>
+                  <span className="flex-1">Entrando...</span>
                 </>
               ) : (
                 <>
@@ -1390,7 +1506,9 @@ function AdminLoginScreen({
                     <path fill="#FBBC05" d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z" />
                     <path fill="#EA4335" d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z" />
                   </svg>
-                  <span className="flex-1 text-center">🔐 Entrar com a Conta Google</span>
+                  <span className="flex-1 text-center">
+                    {isNative ? "Entrar com a Conta Google" : "Entrar com a Conta Google"}
+                  </span>
                 </>
               )}
             </button>
@@ -1409,7 +1527,9 @@ function AdminLoginScreen({
               <svg className="w-3 h-3" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3">
                 <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
               </svg>
-              Sua sessão fica salva neste navegador — você não precisará logar novamente.
+              {isNative
+                ? "Sua sessão fica salva neste dispositivo."
+                : "Sua sessão fica salva neste navegador — você não precisará logar novamente."}
             </div>
           </div>
         </div>

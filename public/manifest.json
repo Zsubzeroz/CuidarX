@@ -1,0 +1,21 @@
+{
+  "name": "Podologia Fabrícia",
+  "short_name": "Podologia",
+  "description": "Sistema de Gestão - Dra. Fabrícia Rodrigues",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#F8FAFC",
+  "theme_color": "#0B4C33",
+  "icons": [
+    {
+      "src": "/logo-fr.png",
+      "sizes": "192x192",
+      "type": "image/png"
+    },
+    {
+      "src": "/logo-fr.png",
+      "sizes": "512x512",
+      "type": "image/png"
+    }
+  ]
+}

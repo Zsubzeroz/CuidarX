@@ -1,5 +1,6 @@
 import { initializeApp, getApps, getApp } from "firebase/app";
 import { getFirestore, enableIndexedDbPersistence } from "firebase/firestore";
+import { getAuth, GoogleAuthProvider } from "firebase/auth";
 
 const firebaseConfig = {
   apiKey: import.meta.env.VITE_FIREBASE_API_KEY,
@@ -12,10 +13,16 @@ const firebaseConfig = {
 
 let app: any;
 let db: any;
+let auth: any;
+let googleProvider: GoogleAuthProvider;
 
 try {
   app = getApps().length === 0 ? initializeApp(firebaseConfig) : getApp();
   db = getFirestore(app);
+  auth = getAuth(app);
+  googleProvider = new GoogleAuthProvider();
+  googleProvider.addScope("email");
+  googleProvider.addScope("profile");
   enableIndexedDbPersistence(db).catch((err) => {
     if (err.code === "failed-precondition") {
       console.warn("Firestore persistence: multiple tabs open, persistence only available in one.");
@@ -27,5 +34,5 @@ try {
   console.error("Failed to initialize Firebase client:", error);
 }
 
-export { db };
+export { db, auth, googleProvider };
 export const isFirebaseConfigured = !!import.meta.env.VITE_FIREBASE_API_KEY;
