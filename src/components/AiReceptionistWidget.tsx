@@ -10,7 +10,7 @@ interface ChatMsg {
 }
 
 const RECEPTIONIST_SYSTEM_PROMPT = `Você é a Recepcionista Virtual da Dra. Fabrícia Rodrigues — clínica de Podologia & Enfermagem.
-Você atende clientes no site de agendamento online, sempre em português brasileiro, de forma acolhedora, objetiva e formatada com Markdown.
+Você atende clientes no site de agendamento online, sempre em português brasileiro, de forma extremamente acolhedora, educada e prestativa.
 
 ### DADOS OFICIAIS DA CLÍNICA (use SEMPRE estes dados):
 - ENDEREÇO: Rua Papa João Paulo II, 256 — Artur Nogueira/SP.
@@ -27,9 +27,13 @@ Você atende clientes no site de agendamento online, sempre em português brasil
 - Avaliação de Pé Diabético — R$ 150
 
 ### DIRETRIZES:
-1. Seja curta e direta; use listas/negrito quando ajudar.
-2. Se perguntarem algo clínico (unha encravada, micose, pé diabético), explique de forma simples e recomende avaliação com a Dra. Fabrícia.
-3. Termine recomendações clínicas com: "A decisão final e o diagnóstico cabem exclusivamente à Dra. Fabrícia."`;
+1. Seja sempre acolhedora e educada. Use emojis com moderação para transmitir calor humano.
+2. Seja curta e direta; use listas/negrito quando ajudar.
+3. Se o paciente perguntar sobre algum tratamento clínico (unha encravada, micose, pé diabético, verruga, calosidade), explique de forma simples e gentil, e SEMPRE recomende agendar uma avaliação com a Dra. Fabrícia: "Para um diagnóstico preciso e um tratamento personalizado, que tal agendar uma avaliação? Você pode escolher o dia e horário pelo formulário ao lado! 😊"
+4. Nunca dê diagnósticos definitivos. Use frases como "Parece ser...", "Pode ser indicativo de...", "A Dra. Fabrícia vai poder avaliar melhor..."
+5. Termine recomendações clínicas com: "Lembre-se: a decisão final e o diagnóstico cabem exclusivamente à Dra. Fabrícia."
+6. Se o paciente agradecer, responda com carinho e reforce que está à disposição.
+7. Se não souber responder algo, diga que vai verificar e oriente a chamar no WhatsApp.`;
 
 // Normaliza acentos e caixa para a busca por palavras-chave
 const normalize = (s: string): string =>
@@ -104,53 +108,47 @@ function getAnswer(input: string): string {
 }
 
 function renderText(text: string) {
+  // Process each line: handle **bold**, [link](url), and plain text together
   return text.split("\n").map((line, lIdx) => {
-    const parts: React.ReactNode[] = [];
-    let lastIndex = 0;
-    const boldRegex = /\*\*(.*?)\*\*/g;
-    let match;
-    while ((match = boldRegex.exec(line)) !== null) {
-      if (match.index > lastIndex) parts.push(line.substring(lastIndex, match.index));
-      parts.push(
-        <strong key={`b-${match.index}`} className="font-extrabold text-emerald-900">
-          {match[1]}
-        </strong>
-      );
-      lastIndex = boldRegex.lastIndex;
-    }
-    if (lastIndex < line.length) parts.push(line.substring(lastIndex));
-
-    const linkRegex = /\[([^\]]+)\]\(([^)]+)\)/g;
-    let lm;
-    const merged: React.ReactNode[] = [];
+    const nodes: React.ReactNode[] = [];
+    // Combined regex: matches **bold**, [text](url), or plain text segments
+    const tokenRegex = /(\*\*(.*?)\*\*)|(\[([^\]]+)\]\(([^)]+)\))/g;
     let cursor = 0;
-    while ((lm = linkRegex.exec(line)) !== null) {
-      if (lm.index > cursor) merged.push(line.substring(cursor, lm.index));
-      merged.push(
-        <a
-          key={`l-${lm.index}`}
-          href={lm[2]}
-          target="_blank"
-          rel="noopener noreferrer"
-          className="font-bold text-emerald-700 underline decoration-emerald-300 hover:text-emerald-900"
-        >
-          {lm[1]}
-        </a>
-      );
-      cursor = linkRegex.lastIndex;
+    let match;
+    while ((match = tokenRegex.exec(line)) !== null) {
+      // Plain text before this match
+      if (match.index > cursor) {
+        nodes.push(line.substring(cursor, match.index));
+      }
+      if (match[1]) {
+        // **bold** match
+        nodes.push(
+          <strong key={`b-${match.index}`} className="font-extrabold text-emerald-900">
+            {match[2]}
+          </strong>
+        );
+      } else if (match[3]) {
+        // [link](url) match
+        nodes.push(
+          <a
+            key={`l-${match.index}`}
+            href={match[5]}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="font-bold text-emerald-700 underline decoration-emerald-300 hover:text-emerald-900"
+          >
+            {match[4]}
+          </a>
+        );
+      }
+      cursor = tokenRegex.lastIndex;
     }
-    if (cursor < line.length) merged.push(line.substring(cursor));
-
-    if (merged.length > 0) {
-      return (
-        <p key={lIdx} className={lIdx > 0 ? "mt-1.5" : ""}>
-          {merged}
-        </p>
-      );
+    if (cursor < line.length) {
+      nodes.push(line.substring(cursor));
     }
     return (
       <p key={lIdx} className={lIdx > 0 ? "mt-1.5" : ""}>
-        {parts.length > 0 ? parts : line}
+        {nodes.length > 0 ? nodes : line}
       </p>
     );
   });
@@ -312,9 +310,11 @@ export default function AiReceptionistWidget() {
       <button
         onClick={() => setIsOpen((o) => !o)}
         aria-label={isOpen ? "Fechar atendente virtual" : "Abrir atendente virtual"}
-        className="fixed bottom-6 right-6 z-50 w-14 h-14 rounded-full bg-[#0F3B2E] hover:bg-[#1B523E] border border-[#C8A45A]/50 text-white shadow-xl flex items-center justify-center transition-all hover:scale-105 active:scale-95 cursor-pointer"
+        className="fixed bottom-6 right-6 z-50 w-14 h-14 rounded-full bg-[#0F3B2E] hover:bg-[#1B523E] border border-[#C8A45A]/50 text-white shadow-[0_4px_20px_rgba(15,59,46,0.35)] flex items-center justify-center transition-all hover:scale-105 active:scale-95 cursor-pointer"
       >
-        {isOpen ? <X className="w-6 h-6" /> : <MessageCircle className="w-6 h-6" />}
+        <span className="flex items-center justify-center w-full h-full">
+          {isOpen ? <X className="w-6 h-6" /> : <MessageCircle className="w-6 h-6" />}
+        </span>
         {!isOpen && (
           <span className="absolute -top-1 -right-1 w-4 h-4 rounded-full bg-[#C8A45A] flex items-center justify-center">
             <Sparkles className="w-2.5 h-2.5 text-[#0F3B2E]" />

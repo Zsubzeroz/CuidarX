@@ -235,7 +235,25 @@ export default function ServicesView({
 
         {/* Services List Table */}
         <div className="overflow-x-auto">
-          {filteredServices.length === 0 ? (
+          {services.length === 0 ? (
+            <div className="py-12 px-4 text-center space-y-4">
+              <div className="w-16 h-16 rounded-2xl bg-[#0F3B2E]/5 border border-[#0F3B2E]/10 flex items-center justify-center mx-auto">
+                <ClipboardList className="w-8 h-8 text-[#0F3B2E]/30" />
+              </div>
+              <div className="space-y-1.5">
+                <p className="text-sm font-bold text-slate-700">Nenhum serviço cadastrado</p>
+                <p className="text-[11px] text-slate-400 leading-relaxed max-w-[240px] mx-auto">
+                  Cadastre o primeiro serviço para configurar a tabela de procedimentos e agendamentos.
+                </p>
+              </div>
+              <button
+                onClick={handleOpenCreateModal}
+                className="inline-flex items-center gap-1.5 bg-[#0F3B2E] hover:bg-[#0B4C33] text-white text-[11px] font-bold px-4 py-2.5 rounded-xl shadow-sm transition-all cursor-pointer"
+              >
+                <PlusCircle className="w-3.5 h-3.5" /> Adicionar Primeiro Serviço
+              </button>
+            </div>
+          ) : filteredServices.length === 0 ? (
             <div className="p-12 text-center text-slate-400 space-y-2">
               <ClipboardList className="w-10 h-10 text-slate-300 mx-auto" />
               <p className="text-xs font-semibold">Nenhum serviço encontrado</p>

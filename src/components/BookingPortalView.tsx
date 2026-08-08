@@ -1274,6 +1274,9 @@ _Por favor, se você for diabético, lembre-se de trazer os exames mais recentes
           </div>
         </div>
       )}
+
+      {/* Widget flutuante da Recepcionista Virtual — visível para clientes no portal */}
+      <AiReceptionistWidget />
     </div>
   );
 }

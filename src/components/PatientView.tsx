@@ -4,6 +4,7 @@ import {
   Search,
   Plus,
   User,
+  Users,
   Phone,
   Calendar,
   AlertTriangle,
@@ -214,7 +215,25 @@ export default function PatientView({
 
         {/* Patients Cards */}
         <div className="space-y-2 max-h-[500px] overflow-y-auto pr-1">
-          {filteredPatients.length === 0 ? (
+          {patients.length === 0 ? (
+            <div className="py-10 px-4 text-center space-y-4">
+              <div className="w-16 h-16 rounded-2xl bg-[#0F3B2E]/5 border border-[#0F3B2E]/10 flex items-center justify-center mx-auto">
+                <Users className="w-8 h-8 text-[#0F3B2E]/30" />
+              </div>
+              <div className="space-y-1.5">
+                <p className="text-sm font-bold text-slate-700">Nenhum paciente cadastrado</p>
+                <p className="text-[11px] text-slate-400 leading-relaxed max-w-[220px] mx-auto">
+                  Cadastre o primeiro paciente para começar a gerenciar prontuários e agendamentos.
+                </p>
+              </div>
+              <button
+                onClick={() => setShowAddForm(true)}
+                className="inline-flex items-center gap-1.5 bg-[#0F3B2E] hover:bg-[#0B4C33] text-white text-[11px] font-bold px-4 py-2.5 rounded-xl shadow-sm transition-all cursor-pointer"
+              >
+                <Plus className="w-3.5 h-3.5" /> Adicionar Primeiro Paciente
+              </button>
+            </div>
+          ) : filteredPatients.length === 0 ? (
             <p className="text-center text-xs text-slate-400 py-6">Nenhum paciente encontrado.</p>
           ) : (
             filteredPatients.map((patient) => {

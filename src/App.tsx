@@ -56,6 +56,7 @@ import AiAssistantView from "./components/AiAssistantView";
 import BookingPortalView from "./components/BookingPortalView";
 import ServicesView from "./components/ServicesView";
 import InventoryView from "./components/InventoryView";
+import SplashScreen from "./components/SplashScreen";
 import ErrorBoundary from "./components/ErrorBoundary";
 // @ts-ignore
 import clinicLogo from "./assets/images/clinic_logo_1783686122531.jpg";
@@ -89,6 +90,13 @@ import {
 export default function App() {
   // Detect /cliente route — render full-screen public booking portal, no admin chrome
   const isClienteRoute = typeof window !== "undefined" && window.location.pathname === "/cliente";
+
+  // Splash Screen — exibe na inicialização, desaparece após 2.5s
+  const [showSplash, setShowSplash] = useState(true);
+  useEffect(() => {
+    const timer = setTimeout(() => setShowSplash(false), 2500);
+    return () => clearTimeout(timer);
+  }, []);
 
   const [activeTab, setActiveTab] = useState<string>("agenda");
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
@@ -659,6 +667,11 @@ export default function App() {
         expedienteEnd={clinicSettings.expedienteEnd}
       />
     );
+  }
+
+  // Splash Screen premium — exibido na inicialização do app
+  if (showSplash) {
+    return <SplashScreen visible={showSplash} />;
   }
 
   if (authChecking || isLoading) {

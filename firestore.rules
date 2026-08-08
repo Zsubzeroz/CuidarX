@@ -18,48 +18,66 @@ service cloud.firestore {
 
     // ============================================================
     // PACIENTES — Dados medicos sensiveis (LGPD)
+    // Risco alto: prontuarios, diagnostico, alergias, diabete.
+    // Apenas admin pode ler/escrever. NUNCA publico.
     // ============================================================
     match /patients/{patientId} {
-      allow create: if true;
-      allow read, update, delete: if isAdmin();
+      allow create: if isAdmin();
+      allow read: if isAdmin();
+      allow update: if isAdmin();
+      allow delete: if isAdmin();
     }
 
     // ============================================================
     // AGENDAMENTOS
+    // PUBLICO: pode criar (portal de agendamento online)
+    // ADMIN: pode ler/atualizar/excluir qualquer agendamento
     // ============================================================
     match /appointments/{appointmentId} {
       allow create: if true;
-      allow read, update, delete: if isAdmin();
+      allow read: if isAdmin();
+      allow update: if isAdmin();
+      allow delete: if isAdmin();
     }
 
     // ============================================================
-    // FINANCAS — APENAS ADMIN
+    // FINANCAS — APENAS ADMIN (LGPD financeira)
     // ============================================================
     match /finances/{financeId} {
-      allow read, create, update, delete: if isAdmin();
+      allow create: if isAdmin();
+      allow read: if isAdmin();
+      allow update: if isAdmin();
+      allow delete: if isAdmin();
     }
 
     // ============================================================
-    // SERVICOS — Leitura publica, escrita admin
+    // SERVICOS — Leitura publica (portal), escrita admin
     // ============================================================
     match /services/{serviceId} {
       allow read: if true;
-      allow create, update, delete: if isAdmin();
+      allow create: if isAdmin();
+      allow update: if isAdmin();
+      allow delete: if isAdmin();
     }
 
     // ============================================================
-    // BLOCKED DAYS — APENAS ADMIN
+    // DADOS DA APLICACAO — APENAS ADMIN
     // ============================================================
     match /appData/{document} {
-      allow read, create, update, delete: if isAdmin();
+      allow create: if isAdmin();
+      allow read: if isAdmin();
+      allow update: if isAdmin();
+      allow delete: if isAdmin();
     }
 
     // ============================================================
-    // BLOQUEIOS NATIVOS — Leitura publica, escrita admin
+    // BLOQUEIOS DE HORARIO — Leitura publica, escrita admin
     // ============================================================
     match /scheduleBlocks/{blockId} {
       allow read: if true;
-      allow create, update, delete: if isAdmin();
+      allow create: if isAdmin();
+      allow update: if isAdmin();
+      allow delete: if isAdmin();
     }
 
     // ============================================================
@@ -67,30 +85,47 @@ service cloud.firestore {
     // ============================================================
     match /clinicSettings/{document} {
       allow read: if true;
-      allow create, update, delete: if isAdmin();
+      allow create: if isAdmin();
+      allow update: if isAdmin();
+      allow delete: if isAdmin();
     }
 
     // ============================================================
-    // ESTOQUE — APENAS ADMIN
+    // ESTOQUE — APENAS ADMIN (dados operacionais sensiveis)
     // ============================================================
     match /inventoryProducts/{productId} {
-      allow read, create, update, delete: if isAdmin();
+      allow create: if isAdmin();
+      allow read: if isAdmin();
+      allow update: if isAdmin();
+      allow delete: if isAdmin();
     }
 
     match /inventoryLots/{lotId} {
-      allow read, create, update, delete: if isAdmin();
+      allow create: if isAdmin();
+      allow read: if isAdmin();
+      allow update: if isAdmin();
+      allow delete: if isAdmin();
     }
 
     match /inventoryInstruments/{instrumentId} {
-      allow read, create, update, delete: if isAdmin();
+      allow create: if isAdmin();
+      allow read: if isAdmin();
+      allow update: if isAdmin();
+      allow delete: if isAdmin();
     }
 
     match /inventoryDiscards/{discardId} {
-      allow read, create, update, delete: if isAdmin();
+      allow create: if isAdmin();
+      allow read: if isAdmin();
+      allow update: if isAdmin();
+      allow delete: if isAdmin();
     }
 
     match /inventoryKits/{kitId} {
-      allow read, create, update, delete: if isAdmin();
+      allow create: if isAdmin();
+      allow read: if isAdmin();
+      allow update: if isAdmin();
+      allow delete: if isAdmin();
     }
   }
 }

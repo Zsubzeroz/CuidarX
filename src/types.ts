@@ -113,12 +113,16 @@ export interface ClinicService {
 
 export interface ScheduleBlock {
   id: string;
-  date: string;       // YYYY-MM-DD
+  date: string;       // YYYY-MM-DD (vazio para bloqueios recorrentes)
   startTime: string;  // HH:MM
   endTime: string;    // HH:MM
   reason: string;     // "Almoço", "Férias", "Reunião", etc.
   createdAt: string;  // ISO string
   calendarEventId?: string; // Google Calendar event ID for sync
   source?: "manual" | "google"; // Origin: manual (app) or google (imported from Google Calendar)
+  recurrence?: {
+    frequency: "none" | "diaria" | "semanal" | "dias_uteis" | "personalizada";
+    daysOfWeek: number[]; // 0=Dom, 1=Seg, ..., 6=Sáb
+  };
 }
 

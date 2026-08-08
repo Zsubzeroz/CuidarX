@@ -51,6 +51,9 @@ temp/
 # Firebase deploy cache
 .firebase/
 .aider*
+.mimocode*
+.cursor/
+.windsurf/
 
 # Python/Django (local dev only)
 venv/

@@ -11,6 +11,9 @@ import {
   FileText,
   AlertTriangle,
   Lightbulb,
+  Stethoscope,
+  Shield,
+  BookOpen,
 } from "lucide-react";
 
 const SYSTEM_PROMPT = `Você é o Assistente Virtual e Recepcionista da clínica da Dra. Fabrícia Rodrigues — Podologia & Enfermagem.
@@ -27,6 +30,10 @@ Você combina duas funções: (1) recepcionista virtual e especialista no sistem
 2. AGENDA SINCRONIZADA COM O GOOGLE CALENDAR: A agenda exibe automaticamente os eventos do Google Calendar (ex.: "Estágio 07:00–12:00" aparece bloqueado na grade). O agendamento cria o evento no Google Calendar e a conexão é feita pelo botão "Conectar Google Agenda" no topo do painel.
 3. CADASTRO DE CLIENTES: No menu "Clientes", clique em "Novo Cliente", preencha nome, telefone, data de nascimento e anamnese, e salve. O histórico e prontuário ficam registrados para consulta futura.
 4. WHATSAPP 1-CLIQUE: Na ficha do cliente ou no agendamento há um botão de WhatsApp que abre a conversa direta com o número do cliente em um clique, facilitando confirmações e envio de orientações.
+5. BLOQUEIO DE HORÁRIO: No canto inferior da Agenda Diária, clique em "Bloquear Horário". Escolha o motivo (Almoço, Médico, Férias, Feriado), defina data e horário. Para bloqueios recorrentes, selecione "Recorrente" e escolha a frequência: Diariamente, Semanalmente, Dias Úteis (Seg-Sex) ou Personalizado com seleção de dias da semana.
+6. ESTOQUE: No menu "Estoque", cadastre itens com categoria (Material, Descartável, Medicamento), unidade e estoque mínimo. Controle lotes por validade, gere kits de atendimento e receba alertas automáticos de itens abaixo do mínimo ou próximos ao vencimento.
+7. FINANCEIRO: No menu "Financeiro", registre receitas e despesas por categoria (Serviço, Materiais, Aluguel, etc.). O painel exibe gráficos de fluxo de caixa, saldo líquido e breakdown de despesas por categoria. Use o livro-caixa para consultar lançamentos anteriores.
+8. SERVIÇOS: No menu "Serviços", cadastre procedimentos com nome, valor, duração e status (ativo/inativo). Os serviços cadastrados aparecem automaticamente no formulário de agendamento.
 
 ### DIRETRIZES DE ATUAÇÃO:
 1. RECEPÇÃO: Ao responder perguntas sobre horários, endereço, valores ou regras, use os dados oficiais acima e seja acolhedor(a) e objetivo(a).
@@ -138,26 +145,49 @@ export default function AiAssistantView({ patients }: AiAssistantProps) {
       title: "Dúvidas da Clínica",
       prompt: "Quais são o endereço, o WhatsApp, o horário de funcionamento e as regras de agendamento online da clínica?",
       icon: <Lightbulb className="w-4 h-4 text-amber-500" />,
+      color: "amber",
+    },
+    {
+      title: "Como Usar o App (Manual Interativo)",
+      prompt: "Atue como Suporte Técnico do sistema. Explique passo a passo como usar: (1) Agenda Diária — ver grade, bloquear horários, criar recorrências, (2) Estoque — cadastrar itens, controlar lotes, gerar kits, alertas de validade, (3) Bloqueio de Horário — bloqueio único, recorrente diário/semanal/dias úteis, e (4) Integrações — Google Calendar e WhatsApp 1-clique.",
+      icon: <Cpu className="w-4 h-4 text-blue-500" />,
+      color: "blue",
+    },
+    {
+      title: "Protocolo Pé Diabético",
+      prompt: "Gere o protocolo completo de avaliação e cuidados para paciente com Pé Diabético (Wagner 0-1), incluindo inspeção visual, testes de sensibilidade (monofilamento), orientações de homecare e critérios de encaminhamento vascular.",
+      icon: <Shield className="w-4 h-4 text-emerald-600" />,
+      color: "emerald",
+    },
+    {
+      title: "Protocolo Onicocriptose",
+      prompt: "Gere o protocolo clínico completo para tratamento de onicocriptose (unha encravada): técnica de corte, cuidados pós-operatórios, orientações ao paciente, critérios de gravidade e sinais de alarme para reencaminhamento ao médico.",
+      icon: <Stethoscope className="w-4 h-4 text-rose-500" />,
+      color: "rose",
     },
     {
       title: "Guia Pós-Operatório",
       prompt: "Gere recomendações pós-operatório (onicocriptose/unha encravada) completas e fáceis de ler para enviar ao WhatsApp do paciente.",
       icon: <Sparkles className="w-4 h-4 text-gold" />,
+      color: "gold",
     },
     {
       title: "Cuidados Pé Diabético",
       prompt: "Quais são as orientações completas de homecare que devo dar para um paciente idoso diabético com tendência a fissuras severas?",
       icon: <Heart className="w-4 h-4 text-rose-500 fill-rose-50" />,
+      color: "rose",
     },
     {
       title: "Tratamento de Órteses",
       prompt: "Explique as melhores práticas para a aplicação de órteses metálicas e de fibra de memória molecular no hálux. Qual a periodicidade ideal de manutenção?",
       icon: <Activity className="w-4 h-4 text-amber-500" />,
+      color: "amber",
     },
     {
       title: "Sintetizar Caso Clínico",
       prompt: "Com base no histórico deste paciente, formule um resumo de caso clínico completo adequado para enviar a um médico dermatologista ou angiologista.",
       icon: <FileText className="w-4 h-4 text-blue-500" />,
+      color: "blue",
       requirePatient: true,
     },
   ];
@@ -213,6 +243,13 @@ export default function AiAssistantView({ patients }: AiAssistantProps) {
           <div className="space-y-2">
             {quickPrompts.map((qp, idx) => {
               const disabled = qp.requirePatient && !selectedPatientId;
+              const colorMap: Record<string, string> = {
+                amber: "hover:border-amber-300 hover:bg-amber-50/50",
+                blue: "hover:border-blue-300 hover:bg-blue-50/50",
+                emerald: "hover:border-emerald-300 hover:bg-emerald-50/50",
+                rose: "hover:border-rose-300 hover:bg-rose-50/50",
+                gold: "hover:border-[#C8A45A]/40 hover:bg-[#C8A45A]/5",
+              };
               return (
                 <button
                   key={idx}
@@ -221,11 +258,11 @@ export default function AiAssistantView({ patients }: AiAssistantProps) {
                   className={`w-full text-left p-3 rounded-xl border text-xs flex gap-2.5 items-start transition-all cursor-pointer ${
                     disabled
                       ? "bg-slate-50 border-slate-100 opacity-55 cursor-not-allowed"
-                      : "bg-white border-slate-100 hover:border-gold/30 hover:bg-gold/5"
+                      : `bg-white border-slate-100 shadow-sm hover:shadow-md ${colorMap[qp.color || "amber"]}`
                   }`}
                 >
-                  <div className="pt-0.5">{qp.icon}</div>
-                  <div>
+                  <div className="pt-0.5 shrink-0">{qp.icon}</div>
+                  <div className="min-w-0">
                     <p className="font-bold text-slate-800">{qp.title}</p>
                     <p className="text-[10px] text-slate-500 mt-0.5 line-clamp-2 leading-relaxed">{qp.prompt}</p>
                     {qp.requirePatient && !selectedPatientId && (

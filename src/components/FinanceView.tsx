@@ -364,6 +364,20 @@ export default function FinanceView({ finances, onAddFinanceRecord, onDeleteFina
 
         {/* Historic Cash Ledger Table */}
         <div className="bg-white dark:bg-slate-900 p-5 rounded-2xl border border-slate-100 dark:border-slate-800 shadow-sm space-y-4">
+          {finances.length === 0 ? (
+            <div className="py-10 px-4 text-center space-y-4">
+              <div className="w-16 h-16 rounded-2xl bg-gold/5 border border-gold/10 flex items-center justify-center mx-auto">
+                <DollarSign className="w-8 h-8 text-gold/30" />
+              </div>
+              <div className="space-y-1.5">
+                <p className="text-sm font-bold text-slate-700">Nenhum lançamento registrado</p>
+                <p className="text-[11px] text-slate-400 leading-relaxed max-w-[240px] mx-auto">
+                  Registre a primeira receita ou despesa para acompanhar o fluxo de caixa da clínica.
+                </p>
+              </div>
+            </div>
+          ) : (
+          <>
           <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
             <h4 className="text-sm font-bold text-slate-800">Livro-Caixa e Lançamentos</h4>
             
@@ -458,6 +472,8 @@ export default function FinanceView({ finances, onAddFinanceRecord, onDeleteFina
             <p className="text-[10px] text-slate-400 italic text-center mt-2">
               Mostrando os 10 lançamentos mais recentes de {filteredLedger.length} totais.
             </p>
+          )}
+          </>
           )}
         </div>
       </div>

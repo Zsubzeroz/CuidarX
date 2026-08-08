@@ -806,7 +806,29 @@ export default function CalendarView({
     }
   };
 
-  const dayBlocks = scheduleBlocks.filter((b) => b.date === selectedDate);
+  // Expande bloqueios recorrentes para a data selecionada
+  const expandBlocksForDate = (blocks: ScheduleBlock[], date: string): ScheduleBlock[] => {
+    const dateObj = new Date(date + "T12:00:00-03:00");
+    const dayOfWeek = dateObj.getDay();
+
+    return blocks.filter((b) => {
+      // Match direto por data (bloqueio pontual ou recorrente com data base)
+      if (b.date === date) return true;
+
+      // Bloqueio recorrente: verificar se o dia da semana bate
+      if (b.recurrence && b.recurrence.frequency !== "none") {
+        const { frequency, daysOfWeek } = b.recurrence;
+        if (frequency === "diaria") return true;
+        if (frequency === "dias_uteis") return dayOfWeek >= 1 && dayOfWeek <= 5;
+        if ((frequency === "semanal" || frequency === "personalizada") && daysOfWeek?.length > 0) {
+          return daysOfWeek.includes(dayOfWeek);
+        }
+      }
+      return false;
+    });
+  };
+
+  const dayBlocks = expandBlocksForDate(scheduleBlocks, selectedDate);
 
   const getBlockForHour = (hour: string) => {
     const [sh, sm] = hour.split(":").map(Number);
@@ -960,6 +982,22 @@ export default function CalendarView({
     const geStart = timeToMinutes(formatGoogleTime(googleEvt.start));
     if (isNaN(geStart)) return false;
     return geStart >= slotStart && geStart < slotStart + 30;
+  };
+
+  // True quando o horário de início do BLOQUEIO cai DENTRO deste slot
+  const blockStartsInSlot = (block: ScheduleBlock | undefined, hour: string): boolean => {
+    if (!block) return false;
+    const [sh, sm] = hour.split(":").map(Number);
+    const slotStart = sh * 60 + sm;
+    const [bh, bm] = block.startTime.split(":").map(Number);
+    const blockStart = bh * 60 + bm;
+    return blockStart >= slotStart && blockStart < slotStart + 30;
+  };
+
+  // Calcula altura mínima do card baseada na duração em minutos (30min = 60px)
+  const getSlotHeight = (durationMin: number): string => {
+    const units = Math.max(1, Math.round(durationMin / 30));
+    return `${units * 60}px`;
   };
 
   const matchedApptIds = new Set<string>();
@@ -1682,59 +1720,86 @@ export default function CalendarView({
             </div>
           )}
 
-          {dayHours.map((hour) => {
-            const googleEvt = getGoogleEventForHour(hour);
-            const appt = getApptForHour(hour);
-            const patientObj = appt ? patients.find((p) => p.id === appt.patientId) : null;
-            const isDuplicate = appt?.calendarEventId && googleEvt;
-            const blocked = getBlockForHour(hour);
-            const googleEvtStartsHere = googleEventStartsInSlot(googleEvt, hour);
+          {(() => {
+            // Track which blocks/events have been rendered to avoid duplicates
+            const renderedBlockIds = new Set<string>();
+            const renderedGoogleIds = new Set<string>();
+            
+            return dayHours.map((hour) => {
+              const googleEvt = getGoogleEventForHour(hour);
+              const appt = getApptForHour(hour);
+              const patientObj = appt ? patients.find((p) => p.id === appt.patientId) : null;
+              const isDuplicate = appt?.calendarEventId && googleEvt;
+              const blocked = getBlockForHour(hour);
+              const googleEvtStartsHere = googleEventStartsInSlot(googleEvt, hour);
 
-            if (blocked) {
-              return (
-                <div key={hour} className="flex gap-3 items-start p-3 rounded-xl border border-rose-100 bg-rose-50/70">
-                  <div className="flex items-center gap-1.5 w-14 shrink-0 text-rose-400 font-bold text-[11px] pt-1">
-                    <Clock className="w-3 h-3" />
-                    <span>{hour}</span>
-                  </div>
-                  <div className="flex-1 min-w-0">
-                    <div className="flex items-center gap-2">
-                      <span className="flex items-center gap-1 text-[10px] font-bold text-rose-700 bg-white border border-rose-100 px-2 py-1 rounded-lg">
-                        <Ban className="w-3 h-3 text-rose-500" />
-                        {blocked.reason}
-                      </span>
-                      <span className="text-[9px] text-rose-400 font-medium">
-                        {blocked.startTime} – {blocked.endTime}
-                      </span>
+              // Bloqueios: renderiza apenas no slot de início, com altura proporcional
+              if (blocked && !renderedBlockIds.has(blocked.id)) {
+                renderedBlockIds.add(blocked.id);
+                const [bh, bm] = blocked.startTime.split(":").map(Number);
+                const [eh, em] = blocked.endTime.split(":").map(Number);
+                const durationMin = (eh * 60 + em) - (bh * 60 + bm);
+                const slotHeight = getSlotHeight(durationMin);
+                return (
+                  <div key={hour} style={{ minHeight: slotHeight }} className="flex gap-3 items-start p-3 rounded-xl border border-rose-100 bg-rose-50/70">
+                    <div className="flex items-center gap-1.5 w-14 shrink-0 text-rose-400 font-bold text-[11px] pt-1">
+                      <Clock className="w-3 h-3" />
+                      <span>{hour}</span>
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center gap-2">
+                        <span className="flex items-center gap-1 text-[10px] font-bold text-rose-700 bg-white border border-rose-100 px-2 py-1 rounded-lg">
+                          <Ban className="w-3 h-3 text-rose-500" />
+                          {blocked.reason}
+                        </span>
+                        <span className="text-[9px] text-rose-400 font-medium">
+                          {blocked.startTime} – {blocked.endTime}
+                        </span>
+                      </div>
                     </div>
                   </div>
-                </div>
-              );
-            }
+                );
+              }
+              // Slot de continuação de bloqueio — pula (já renderizado acima)
+              if (blocked && renderedBlockIds.has(blocked.id)) {
+                return null;
+              }
 
-            // Slot de continuação de um evento do Google que começou antes —
-            // exibido como HORÁRIO BLOQUEADO, impedindo qualquer agendamento.
-            if (googleEvt && !appt && !googleEvtStartsHere) {
-              return (
-                <div key={hour} className="flex gap-3 items-start p-3 rounded-xl border border-gold/30 bg-gold/5">
-                  <div className="flex items-center gap-1.5 w-14 shrink-0 text-gold font-bold text-[11px] pt-1">
-                    <Clock className="w-3 h-3" />
-                    <span>{hour}</span>
-                  </div>
-                  <div className="flex-1 min-w-0">
-                    <div className="flex items-center gap-2">
-                      <span className="flex items-center gap-1 text-[10px] font-bold text-amber-700 bg-white border border-gold/30 px-2 py-1 rounded-lg">
-                        <Ban className="w-3 h-3 text-amber-500" />
-                        {googleEvt.summary}
-                      </span>
-                      <span className="text-[9px] text-slate-500 font-medium">
-                        {formatGoogleTime(googleEvt.start)} – {formatGoogleTime(googleEvt.end)}
-                      </span>
+              // Eventos Google: renderiza apenas no slot de início, com altura proporcional
+              if (googleEvt && !appt && !renderedGoogleIds.has(googleEvt.id)) {
+                if (googleEvtStartsHere) {
+                  renderedGoogleIds.add(googleEvt.id);
+                  const geStartMin = timeToMinutes(formatGoogleTime(googleEvt.start));
+                  const geEndMin = timeToMinutes(formatGoogleTime(googleEvt.end));
+                  const durationMin = (!isNaN(geStartMin) && !isNaN(geEndMin)) ? geEndMin - geStartMin : 30;
+                  const slotHeight = getSlotHeight(durationMin);
+                  return (
+                    <div key={hour} style={{ minHeight: slotHeight }} className="flex gap-3 items-start p-3 rounded-xl border border-gold/30 bg-gold/5">
+                      <div className="flex items-center gap-1.5 w-14 shrink-0 text-gold font-bold text-[11px] pt-1">
+                        <Clock className="w-3 h-3" />
+                        <span>{hour}</span>
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-center gap-2">
+                          <span className="flex items-center gap-1 text-[10px] font-bold text-amber-700 bg-white border border-gold/30 px-2 py-1 rounded-lg">
+                            <Ban className="w-3 h-3 text-amber-500" />
+                            {googleEvt.summary}
+                          </span>
+                          <span className="text-[9px] text-slate-500 font-medium">
+                            {formatGoogleTime(googleEvt.start)} – {formatGoogleTime(googleEvt.end)}
+                          </span>
+                        </div>
+                      </div>
                     </div>
-                  </div>
-                </div>
-              );
-            }
+                  );
+                }
+                // Google event overlaps but doesn't start here — skip continuation
+                return null;
+              }
+              // Slot de continuação de evento Google — pula
+              if (googleEvt && !appt && renderedGoogleIds.has(googleEvt.id)) {
+                return null;
+              }
 
             return (
               <div
@@ -2042,7 +2107,8 @@ export default function CalendarView({
                 </div>
               </div>
             );
-          })}
+          });
+          })()}
 
           {/* Google Calendar events outside grid hours */}
           {(() => {
