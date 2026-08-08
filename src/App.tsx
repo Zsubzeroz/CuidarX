@@ -55,6 +55,7 @@ import FinanceView from "./components/FinanceView";
 import AiAssistantView from "./components/AiAssistantView";
 import BookingPortalView from "./components/BookingPortalView";
 import ServicesView from "./components/ServicesView";
+import InventoryView from "./components/InventoryView";
 import ErrorBoundary from "./components/ErrorBoundary";
 // @ts-ignore
 import clinicLogo from "./assets/images/clinic_logo_1783686122531.jpg";
@@ -82,6 +83,7 @@ import {
   Lock,
   Clock,
   Bot,
+  Package,
 } from "lucide-react";
 
 export default function App() {
@@ -642,6 +644,7 @@ export default function App() {
     { id: "pacientes", label: "Clientes", icon: Users },
     { id: "financeiro", label: "Caixa & Financeiro", icon: DollarSign },
     { id: "servicos", label: "Produtos e Serviços", icon: ClipboardList },
+    { id: "estoque", label: "Estoque", icon: Package },
     { id: "assistente", label: "Assistente IA", icon: Bot },
     { id: "configuracoes", label: "Configurações", icon: Settings },
   ];
@@ -1275,6 +1278,8 @@ export default function App() {
             onDeleteService={handleDeleteService}
           />
         )}
+
+        {activeTab === "estoque" && <InventoryView />}
 
         {activeTab === "assistente" && <AiAssistantView patients={patients} />}
 

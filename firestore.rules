@@ -3,87 +3,94 @@ service cloud.firestore {
   match /databases/{database}/documents {
 
     // ============================================================
-    // REGRAS GERAIS — Banco de dados ABERTO por design
-    // Este app nao utiliza autenticacao do Firebase (sem senha).
-    // O portal publico de agendamento do cliente precisa ler e
-    // criar registros SEM login. Por isso, todas as colecoes
-    // permitem leitura/escrita publica.
-    // NOTA: por nao haver autenticacao, a protecao dos dados
-    // depende dos controles de acesso do ambiente (ex.: hosting
-    // com regras de acesso) e de boas praticas de privacidade.
-    // Se um dia o app adotar login, substitua `if true` pelas
-    // funcoes isAuth()/isAdmin() abaixo.
+    // HELPERS DE AUTENTICACAO
     // ============================================================
 
-    // Helper: verifica se o usuario esta autenticado
     function isAuth() {
       return request.auth != null;
     }
 
-    // Helper: verifica se o usuario e administrador
     function isAdmin() {
-      return isAuth() && request.auth.token.admin == true;
+      return isAuth() && request.auth.token.email in [
+        "fabriciapodologa@gmail.com"
+      ];
     }
 
     // ============================================================
     // PACIENTES — Dados medicos sensiveis (LGPD)
-    // Inclui: prontuarios, historico de evolucao, patologias dos pes.
     // ============================================================
     match /patients/{patientId} {
-      allow read, create, update, delete: if true;
+      allow create: if true;
+      allow read, update, delete: if isAdmin();
     }
 
     // ============================================================
     // AGENDAMENTOS
     // ============================================================
     match /appointments/{appointmentId} {
-      allow read, create, update, delete: if true;
+      allow create: if true;
+      allow read, update, delete: if isAdmin();
     }
 
     // ============================================================
-    // FINANCAS — Dados financeiros sensiveis
+    // FINANCAS — APENAS ADMIN
     // ============================================================
     match /finances/{financeId} {
-      allow read, create, update, delete: if true;
+      allow read, create, update, delete: if isAdmin();
     }
 
     // ============================================================
-    // SERVICOS — Catalogo de procedimentos
-    // CRUD completo (criar, editar valor/duracao, excluir) em tempo real.
+    // SERVICOS — Leitura publica, escrita admin
     // ============================================================
     match /services/{serviceId} {
-      allow read, create, update, delete: if true;
+      allow read: if true;
+      allow create, update, delete: if isAdmin();
     }
 
     // ============================================================
-    // BLOCKED DAYS — Bloqueios de horarios (Painel Web Admin)
-    // Estrutura: appData/blockedDays { items: [...] }
+    // BLOCKED DAYS — APENAS ADMIN
     // ============================================================
     match /appData/{document} {
-      allow read, create, update, delete: if true;
+      allow read, create, update, delete: if isAdmin();
     }
 
     // ============================================================
-    // BLOQUEIOS NATIVOS (colecao scheduleBlocks)
+    // BLOQUEIOS NATIVOS — Leitura publica, escrita admin
     // ============================================================
     match /scheduleBlocks/{blockId} {
-      allow read, create, update, delete: if true;
+      allow read: if true;
+      allow create, update, delete: if isAdmin();
     }
 
     // ============================================================
-    // CONFIGURACOES DA CLINICA (horario de expediente, etc.)
+    // CONFIGURACOES DA CLINICA — Leitura publica, escrita admin
     // ============================================================
     match /clinicSettings/{document} {
-      allow read, create, update, delete: if true;
+      allow read: if true;
+      allow create, update, delete: if isAdmin();
     }
 
     // ============================================================
-    // PORTAL PUBLICO DE AGENDAMENTO
-    // O cliente agenda SEM login: o frontend publico le servicos
-    // e cria pacientes/agendamentos diretamente. Por isso as
-    // colecoes acima usam `allow ... if true` (leitura e criacao
-    // publicas + atualizacao/exclusao livres para o funcionamento
-    // completo do app sem senha do Firebase).
+    // ESTOQUE — APENAS ADMIN
     // ============================================================
+    match /inventoryProducts/{productId} {
+      allow read, create, update, delete: if isAdmin();
+    }
+
+    match /inventoryLots/{lotId} {
+      allow read, create, update, delete: if isAdmin();
+    }
+
+    match /inventoryInstruments/{instrumentId} {
+      allow read, create, update, delete: if isAdmin();
+    }
+
+    match /inventoryDiscards/{discardId} {
+      allow read, create, update, delete: if isAdmin();
+    }
+
+    match /inventoryKits/{kitId} {
+      allow read, create, update, delete: if isAdmin();
+    }
   }
 }
