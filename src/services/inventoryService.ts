@@ -20,6 +20,8 @@ import type {
   ProcedureKit,
 } from "../types";
 
+import { runTransaction,addDoc, serverTimestamp } from "firebase/firestore";
+
 type Unsubscribe = () => void;
 
 // Remove undefined values to prevent Firestore setDoc errors
@@ -434,4 +436,52 @@ export async function getAllExpiryAlerts(): Promise<ExpiryAlert[]> {
   return [...productAlerts, ...instrumentAlerts].sort(
     (a, b) => a.daysUntilExpiry - b.daysUntilExpiry
   );
+}
+
+// Adicione ao final do arquivo src/services/inventoryService.ts
+
+export async function consumeStockForAppointment(
+  appointmentId: string,
+  patientId: string,
+  productId: string,
+  lotId: string,
+  quantity: number
+) {
+  try {
+    await runTransaction(db, async (transaction) => {
+      const productRef = doc(db, "inventoryProducts", productId);
+      const lotRef = doc(db, "inventoryLots", lotId);
+
+      const productSnap = await transaction.get(productRef);
+      const lotSnap = await transaction.get(lotRef);
+
+      if (!productSnap.exists() || !lotSnap.exists()) {
+        throw "Produto ou Lote não encontrado!";
+      }
+
+      const newProductStock = (productSnap.data().currentStock || 0) - quantity;
+      const newLotQuantity = (lotSnap.data().remainingQuantity || 0) - quantity;
+
+      if (newLotQuantity < 0) throw "Estoque insuficiente neste lote!";
+
+      // Atualiza os dois de uma vez
+      transaction.update(productRef, { currentStock: newProductStock });
+      transaction.update(lotRef, { remainingQuantity: newLotQuantity });
+
+      // Registra no histórico para a Anvisa
+      const historyRef = collection(db, "stock_history");
+      transaction.set(doc(historyRef), {
+        appointmentId,
+        patientId,
+        productId,
+        lotNumber: lotSnap.data().lotNumber,
+        quantity,
+        timestamp: serverTimestamp()
+      });
+    });
+    return { success: true };
+  } catch (error) {
+    console.error("Erro na transação de estoque:", error);
+    throw error;
+  }
 }
