@@ -44,6 +44,7 @@ import {
   getCurrentUser,
   trySilentLogin,
   logout,
+  onAuthStateChange,
   isNativePlatform,
   type AdminUser,
 } from "./services/googleAuth";
@@ -122,6 +123,7 @@ export default function App() {
 
   // Admin login gate — somente o e-mail autorizado acessa o painel
   const [adminUser, setAdminUser] = useState<AdminUser | null>(null);
+  const [firebaseAuthReady, setFirebaseAuthReady] = useState(false);
   const [authChecking, setAuthChecking] = useState(true);
   const [authError, setAuthError] = useState<string | null>(null);
 
@@ -134,7 +136,7 @@ export default function App() {
     } catch {}
   }, [isDarkMode]);
 
-  // Real-time Firestore data — só inicia listeners quando o usuário está autenticado
+  // Real-time Firestore data — só inicia listeners quando Firebase Auth confirmou a sessão
   const {
     patients,
     appointments,
@@ -158,7 +160,7 @@ export default function App() {
     handleAddScheduleBlock,
     handleUpdateScheduleBlock,
     handleDeleteScheduleBlock,
-  } = useRealtimeData(!!adminUser);
+  } = useRealtimeData(firebaseAuthReady);
 
   const { isMobile, isTablet, isDesktop } = useResponsive();
 
@@ -248,6 +250,17 @@ export default function App() {
       const today = new Date().toISOString().split("T")[0];
       handleSyncGoogleEvents(today);
     }
+  }, []);
+
+  // Firebase Auth session restoration — aguarda o Auth restaurar a sessão do IndexedDB
+  // antes de liberar os listeners Firestore. Sem isso, adminUser pode vir do localStorage
+  // enquanto auth.currentUser ainda é null, causando "Missing permissions".
+  useEffect(() => {
+    const unsub = onAuthStateChange((user) => {
+      console.warn(`[App] onAuthStateChanged: user=${user?.email || "null"}`);
+      setFirebaseAuthReady(true);
+    });
+    return unsub;
   }, []);
 
   // Admin login gate: tentar restaurar sessão autorizada silenciosamente.

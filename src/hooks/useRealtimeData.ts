@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import {
   listenPatients,
   listenAppointments,
@@ -21,6 +21,8 @@ import {
   deleteScheduleBlock as fsDeleteScheduleBlock,
 } from "../services/firestoreService";
 import type { Patient, Appointment, FinanceRecord, ClinicService, ScheduleBlock } from "../types";
+import { auth } from "../services/firebase";
+import { onAuthStateChange } from "../services/googleAuth";
 
 export function useRealtimeData(enabled = true) {
   const [patients, setPatients] = useState<Patient[]>([]);
@@ -33,19 +35,51 @@ export function useRealtimeData(enabled = true) {
   const [isLoading, setIsLoading] = useState(true);
   const [syncStatus, setSyncStatus] = useState<"synced" | "syncing" | "error">("synced");
   const [syncError, setSyncError] = useState<string | null>(null);
+  const cleanupRef = useRef<(() => void) | null>(null);
+  const [firebaseUid, setFirebaseUid] = useState<string | null>(null);
+  const listenersStartedRef = useRef(false);
 
-  // Only start listeners when Firebase Auth is ready (enabled=true)
+  // Track Firebase Auth state internally.
+  // When auth state changes (null → user after login), listeners restart.
   useEffect(() => {
-    console.warn(`[useRealtimeData] effect running, enabled=${enabled}`);
+    return onAuthStateChange((user) => {
+      const uid = user?.uid ?? null;
+      console.warn(`[useRealtimeData] onAuthStateChanged: uid=${uid}`);
+      setFirebaseUid(uid);
+    });
+  }, []);
+
+  // Start/restart listeners when:
+  // 1. enabled becomes true (Auth confirmed session state)
+  // 2. firebaseUid changes (user logged in or logged out → restart with correct permissions)
+  useEffect(() => {
     if (!enabled) {
-      console.warn("[useRealtimeData] Waiting for authentication...");
-      setIsLoading(false);
+      console.warn("[useRealtimeData] not enabled, skipping listeners");
       return;
     }
 
-    console.warn("[useRealtimeData] Auth ready, starting Firestore listeners...");
-    // Reset loading state when listeners start
-    setIsLoading(true);
+    const hasUser = !!firebaseUid || !!auth?.currentUser;
+    console.warn(`[useRealtimeData] starting listeners (enabled=${enabled}, firebaseUid=${firebaseUid}, auth.currentUser=${!!auth?.currentUser})`);
+
+    cleanupRef.current?.();
+    startListeners(hasUser);
+
+    return () => { cleanupRef.current?.(); };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [enabled, firebaseUid]);
+
+  // Cleanup listeners on unmount
+  useEffect(() => {
+    return () => { cleanupRef.current?.(); };
+  }, []);
+
+  function startListeners(hasUser: boolean) {
+    console.warn(`[useRealtimeData] Auth ready (hasUser=${hasUser}), starting Firestore listeners...`);
+    // Only show loading on initial start, not on auth reconnect
+    if (!listenersStartedRef.current) {
+      setIsLoading(true);
+    }
+    listenersStartedRef.current = true;
     setSyncStatus("synced");
     setSyncError(null);
 
@@ -97,7 +131,8 @@ export function useRealtimeData(enabled = true) {
       (err) => { console.error("[useRealtimeData] blockedDays FAIL:", err); setSyncStatus("error"); setSyncError(`Dias bloqueados: ${err.message || String(err)}`); checkLoaded(); }
     );
 
-    return () => {
+    // Store cleanup refs
+    cleanupRef.current = () => {
       clearTimeout(safetyTimer);
       unsubPatients();
       unsubAppointments();
@@ -106,7 +141,7 @@ export function useRealtimeData(enabled = true) {
       unsubScheduleBlocks();
       unsubBlockedDays();
     };
-  }, [enabled]);
+  }
 
   // Merge native scheduleBlocks + web admin blockedDays into unified scheduleBlocks
   useEffect(() => {
