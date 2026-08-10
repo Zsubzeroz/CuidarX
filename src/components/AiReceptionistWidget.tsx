@@ -1,4 +1,5 @@
 import React, { useState, useRef, useEffect } from "react";
+import DOMPurify from "dompurify";
 import { MessageCircle, X, Send, Bot, Sparkles } from "lucide-react";
 import { getClinicWhatsAppLink, getClinicWhatsAppDisplay } from "../services/whatsappAutoService";
 import { generateAIResponse } from "../services/aiService";
@@ -217,7 +218,7 @@ export default function AiReceptionistWidget() {
                 >
                   <div
                     className="text-xs leading-relaxed space-y-1"
-                    dangerouslySetInnerHTML={{ __html: formatMarkdown(msg.text) }}
+                    dangerouslySetInnerHTML={{ __html: DOMPurify.sanitize(formatMarkdown(msg.text)) }}
                   />
                 </div>
               </div>

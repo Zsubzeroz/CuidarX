@@ -1,4 +1,5 @@
 import React, { useState, useRef, useEffect } from "react";
+import DOMPurify from "dompurify";
 import { Patient } from "../types";
 import { generateAIResponse } from "../services/aiService";
 import {
@@ -328,7 +329,7 @@ export default function AiAssistantView({ patients }: AiAssistantProps) {
               >
                 <div
                   className="text-xs leading-relaxed space-y-1"
-                  dangerouslySetInnerHTML={{ __html: formatMarkdown(msg.text) }}
+                  dangerouslySetInnerHTML={{ __html: DOMPurify.sanitize(formatMarkdown(msg.text)) }}
                 />
               </div>
             </div>
