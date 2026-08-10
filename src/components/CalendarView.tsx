@@ -336,6 +336,9 @@ export default function CalendarView({
   const [blockEnd, setBlockEnd] = useState("13:30");
   const [blockReason, setBlockReason] = useState("Almoço");
   const [blockAllDay, setBlockAllDay] = useState(false);
+  const [isRecurring, setIsRecurring] = useState(false);
+  const [frequency, setFrequency] = useState<"diaria" | "semanal" | "dias_uteis" | "personalizada">("diaria");
+  const [selectedDays, setSelectedDays] = useState<number[]>([]);
   const [feedback, setFeedback] = useState<{ type: "success" | "error"; message: string } | null>(null);
   const [viewMode, setViewMode] = useState<"app" | "google">("app");
 
@@ -745,6 +748,7 @@ export default function CalendarView({
           endTime,
           reason,
           calendarEventId,
+          recurrence: isRecurring ? { frequency, daysOfWeek: frequency === 'dias_uteis' ? [1,2,3,4,5] : selectedDays } : { frequency: 'none' as const, daysOfWeek: [] },
         });
         setFeedback({ type: "success", message: `Bloqueio atualizado: ${reason}` });
       } else {
@@ -765,6 +769,7 @@ export default function CalendarView({
           endTime,
           reason,
           calendarEventId,
+          recurrence: isRecurring ? { frequency, daysOfWeek: frequency === 'dias_uteis' ? [1,2,3,4,5] : selectedDays } : { frequency: 'none' as const, daysOfWeek: [] },
         });
         setFeedback({ type: "success", message: `Horário bloqueado: ${reason}` });
       }
@@ -776,6 +781,9 @@ export default function CalendarView({
     setShowBlockModal(false);
     setEditingBlock(null);
     setBlockAllDay(false);
+    setIsRecurring(false);
+    setFrequency("diaria");
+    setSelectedDays([]);
   };
 
   const handleEditBlock = (block: ScheduleBlock) => {
@@ -785,6 +793,15 @@ export default function CalendarView({
     setBlockEnd(block.endTime === "23:59" ? "13:30" : block.endTime);
     setBlockReason(block.reason);
     setBlockAllDay(block.startTime === "00:00" && block.endTime === "23:59");
+    if (block.recurrence && block.recurrence.frequency !== "none") {
+      setIsRecurring(true);
+      setFrequency(block.recurrence.frequency as any);
+      setSelectedDays(block.recurrence.daysOfWeek || []);
+    } else {
+      setIsRecurring(false);
+      setFrequency("diaria");
+      setSelectedDays([]);
+    }
     setShowBlockModal(true);
   };
 
@@ -1589,6 +1606,66 @@ export default function CalendarView({
                     />
                     Dia inteiro (sem horários)
                   </label>
+
+                  <div className="pt-3 border-t border-slate-100 space-y-3">
+                    <label className="flex items-center gap-2 text-xs font-bold text-slate-700 cursor-pointer">
+                      <input
+                        type="checkbox"
+                        checked={isRecurring}
+                        onChange={(e) => setIsRecurring(e.target.checked)}
+                        className="accent-gold w-4 h-4 rounded"
+                      />
+                      Repetir este bloqueio (Recorrente)
+                    </label>
+
+                    {isRecurring && (
+                      <div className="space-y-3 bg-slate-50 p-3 rounded-xl border border-slate-100">
+                        <div>
+                          <label className="block text-[10px] font-bold text-slate-500 uppercase mb-1">Frequência</label>
+                          <select
+                            value={frequency}
+                            onChange={(e) => setFrequency(e.target.value as any)}
+                            className="w-full text-xs border border-slate-200 rounded-xl p-2 bg-white focus:outline-none focus:ring-1 focus:ring-gold"
+                          >
+                            <option value="diaria">Diariamente</option>
+                            <option value="semanal">Semanalmente (mesmo dia)</option>
+                            <option value="dias_uteis">Dias úteis (Segunda a Sexta)</option>
+                            <option value="personalizada">Dias específicos da semana</option>
+                          </select>
+                        </div>
+
+                        {(frequency === "semanal" || frequency === "personalizada") && (
+                          <div>
+                            <label className="block text-[10px] font-bold text-slate-500 uppercase mb-1.5">Dias da Semana</label>
+                            <div className="flex justify-between gap-1">
+                              {[
+                                { l: "D", v: 0 }, { l: "S", v: 1 }, { l: "T", v: 2 },
+                                { l: "Q", v: 3 }, { l: "Q", v: 4 }, { l: "S", v: 5 }, { l: "S", v: 6 }
+                              ].map((day) => {
+                                const isSelected = selectedDays.includes(day.v);
+                                return (
+                                  <button
+                                    key={day.v}
+                                    type="button"
+                                    onClick={() => setSelectedDays(prev =>
+                                      prev.includes(day.v) ? prev.filter(d => d !== day.v) : [...prev, day.v]
+                                    )}
+                                    className={`w-7 h-7 rounded-lg text-[10px] font-bold transition-all cursor-pointer ${
+                                      isSelected
+                                        ? "bg-brand text-white shadow-sm"
+                                        : "bg-white text-slate-500 border border-slate-200 hover:bg-slate-100"
+                                    }`}
+                                  >
+                                    {day.l}
+                                  </button>
+                                );
+                              })}
+                            </div>
+                          </div>
+                        )}
+                      </div>
+                    )}
+                  </div>
 
                   {!blockAllDay && (
                     <div className="grid grid-cols-2 gap-3">

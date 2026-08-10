@@ -52,6 +52,15 @@ Você combina duas funções: (1) recepcionista virtual e especialista no sistem
 
 Responda sempre em português brasileiro de forma clara e formatada com Markdown.`;
 
+function formatMarkdown(text: string): string {
+  return text
+    .replace(/^#{1,6}\s*(.*$)/gim, '<h4 class="font-bold text-[#1B4332] mt-3 mb-1 text-xs uppercase tracking-wider">$1</h4>')
+    .replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>')
+    .replace(/^\*\s*(.*$)/gim, '<li class="ml-3 list-disc text-slate-700">$1</li>')
+    .replace(/^•\s*(.*$)/gim, '<li class="ml-3 list-disc text-slate-700">$1</li>')
+    .replace(/\n/g, '<br/>');
+}
+
 interface AiAssistantProps {
   patients: Patient[];
 }
@@ -317,32 +326,10 @@ export default function AiAssistantView({ patients }: AiAssistantProps) {
                     : "bg-slate-50 border border-slate-100 text-slate-700 rounded-tl-none shadow-sm"
                 }`}
               >
-                {/* Parse basic markdown format simple way to preserve style */}
-                {msg.text.split("\n").map((line, lIdx) => {
-                  let formatted = line;
-                  // Handle bolding **text**
-                  const boldRegex = /\*\*(.*?)\*\*/g;
-                  let match;
-                  const parts = [];
-                  let lastIndex = 0;
-                  
-                  while ((match = boldRegex.exec(line)) !== null) {
-                    if (match.index > lastIndex) {
-                      parts.push(line.substring(lastIndex, match.index));
-                    }
-                    parts.push(<strong key={match.index} className={msg.sender === "user" ? "text-emerald-100 font-extrabold" : "text-emerald-950 font-bold"}>{match[1]}</strong>);
-                    lastIndex = boldRegex.lastIndex;
-                  }
-                  if (lastIndex < line.length) {
-                    parts.push(line.substring(lastIndex));
-                  }
-
-                  return (
-                    <p key={lIdx} className={lIdx > 0 ? "mt-1.5" : ""}>
-                      {parts.length > 0 ? parts : line}
-                    </p>
-                  );
-                })}
+                <div
+                  className="text-xs leading-relaxed space-y-1"
+                  dangerouslySetInnerHTML={{ __html: formatMarkdown(msg.text) }}
+                />
               </div>
             </div>
           ))}

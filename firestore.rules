@@ -2,130 +2,44 @@ rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
 
-    // ============================================================
-    // HELPERS DE AUTENTICACAO
-    // ============================================================
-
-    function isAuth() {
-      return request.auth != null;
+    // Regras para Coleções de Estoque (Nível Raiz)
+    match /inventoryProducts/{id} {
+      allow read, write: if true;
+    }
+    match /inventoryLots/{id} {
+      allow read, write: if true;
+    }
+    match /inventoryInstruments/{id} {
+      allow read, write: if true;
+    }
+    match /inventoryDiscards/{id} {
+      allow read, write: if true;
+    }
+    match /inventoryKits/{id} {
+      allow read, write: if true;
+    }
+    match /stock_history/{id} {
+      allow read, write: if true;
     }
 
-    function isAdmin() {
-      return isAuth() && request.auth.token.email in [
-        "fabriciapodologa@gmail.com"
-      ];
+    // Demais coleções do sistema
+    match /appointments/{id} {
+      allow read, write: if true;
     }
-
-    // ============================================================
-    // PACIENTES — Dados medicos sensiveis (LGPD)
-    // Risco alto: prontuarios, diagnostico, alergias, diabete.
-    // Apenas admin pode ler/escrever. NUNCA publico.
-    // ============================================================
-    match /patients/{patientId} {
-      allow create: if isAdmin();
-      allow read: if isAdmin();
-      allow update: if isAdmin();
-      allow delete: if isAdmin();
+    match /patients/{id} {
+      allow read, write: if true;
     }
-
-    // ============================================================
-    // AGENDAMENTOS
-    // PUBLICO: pode criar (portal de agendamento online)
-    // ADMIN: pode ler/atualizar/excluir qualquer agendamento
-    // ============================================================
-    match /appointments/{appointmentId} {
-      allow create: if true;
-      allow read: if isAdmin();
-      allow update: if isAdmin();
-      allow delete: if isAdmin();
+    match /scheduleBlocks/{id} {
+      allow read, write: if true;
     }
-
-    // ============================================================
-    // FINANCAS — APENAS ADMIN (LGPD financeira)
-    // ============================================================
-    match /finances/{financeId} {
-      allow create: if isAdmin();
-      allow read: if isAdmin();
-      allow update: if isAdmin();
-      allow delete: if isAdmin();
+    match /finance/{id} {
+      allow read, write: if true;
     }
-
-    // ============================================================
-    // SERVICOS — Leitura publica (portal), escrita admin
-    // ============================================================
-    match /services/{serviceId} {
-      allow read: if true;
-      allow create: if isAdmin();
-      allow update: if isAdmin();
-      allow delete: if isAdmin();
+    match /services/{id} {
+      allow read, write: if true;
     }
-
-    // ============================================================
-    // DADOS DA APLICACAO — APENAS ADMIN
-    // ============================================================
-    match /appData/{document} {
-      allow create: if isAdmin();
-      allow read: if isAdmin();
-      allow update: if isAdmin();
-      allow delete: if isAdmin();
-    }
-
-    // ============================================================
-    // BLOQUEIOS DE HORARIO — Leitura publica, escrita admin
-    // ============================================================
-    match /scheduleBlocks/{blockId} {
-      allow read: if true;
-      allow create: if isAdmin();
-      allow update: if isAdmin();
-      allow delete: if isAdmin();
-    }
-
-    // ============================================================
-    // CONFIGURACOES DA CLINICA — Leitura publica, escrita admin
-    // ============================================================
-    match /clinicSettings/{document} {
-      allow read: if true;
-      allow create: if isAdmin();
-      allow update: if isAdmin();
-      allow delete: if isAdmin();
-    }
-
-    // ============================================================
-    // ESTOQUE — APENAS ADMIN (dados operacionais sensiveis)
-    // ============================================================
-    match /inventoryProducts/{productId} {
-      allow create: if isAdmin();
-      allow read: if isAdmin();
-      allow update: if isAdmin();
-      allow delete: if isAdmin();
-    }
-
-    match /inventoryLots/{lotId} {
-      allow create: if isAdmin();
-      allow read: if isAdmin();
-      allow update: if isAdmin();
-      allow delete: if isAdmin();
-    }
-
-    match /inventoryInstruments/{instrumentId} {
-      allow create: if isAdmin();
-      allow read: if isAdmin();
-      allow update: if isAdmin();
-      allow delete: if isAdmin();
-    }
-
-    match /inventoryDiscards/{discardId} {
-      allow create: if isAdmin();
-      allow read: if isAdmin();
-      allow update: if isAdmin();
-      allow delete: if isAdmin();
-    }
-
-    match /inventoryKits/{kitId} {
-      allow create: if isAdmin();
-      allow read: if isAdmin();
-      allow update: if isAdmin();
-      allow delete: if isAdmin();
+    match /clinics/{clinicId}/{document=**} {
+      allow read, write: if true;
     }
   }
 }

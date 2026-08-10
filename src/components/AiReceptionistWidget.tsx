@@ -107,51 +107,13 @@ function getAnswer(input: string): string {
   return best ? best.answer : FALLBACK;
 }
 
-function renderText(text: string) {
-  // Process each line: handle **bold**, [link](url), and plain text together
-  return text.split("\n").map((line, lIdx) => {
-    const nodes: React.ReactNode[] = [];
-    // Combined regex: matches **bold**, [text](url), or plain text segments
-    const tokenRegex = /(\*\*(.*?)\*\*)|(\[([^\]]+)\]\(([^)]+)\))/g;
-    let cursor = 0;
-    let match;
-    while ((match = tokenRegex.exec(line)) !== null) {
-      // Plain text before this match
-      if (match.index > cursor) {
-        nodes.push(line.substring(cursor, match.index));
-      }
-      if (match[1]) {
-        // **bold** match
-        nodes.push(
-          <strong key={`b-${match.index}`} className="font-extrabold text-emerald-900">
-            {match[2]}
-          </strong>
-        );
-      } else if (match[3]) {
-        // [link](url) match
-        nodes.push(
-          <a
-            key={`l-${match.index}`}
-            href={match[5]}
-            target="_blank"
-            rel="noopener noreferrer"
-            className="font-bold text-emerald-700 underline decoration-emerald-300 hover:text-emerald-900"
-          >
-            {match[4]}
-          </a>
-        );
-      }
-      cursor = tokenRegex.lastIndex;
-    }
-    if (cursor < line.length) {
-      nodes.push(line.substring(cursor));
-    }
-    return (
-      <p key={lIdx} className={lIdx > 0 ? "mt-1.5" : ""}>
-        {nodes.length > 0 ? nodes : line}
-      </p>
-    );
-  });
+function formatMarkdown(text: string): string {
+  return text
+    .replace(/^#{1,6}\s*(.*$)/gim, '<h4 class="font-bold text-[#1B4332] mt-3 mb-1 text-xs uppercase tracking-wider">$1</h4>')
+    .replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>')
+    .replace(/^\*\s*(.*$)/gim, '<li class="ml-3 list-disc text-slate-700">$1</li>')
+    .replace(/^•\s*(.*$)/gim, '<li class="ml-3 list-disc text-slate-700">$1</li>')
+    .replace(/\n/g, '<br/>');
 }
 
 const QUICK_SUGGESTIONS = ["Endereço da clínica", "Horários de funcionamento", "Valores dos serviços", "Como agendar"];
@@ -200,10 +162,10 @@ export default function AiReceptionistWidget() {
   };
 
   return (
-    <div className="hidden md:block">
+    <div className="relative">
       {/* Floating chat panel */}
       {isOpen && (
-        <div className="fixed bottom-24 right-6 z-50 w-[360px] max-w-[calc(100vw-3rem)] h-[480px] max-h-[70vh] bg-white rounded-2xl border border-slate-200 shadow-2xl flex flex-col overflow-hidden chat-enter">
+        <div className="fixed bottom-24 right-6 z-[9999] w-[360px] max-w-[calc(100vw-3rem)] h-[480px] max-h-[70vh] bg-white rounded-2xl border border-slate-200 shadow-2xl flex flex-col overflow-hidden chat-enter">
           {/* Header */}
           <div className="bg-gradient-to-r from-[#0F3B2E] to-[#0A2B21] px-4 py-3 flex items-center justify-between text-white">
             <div className="flex items-center gap-2.5">
@@ -253,7 +215,10 @@ export default function AiReceptionistWidget() {
                       : "bg-slate-50 border border-slate-100 text-slate-700 rounded-tl-none"
                   }`}
                 >
-                  {renderText(msg.text)}
+                  <div
+                    className="text-xs leading-relaxed space-y-1"
+                    dangerouslySetInnerHTML={{ __html: formatMarkdown(msg.text) }}
+                  />
                 </div>
               </div>
             ))}
@@ -310,7 +275,7 @@ export default function AiReceptionistWidget() {
       <button
         onClick={() => setIsOpen((o) => !o)}
         aria-label={isOpen ? "Fechar atendente virtual" : "Abrir atendente virtual"}
-        className="fixed bottom-6 right-6 z-50 w-14 h-14 rounded-full bg-[#0F3B2E] hover:bg-[#1B523E] border border-[#C8A45A]/50 text-white shadow-[0_4px_20px_rgba(15,59,46,0.35)] flex items-center justify-center transition-all hover:scale-105 active:scale-95 cursor-pointer"
+        className="fixed bottom-6 right-6 z-[9999] w-14 h-14 rounded-full bg-[#0F3B2E] hover:bg-[#1B523E] border border-[#C8A45A]/50 text-white shadow-[0_4px_20px_rgba(15,59,46,0.35)] flex items-center justify-center transition-all hover:scale-105 active:scale-95 cursor-pointer"
       >
         <span className="flex items-center justify-center w-full h-full">
           {isOpen ? <X className="w-6 h-6" /> : <MessageCircle className="w-6 h-6" />}

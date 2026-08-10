@@ -551,6 +551,7 @@ export default function BookingPortalView({
     const whatsappConfirmUrl = `${getClinicWhatsAppLink()}?text=${encodeURIComponent(confirmMessage)}`;
 
     return (
+      <>
       <div id="booking-portal-view" className="booking-portal-light min-h-screen bg-gradient-to-br from-emerald-50 to-white flex flex-col items-center justify-center p-4">
         <div className="w-full max-w-lg">
           <div className="text-center mb-6">
@@ -801,6 +802,9 @@ export default function BookingPortalView({
           </p>
         </div>
       </div>
+
+      <AiReceptionistWidget />
+      </>
     );
   }
 

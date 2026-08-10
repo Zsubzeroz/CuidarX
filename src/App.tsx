@@ -1019,7 +1019,7 @@ export default function App() {
 
                 {/* Navigation items */}
                 <div className="flex-1 overflow-y-auto p-4 space-y-0.5">
-                  {navigationItems.map((item) => {
+                  {navigationItems.filter((item) => item.id !== "portal").map((item) => {
                     const ItemIcon = item.icon;
                     const isSelected = item.id === activeTab;
                     return (
