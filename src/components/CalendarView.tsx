@@ -1390,9 +1390,9 @@ export default function CalendarView({
             <button
               onClick={() => setViewMode("google")}
               className={`flex items-center gap-1.5 px-4 py-2 rounded-xl text-[11px] font-bold transition-all cursor-pointer ${
-                viewMode === "google"
-                  ? "bg-brand text-white shadow-sm"
-                  : "text-slate-500 hover:bg-white dark:text-slate-400 dark:hover:bg-slate-800"
+                viewMode === "app"
+                  ? "text-slate-500 hover:bg-white dark:text-slate-400 dark:hover:bg-slate-800"
+                  : "bg-brand text-white shadow-sm"
               }`}
             >
               <ExternalLink className="w-3.5 h-3.5" /> Google Agenda Oficial

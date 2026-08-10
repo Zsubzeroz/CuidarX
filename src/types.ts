@@ -126,3 +126,72 @@ export interface ScheduleBlock {
   };
 }
 
+// ── Inventory Types ──
+
+export type ProductCategory = "material" | "quimico" | "descartavel" | "medicamento" | "equipamento" | "revenda";
+export type ProductUsage = "interno" | "revenda";
+
+export interface InventoryProduct {
+  id: string;
+  name: string;
+  category: ProductCategory;
+  usage: ProductUsage;
+  unit: string;
+  currentStock: number;
+  minStock: number;
+  maxStock?: number;
+  unitCost?: number;
+  salePrice?: number;
+  supplier?: string;
+  barcode?: string;
+  isActive: boolean;
+  createdAt?: string;
+  updatedAt?: string;
+}
+
+export interface ProductLot {
+  id: string;
+  productId: string;
+  lotNumber: string;
+  expiryDate: string;
+  costPrice: number;
+  supplier: string;
+  quantity: number;
+  remainingQuantity: number;
+  receivedAt?: string;
+  invoiceNumber?: string;
+}
+
+export interface SurgicalInstrument {
+  id: string;
+  name: string;
+  serialNumber?: string;
+  sterilizationDate: string;
+  surgicalGrade: string;
+  gradeExpiryDate: string;
+  autoclaveId?: string;
+  cycleNumber?: number;
+  lastUsedAt?: string;
+  isActive: boolean;
+  createdAt?: string;
+  updatedAt?: string;
+}
+
+export interface TechnicalDiscard {
+  id: string;
+  productName: string;
+  productId: string;
+  quantity: number;
+  reason: string;
+  discardedAt: string;
+}
+
+export interface ProcedureKit {
+  id: string;
+  name: string;
+  description?: string;
+  items: { productId: string; productName: string; quantityNeeded: number }[];
+  createdAt: string;
+  updatedAt: string;
+}
+

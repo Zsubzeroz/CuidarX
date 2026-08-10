@@ -565,8 +565,8 @@ export default function InventoryView() {
                     <AlertTriangle className="w-4 h-4 text-amber-600" />
                   </div>
                   <div className="flex-1 min-w-0">
-                    <p className="text-xs font-bold text-amber-800">{alert.productName}</p>
-                    <p className="text-[10px] text-amber-600 mt-0.5">{alert.message}</p>
+                    <p className="text-xs font-bold text-amber-800">{alert.itemName}</p>
+                    <p className="text-[10px] text-amber-600 mt-0.5">{alert.details}</p>
                   </div>
                 </div>
               ))
