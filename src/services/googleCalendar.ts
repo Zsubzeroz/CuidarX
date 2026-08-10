@@ -73,18 +73,23 @@ declare global {
 function loadGIScript(): Promise<void> {
   return new Promise((resolve, reject) => {
     if (window.google?.accounts?.oauth2) {
+      console.warn("[GIS] loadGIScript: already loaded, resolving immediately");
       resolve();
       return;
     }
     const existing = document.querySelector(`script[src="${GIS_SCRIPT_URL}"]`);
     if (existing) {
+      console.warn("[GIS] loadGIScript: script tag exists but oauth2 not ready, polling...");
+      let pollAttempts = 0;
       const poll = () => {
-        if (window.google?.accounts?.oauth2) { resolve(); return; }
+        if (window.google?.accounts?.oauth2) { console.warn("[GIS] loadGIScript: oauth2 ready after", pollAttempts, "poll attempts"); resolve(); return; }
+        if (pollAttempts++ >= 50) { console.warn("[GIS] loadGIScript: poll timeout after 50 attempts"); reject(new Error("GIS script tag exists but oauth2 not available after 5s")); return; }
         setTimeout(poll, 100);
       };
       poll();
       return;
     }
+    console.warn("[GIS] loadGIScript: loading GIS script from network...");
     const script = document.createElement("script");
     script.src = GIS_SCRIPT_URL;
     script.async = true;
@@ -92,7 +97,7 @@ function loadGIScript(): Promise<void> {
     script.onload = () => {
       let attempts = 0;
       const poll = () => {
-        if (window.google?.accounts?.oauth2) { resolve(); return; }
+        if (window.google?.accounts?.oauth2) { console.warn("[GIS] loadGIScript: oauth2 ready after onload, attempts:", attempts); resolve(); return; }
         if (attempts++ < 50) { setTimeout(poll, 100); return; }
         reject(new Error("GIS loaded but oauth2 not available"));
       };
@@ -139,15 +144,34 @@ export function hasPersistedToken(): boolean {
 }
 
 export async function silentConnectGoogle(): Promise<boolean> {
-  if (!CLIENT_ID) return false;
-  if (accessToken) return true;
+  console.warn("[GoogleCalendar] silentConnectGoogle START");
+  if (!CLIENT_ID) { console.warn("[GoogleCalendar] silentConnectGoogle: no CLIENT_ID"); return false; }
+  if (accessToken) { console.warn("[GoogleCalendar] silentConnectGoogle: already have token"); return true; }
+
+  // GIS (Google Identity Services) popup-based auth does not work in Android WebView.
+  // On native platforms, the user must connect via Firebase Auth (email/password) and
+  // Google Calendar access must be handled separately (e.g. server-side or OAuth redirect).
+  if (isNativePlatform()) {
+    console.warn("[GoogleCalendar] silentConnectGoogle: native platform, GIS not available — returning false");
+    return false;
+  }
 
   try {
+    console.warn("[GoogleCalendar] silentConnectGoogle: loading GIS...");
     await loadGIScript();
+    console.warn("[GoogleCalendar] silentConnectGoogle: getting token client...");
     const client = await getTokenClient();
+    console.warn("[GoogleCalendar] silentConnectGoogle: requesting access token...");
 
     return new Promise<boolean>((resolve) => {
+      const timeout = setTimeout(() => {
+        console.warn("[GoogleCalendar] silentConnectGoogle: TIMEOUT after 10s — no callback received");
+        resolve(false);
+      }, 10000);
+
       client.callback = (response: any) => {
+        clearTimeout(timeout);
+        console.warn(`[GoogleCalendar] silentConnectGoogle callback: access_token=${!!response.access_token}, error=${response.error || "none"}`);
         if (response.access_token) {
           saveToken(response.access_token);
           resolve(true);
@@ -155,15 +179,22 @@ export async function silentConnectGoogle(): Promise<boolean> {
           resolve(false);
         }
       };
-      client.errorCallback = () => resolve(false);
+      client.errorCallback = (err: any) => {
+        clearTimeout(timeout);
+        console.warn("[GoogleCalendar] silentConnectGoogle errorCallback:", err);
+        resolve(false);
+      };
 
       try {
         client.requestAccessToken({ prompt: "" });
-      } catch {
+      } catch (e) {
+        clearTimeout(timeout);
+        console.warn("[GoogleCalendar] silentConnectGoogle requestAccessToken threw:", e);
         resolve(false);
       }
     });
-  } catch {
+  } catch (e) {
+    console.warn("[GoogleCalendar] silentConnectGoogle caught:", e);
     return false;
   }
 }

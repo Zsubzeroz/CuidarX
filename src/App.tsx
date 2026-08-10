@@ -168,6 +168,7 @@ export default function App() {
   const [isGoogleConnected, setIsGoogleConnected] = useState(true);
   const [googleEvents, setGoogleEvents] = useState<GoogleCalendarEvent[]>([]);
   const [isSyncingGoogle, setIsSyncingGoogle] = useState(false);
+  const isSyncingGoogleRef = useRef(false);
   const [isConnectingGoogle, setIsConnectingGoogle] = useState(false);
   const [googlePermissionError, setGooglePermissionError] = useState(false);
 
@@ -484,27 +485,43 @@ export default function App() {
   };
 
   const handleSyncGoogleEvents = async (date: string) => {
-    if (!isGoogleConnected) return;
+    console.warn(`[App] handleSyncGoogleEvents START: date=${date}, isGoogleConnected=${isGoogleConnected}`);
+    if (!isGoogleConnected) {
+      console.warn("[App] handleSyncGoogleEvents: not connected, returning early");
+      return;
+    }
+    // Prevent concurrent sync calls
+    if (isSyncingGoogleRef.current) {
+      console.warn("[App] handleSyncGoogleEvents: already syncing, skipping");
+      return;
+    }
+    isSyncingGoogleRef.current = true;
     setIsSyncingGoogle(true);
     setGooglePermissionError(false);
     try {
       // Try silent refresh if we don't have a token yet
       if (!isGoogleCalendarConnected()) {
-        await silentConnectGoogle();
+        console.warn("[App] handleSyncGoogleEvents: no token, calling silentConnectGoogle...");
+        const silentResult = await silentConnectGoogle();
+        console.warn(`[App] handleSyncGoogleEvents: silentConnectGoogle returned ${silentResult}`);
+      } else {
+        console.warn("[App] handleSyncGoogleEvents: token exists, skipping silentConnect");
       }
 
+      console.warn("[App] handleSyncGoogleEvents: fetching calendar events...");
       const d = new Date(date + "T12:00:00-03:00");
       const year = d.getFullYear();
       const month = d.getMonth();
       const start = new Date(year, month, 1, 0, 0, 0).toISOString();
       const end = new Date(year, month + 1, 0, 23, 59, 59).toISOString();
       const events = await fetchGoogleCalendarEvents(start, end);
+      console.warn(`[App] handleSyncGoogleEvents: fetched ${events.length} events`);
       setGoogleEvents(events);
 
       // Only sync to Firestore if we got events (avoids clearing stored events when token is missing)
       if (events.length > 0) {
         await syncGoogleEventsToFirestore(events);
-        console.log(`[App] Synced ${events.length} Google Calendar events to Firestore`);
+        console.warn(`[App] Synced ${events.length} Google Calendar events to Firestore`);
       }
     } catch (err: any) {
       if (err.message === "PERMISSION_ERROR") {
@@ -514,9 +531,11 @@ export default function App() {
       } else if (err.message === "TOKEN_EXPIRED") {
         console.warn("[App] Token expired — keeping existing events, will retry on next sync");
       } else {
-        console.error("Error fetching Google Calendar events:", err);
+        console.error("[App] Error fetching Google Calendar events:", err);
       }
     } finally {
+      console.warn("[App] handleSyncGoogleEvents FINALLY: setting isSyncingGoogle=false");
+      isSyncingGoogleRef.current = false;
       setIsSyncingGoogle(false);
     }
   };
