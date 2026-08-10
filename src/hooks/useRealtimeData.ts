@@ -22,7 +22,7 @@ import {
 } from "../services/firestoreService";
 import type { Patient, Appointment, FinanceRecord, ClinicService, ScheduleBlock } from "../types";
 
-export function useRealtimeData() {
+export function useRealtimeData(enabled = true) {
   const [patients, setPatients] = useState<Patient[]>([]);
   const [appointments, setAppointments] = useState<Appointment[]>([]);
   const [finances, setFinances] = useState<FinanceRecord[]>([]);
@@ -32,9 +32,23 @@ export function useRealtimeData() {
   const [webAdminBlocks, setWebAdminBlocks] = useState<ScheduleBlock[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [syncStatus, setSyncStatus] = useState<"synced" | "syncing" | "error">("synced");
+  const [syncError, setSyncError] = useState<string | null>(null);
 
-  // Start real-time listeners on mount
+  // Only start listeners when Firebase Auth is ready (enabled=true)
   useEffect(() => {
+    console.warn(`[useRealtimeData] effect running, enabled=${enabled}`);
+    if (!enabled) {
+      console.warn("[useRealtimeData] Waiting for authentication...");
+      setIsLoading(false);
+      return;
+    }
+
+    console.warn("[useRealtimeData] Auth ready, starting Firestore listeners...");
+    // Reset loading state when listeners start
+    setIsLoading(true);
+    setSyncStatus("synced");
+    setSyncError(null);
+
     let loadedCount = 0;
     const totalCollections = 6;
 
@@ -54,33 +68,33 @@ export function useRealtimeData() {
     }, 3000);
 
     const unsubPatients = listenPatients(
-      (data) => { console.log(`[useRealtimeData] patients update: ${data.length} records`); setPatients(data); setSyncStatus("synced"); checkLoaded(); },
-      (err) => { console.error("[useRealtimeData] patients listener error:", err); setSyncStatus("error"); checkLoaded(); }
+      (data) => { console.warn(`[useRealtimeData] patients OK: ${data.length}`); setPatients(data); setSyncStatus("synced"); setSyncError(null); checkLoaded(); },
+      (err) => { console.error("[useRealtimeData] patients FAIL:", err); setSyncStatus("error"); setSyncError(`Pacientes: ${err.message || err}`); checkLoaded(); }
     );
 
     const unsubAppointments = listenAppointments(
-      (data) => { console.log(`[useRealtimeData] appointments update: ${data.length} records`); setAppointments(data); setSyncStatus("synced"); checkLoaded(); },
-      (err) => { console.error("[useRealtimeData] appointments listener error:", err); setSyncStatus("error"); checkLoaded(); }
+      (data) => { console.warn(`[useRealtimeData] appointments OK: ${data.length}`); setAppointments(data); setSyncStatus("synced"); setSyncError(null); checkLoaded(); },
+      (err) => { console.error("[useRealtimeData] appointments FAIL:", err); setSyncStatus("error"); setSyncError(`Agendamentos: ${err.message || err}`); checkLoaded(); }
     );
 
     const unsubFinances = listenFinances(
-      (data) => { setFinances(data); setSyncStatus("synced"); checkLoaded(); },
-      () => { setSyncStatus("error"); checkLoaded(); }
+      (data) => { console.warn(`[useRealtimeData] finances OK: ${data.length}`); setFinances(data); setSyncStatus("synced"); setSyncError(null); checkLoaded(); },
+      (err) => { console.error("[useRealtimeData] finances FAIL:", err); setSyncStatus("error"); setSyncError(`Financeiro: ${err.message || String(err)}`); checkLoaded(); }
     );
 
     const unsubServices = listenServices(
-      (data) => { setServices(data); setSyncStatus("synced"); checkLoaded(); },
-      () => { setSyncStatus("error"); checkLoaded(); }
+      (data) => { console.warn(`[useRealtimeData] services OK: ${data.length}`); setServices(data); setSyncStatus("synced"); setSyncError(null); checkLoaded(); },
+      (err) => { console.error("[useRealtimeData] services FAIL:", err); setSyncStatus("error"); setSyncError(`Serviços: ${err.message || String(err)}`); checkLoaded(); }
     );
 
     const unsubScheduleBlocks = listenScheduleBlocks(
-      (data) => { setNativeBlocks(data); setSyncStatus("synced"); checkLoaded(); },
-      () => { setSyncStatus("error"); checkLoaded(); }
+      (data) => { console.warn(`[useRealtimeData] blocks OK: ${data.length}`); setNativeBlocks(data); setSyncStatus("synced"); setSyncError(null); checkLoaded(); },
+      (err) => { console.error("[useRealtimeData] blocks FAIL:", err); setSyncStatus("error"); setSyncError(`Bloqueios: ${err.message || String(err)}`); checkLoaded(); }
     );
 
     const unsubBlockedDays = listenBlockedDays(
-      (data) => { setWebAdminBlocks(data); setSyncStatus("synced"); checkLoaded(); },
-      () => { setSyncStatus("error"); checkLoaded(); }
+      (data) => { console.warn(`[useRealtimeData] blockedDays OK: ${data.length}`); setWebAdminBlocks(data); setSyncStatus("synced"); setSyncError(null); checkLoaded(); },
+      (err) => { console.error("[useRealtimeData] blockedDays FAIL:", err); setSyncStatus("error"); setSyncError(`Dias bloqueados: ${err.message || String(err)}`); checkLoaded(); }
     );
 
     return () => {
@@ -92,7 +106,7 @@ export function useRealtimeData() {
       unsubScheduleBlocks();
       unsubBlockedDays();
     };
-  }, []);
+  }, [enabled]);
 
   // Merge native scheduleBlocks + web admin blockedDays into unified scheduleBlocks
   useEffect(() => {
@@ -105,6 +119,7 @@ export function useRealtimeData() {
   // ---- PATIENT HANDLERS ----
   const handleAddPatient = useCallback(async (newPatientData: Omit<Patient, "id" | "createdAt" | "footIssues" | "evolutions">): Promise<string> => {
     setSyncStatus("syncing");
+    setSyncError(null);
     const patient: Patient = {
       ...newPatientData,
       id: `pat-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
@@ -115,33 +130,41 @@ export function useRealtimeData() {
     try {
       await fsCreatePatient(patient);
       setSyncStatus("synced");
-    } catch (e) {
+      setSyncError(null);
+    } catch (e: any) {
       console.error(e);
       setSyncStatus("error");
+      setSyncError(`Criar paciente: ${e?.message || String(e)}`);
     }
     return patient.id;
   }, []);
 
   const handleUpdatePatient = useCallback(async (updatedPatient: Patient) => {
     setSyncStatus("syncing");
+    setSyncError(null);
     try {
       await fsUpdatePatient(updatedPatient);
       setSyncStatus("synced");
-    } catch (e) {
+      setSyncError(null);
+    } catch (e: any) {
       console.error(e);
       setSyncStatus("error");
+      setSyncError(`Atualizar paciente: ${e?.message || String(e)}`);
       throw e;
     }
   }, []);
 
   const handleDeletePatient = useCallback(async (id: string) => {
     setSyncStatus("syncing");
+    setSyncError(null);
     try {
       await fsDeletePatient(id);
       setSyncStatus("synced");
-    } catch (e) {
+      setSyncError(null);
+    } catch (e: any) {
       console.error(e);
       setSyncStatus("error");
+      setSyncError(`Excluir paciente: ${e?.message || String(e)}`);
       throw e;
     }
   }, []);
@@ -150,12 +173,15 @@ export function useRealtimeData() {
     const patientObj = patients.find((p) => p.id === patientId);
     if (!patientObj) return;
     setSyncStatus("syncing");
+    setSyncError(null);
     try {
       await fsUpdatePatient({ ...patientObj, footIssues: updatedIssues });
       setSyncStatus("synced");
-    } catch (e) {
+      setSyncError(null);
+    } catch (e: any) {
       console.error(e);
       setSyncStatus("error");
+      setSyncError(`Atualizar queixas do paciente: ${e?.message || String(e)}`);
     }
   }, [patients]);
 
@@ -163,19 +189,23 @@ export function useRealtimeData() {
     const patientObj = patients.find((p) => p.id === patientId);
     if (!patientObj) return;
     setSyncStatus("syncing");
+    setSyncError(null);
     const fullEvo = { ...newEvo, id: `evo-${Date.now()}` };
     try {
       await fsUpdatePatient({ ...patientObj, evolutions: [...patientObj.evolutions, fullEvo] });
       setSyncStatus("synced");
-    } catch (e) {
+      setSyncError(null);
+    } catch (e: any) {
       console.error(e);
       setSyncStatus("error");
+      setSyncError(`Adicionar evolução: ${e?.message || String(e)}`);
     }
   }, [patients]);
 
   // ---- APPOINTMENT HANDLERS ----
   const handleAddAppointment = useCallback(async (apptData: Omit<Appointment, "id">) => {
     setSyncStatus("syncing");
+    setSyncError(null);
     const appointment: Appointment = {
       ...apptData,
       id: `app-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
@@ -183,20 +213,25 @@ export function useRealtimeData() {
     try {
       await fsCreateAppointment(appointment);
       setSyncStatus("synced");
-    } catch (e) {
+      setSyncError(null);
+    } catch (e: any) {
       console.error(e);
       setSyncStatus("error");
+      setSyncError(`Criar agendamento: ${e?.message || String(e)}`);
     }
   }, []);
 
   const handleUpdateAppointment = useCallback(async (appointment: Appointment) => {
     setSyncStatus("syncing");
+    setSyncError(null);
     try {
       await fsUpdateAppointment(appointment);
       setSyncStatus("synced");
-    } catch (e) {
+      setSyncError(null);
+    } catch (e: any) {
       console.error(e);
       setSyncStatus("error");
+      setSyncError(`Atualizar agendamento: ${e?.message || String(e)}`);
     }
   }, []);
 
@@ -204,29 +239,36 @@ export function useRealtimeData() {
     const appt = appointments.find((a) => a.id === id);
     if (!appt) return;
     setSyncStatus("syncing");
+    setSyncError(null);
     try {
       await fsUpdateAppointment({ ...appt, status });
       setSyncStatus("synced");
-    } catch (e) {
+      setSyncError(null);
+    } catch (e: any) {
       console.error(e);
       setSyncStatus("error");
+      setSyncError(`Atualizar status: ${e?.message || String(e)}`);
     }
   }, [appointments]);
 
   const handleDeleteAppointment = useCallback(async (id: string) => {
     setSyncStatus("syncing");
+    setSyncError(null);
     try {
       await fsDeleteAppointment(id);
       setSyncStatus("synced");
-    } catch (e) {
+      setSyncError(null);
+    } catch (e: any) {
       console.error(e);
       setSyncStatus("error");
+      setSyncError(`Excluir agendamento: ${e?.message || String(e)}`);
     }
   }, []);
 
   // ---- FINANCE HANDLERS ----
   const handleAddFinanceRecord = useCallback(async (recordData: Omit<FinanceRecord, "id">) => {
     setSyncStatus("syncing");
+    setSyncError(null);
     const record: FinanceRecord = {
       ...recordData,
       id: `fin-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
@@ -234,20 +276,25 @@ export function useRealtimeData() {
     try {
       await fsCreateFinanceRecord(record);
       setSyncStatus("synced");
-    } catch (e) {
+      setSyncError(null);
+    } catch (e: any) {
       console.error(e);
       setSyncStatus("error");
+      setSyncError(`Criar registro financeiro: ${e?.message || String(e)}`);
     }
   }, []);
 
   const handleDeleteFinanceRecord = useCallback(async (id: string) => {
     setSyncStatus("syncing");
+    setSyncError(null);
     try {
       await fsDeleteFinanceRecord(id);
       setSyncStatus("synced");
-    } catch (e) {
+      setSyncError(null);
+    } catch (e: any) {
       console.error(e);
       setSyncStatus("error");
+      setSyncError(`Excluir registro financeiro: ${e?.message || String(e)}`);
       throw e;
     }
   }, []);
@@ -255,6 +302,7 @@ export function useRealtimeData() {
   // ---- SERVICES HANDLERS ----
   const handleAddOrUpdateService = useCallback(async (serviceData: Omit<ClinicService, "id"> & { id?: string }) => {
     setSyncStatus("syncing");
+    setSyncError(null);
     const service: ClinicService = {
       ...serviceData,
       id: serviceData.id || `srv-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
@@ -262,26 +310,32 @@ export function useRealtimeData() {
     try {
       await fsCreateOrUpdateService(service);
       setSyncStatus("synced");
-    } catch (e) {
+      setSyncError(null);
+    } catch (e: any) {
       console.error(e);
       setSyncStatus("error");
+      setSyncError(`Salvar serviço: ${e?.message || String(e)}`);
     }
   }, []);
 
   const handleDeleteService = useCallback(async (id: string) => {
     setSyncStatus("syncing");
+    setSyncError(null);
     try {
       await fsDeleteService(id);
       setSyncStatus("synced");
-    } catch (e) {
+      setSyncError(null);
+    } catch (e: any) {
       console.error(e);
       setSyncStatus("error");
+      setSyncError(`Excluir serviço: ${e?.message || String(e)}`);
     }
   }, []);
 
   // ---- SCHEDULE BLOCK HANDLERS ----
   const handleAddScheduleBlock = useCallback(async (blockData: Omit<ScheduleBlock, "id" | "createdAt">): Promise<ScheduleBlock> => {
     setSyncStatus("syncing");
+    setSyncError(null);
     const block: ScheduleBlock = {
       ...blockData,
       id: `blk-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
@@ -290,32 +344,40 @@ export function useRealtimeData() {
     try {
       await fsCreateScheduleBlock(block);
       setSyncStatus("synced");
-    } catch (e) {
+      setSyncError(null);
+    } catch (e: any) {
       console.error(e);
       setSyncStatus("error");
+      setSyncError(`Criar bloqueio: ${e?.message || String(e)}`);
     }
     return block;
   }, []);
 
   const handleUpdateScheduleBlock = useCallback(async (block: ScheduleBlock) => {
     setSyncStatus("syncing");
+    setSyncError(null);
     try {
       await fsUpdateScheduleBlock(block);
       setSyncStatus("synced");
-    } catch (e) {
+      setSyncError(null);
+    } catch (e: any) {
       console.error(e);
       setSyncStatus("error");
+      setSyncError(`Atualizar bloqueio: ${e?.message || String(e)}`);
     }
   }, []);
 
   const handleDeleteScheduleBlock = useCallback(async (id: string) => {
     setSyncStatus("syncing");
+    setSyncError(null);
     try {
       await fsDeleteScheduleBlock(id);
       setSyncStatus("synced");
-    } catch (e) {
+      setSyncError(null);
+    } catch (e: any) {
       console.error(e);
       setSyncStatus("error");
+      setSyncError(`Excluir bloqueio: ${e?.message || String(e)}`);
     }
   }, []);
 
@@ -326,6 +388,7 @@ export function useRealtimeData() {
     services,
     isLoading,
     syncStatus,
+    syncError,
     handleAddPatient,
     handleUpdatePatient,
     handleDeletePatient,

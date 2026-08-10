@@ -78,6 +78,7 @@ interface ScheduleFormProps {
   newPatientName: string;
   newPatientPhone: string;
   patientId: string;
+  date: string;
   time: string;
   price: number;
   quantity: number;
@@ -87,6 +88,7 @@ interface ScheduleFormProps {
   onNewPatientName: (v: string) => void;
   onNewPatientPhone: (v: string) => void;
   onPatientId: (v: string) => void;
+  onDate: (v: string) => void;
   onTime: (v: string) => void;
   onPrice: (v: number) => void;
   onQuantity: (v: number) => void;
@@ -116,6 +118,7 @@ const ScheduleForm = ({
   newPatientName,
   newPatientPhone,
   patientId,
+  date,
   time,
   price,
   quantity,
@@ -125,6 +128,7 @@ const ScheduleForm = ({
   onNewPatientName,
   onNewPatientPhone,
   onPatientId,
+  onDate,
   onTime,
   onPrice,
   onQuantity,
@@ -191,6 +195,16 @@ const ScheduleForm = ({
           </button>
         </div>
       )}
+    </div>
+
+    <div>
+      <label className="block text-[10px] font-bold text-slate-500 uppercase mb-1">Data:</label>
+      <input
+        type="date"
+        value={date}
+        onChange={(e) => onDate(e.target.value)}
+        className="w-full text-xs bg-slate-50 border border-slate-200 p-2.5 rounded-xl focus:outline-none focus:ring-1 focus:ring-gold"
+      />
     </div>
 
     <div className="grid grid-cols-3 gap-2">
@@ -316,6 +330,7 @@ export default function CalendarView({
   const [editingAppt, setEditingAppt] = useState<Appointment | null>(null);
 
   const [patientId, setPatientId] = useState(patients[0]?.id || "");
+  const [formDate, setFormDate] = useState(new Date().toISOString().split("T")[0]);
   const [time, setTime] = useState("09:00");
   const [service, setService] = useState("");
   const [price, setPrice] = useState(0);
@@ -445,6 +460,7 @@ export default function CalendarView({
 
   const resetForm = () => {
     setPatientId(patients[0]?.id || "");
+    setFormDate(selectedDate);
     setTime("09:00");
     setNotes("");
     setQuantity(1);
@@ -468,7 +484,7 @@ export default function CalendarView({
 
   const handleScheduleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!selectedDate) { alert("Selecione uma data."); return; }
+    if (!formDate) { alert("Selecione uma data."); return; }
     if (!time) { alert("Selecione um horário."); return; }
     if (!service) { alert("Selecione um serviço."); return; }
 
@@ -477,7 +493,7 @@ export default function CalendarView({
     const apptStartMin = sh * 60 + sm;
     const apptEndMin = apptStartMin + getServiceDuration();
 
-    const dayGoogleEvents = googleEvents.filter((ge) => ge.start?.slice(0, 10) === selectedDate);
+    const dayGoogleEvents = googleEvents.filter((ge) => ge.start?.slice(0, 10) === formDate);
     const conflictingGoogleEvent = dayGoogleEvents.find((ge) => {
       if (editingAppt && editingAppt.calendarEventId === ge.id) return false;
       const geStart = timeToMinutes(formatGoogleTime(ge.start));
@@ -490,7 +506,8 @@ export default function CalendarView({
       return;
     }
 
-    const conflictingBlock = dayBlocks.find((b) => {
+    const formDayBlocks = expandBlocksForDate(scheduleBlocks, formDate);
+    const conflictingBlock = formDayBlocks.find((b) => {
       const bStart = timeToMinutes(b.startTime);
       const bEnd = timeToMinutes(b.endTime);
       if (isNaN(bStart)) return false;
@@ -544,7 +561,7 @@ export default function CalendarView({
         ...editingAppt,
         patientId: resolvedPatientId,
         patientName: resolvedPatientName,
-        date: selectedDate,
+        date: formDate,
         time,
         service,
         price,
@@ -554,12 +571,12 @@ export default function CalendarView({
       await onUpdateAppointment(updatedAppt);
 
       if (editingAppt.calendarEventId && isGoogleConnected) {
-        const { start: dtStart, end: dtEnd } = buildEventTimeRange(selectedDate, time, getServiceDuration());
+        const { start: dtStart, end: dtEnd } = buildEventTimeRange(formDate, time, getServiceDuration());
         await onEditGoogleEvent(editingAppt.calendarEventId, `${service} - ${resolvedPatientName}`, notes || "", dtStart, dtEnd);
-        onSyncGoogleEvents(selectedDate);
+        onSyncGoogleEvents(formDate);
       }
     } else {
-      const { start: dtStart, end: dtEnd } = buildEventTimeRange(selectedDate, time, getServiceDuration());
+      const { start: dtStart, end: dtEnd } = buildEventTimeRange(formDate, time, getServiceDuration());
 
       let calendarEventId: string | undefined = undefined;
       if (isGoogleConnected) {
@@ -575,7 +592,7 @@ export default function CalendarView({
       await onAddAppointment({
         patientId: resolvedPatientId,
         patientName: resolvedPatientName,
-        date: selectedDate,
+        date: formDate,
         time,
         service,
         price,
@@ -593,6 +610,7 @@ export default function CalendarView({
   const handleEditAppointment = (appt: Appointment) => {
     setEditingAppt(appt);
     setPatientId(appt.patientId);
+    setFormDate(appt.date);
     setTime(appt.time);
     setService(appt.service);
     setPrice(appt.price);
@@ -1057,6 +1075,7 @@ export default function CalendarView({
       newPatientName={newPatientName}
       newPatientPhone={newPatientPhone}
       patientId={patientId}
+      date={formDate}
       time={time}
       price={price}
       quantity={quantity}
@@ -1066,6 +1085,7 @@ export default function CalendarView({
       onNewPatientName={setNewPatientName}
       onNewPatientPhone={setNewPatientPhone}
       onPatientId={setPatientId}
+      onDate={setFormDate}
       onTime={setTime}
       onPrice={setPrice}
       onQuantity={setQuantity}

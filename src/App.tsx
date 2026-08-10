@@ -134,7 +134,7 @@ export default function App() {
     } catch {}
   }, [isDarkMode]);
 
-  // Real-time Firestore data
+  // Real-time Firestore data — só inicia listeners quando o usuário está autenticado
   const {
     patients,
     appointments,
@@ -142,6 +142,7 @@ export default function App() {
     services,
     isLoading,
     syncStatus,
+    syncError,
     handleAddPatient,
     handleUpdatePatient,
     handleDeletePatient,
@@ -157,7 +158,7 @@ export default function App() {
     handleAddScheduleBlock,
     handleUpdateScheduleBlock,
     handleDeleteScheduleBlock,
-  } = useRealtimeData();
+  } = useRealtimeData(!!adminUser);
 
   const { isMobile, isTablet, isDesktop } = useResponsive();
 
@@ -1053,11 +1054,11 @@ export default function App() {
 
                 {/* Bottom status */}
                 <div className="p-4 border-t border-slate-100 bg-slate-50/50">
-                  <div className="flex items-center gap-2 text-[10px] text-slate-500 font-medium">
+                  <div className="flex items-center gap-2 text-[10px] text-slate-500 font-medium" title={syncError || undefined}>
                     <span className={`w-1.5 h-1.5 rounded-full ${
                       syncStatus === "synced" ? "bg-emerald-500" : syncStatus === "syncing" ? "bg-amber-500 animate-pulse" : "bg-red-500"
                     }`} />
-                    {syncStatus === "synced" ? "Firebase • Sincronizado" : syncStatus === "syncing" ? "Sincronizando..." : "Erro de conexão"}
+                    {syncStatus === "synced" ? "Firebase • Sincronizado" : syncStatus === "syncing" ? "Sincronizando..." : syncError || "Erro de conexão"}
                   </div>
                 </div>
               </div>
@@ -1095,17 +1096,17 @@ export default function App() {
               <div className="space-y-4">
                 {/* Sync Status */}
                 <div className="flex items-center justify-between p-4 bg-slate-50 rounded-xl border border-slate-100">
-                  <div>
+                  <div className="min-w-0 flex-1">
                     <p className="text-xs font-bold text-slate-700">Status da Sincronização</p>
-                    <p className="text-[10px] text-slate-500 mt-0.5">
+                    <p className="text-[10px] text-slate-500 mt-0.5 truncate" title={syncError || undefined}>
                       {syncStatus === "synced"
                         ? "Dados sincronizados em tempo real com o Firestore"
                         : syncStatus === "syncing"
                         ? "Sincronizando dados..."
-                        : "Erro ao sincronizar"}
+                        : syncError || "Erro ao sincronizar — verifique o console"}
                     </p>
                   </div>
-                  <span className={`text-[10px] font-bold px-3 py-1 rounded-full ${
+                  <span className={`text-[10px] font-bold px-3 py-1 rounded-full shrink-0 ml-2 ${
                     syncStatus === "synced"
                       ? "bg-emerald-50 text-emerald-700"
                       : syncStatus === "syncing"
