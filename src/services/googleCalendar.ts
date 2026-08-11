@@ -135,6 +135,10 @@ export function getAccessToken(): string | null {
   return accessToken;
 }
 
+export function persistGoogleToken(token: string): void {
+  saveToken(token);
+}
+
 export function hasPersistedToken(): boolean {
   try {
     const stored = localStorage.getItem(TOKEN_STORAGE_KEY);

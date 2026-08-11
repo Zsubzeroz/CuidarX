@@ -356,6 +356,9 @@ export default function CalendarView({
   const [selectedDays, setSelectedDays] = useState<number[]>([]);
   const [feedback, setFeedback] = useState<{ type: "success" | "error"; message: string } | null>(null);
   const [viewMode, setViewMode] = useState<"app" | "google">("app");
+  const [confirmDeleteTarget, setConfirmDeleteTarget] = useState<Appointment | null>(null);
+  const [confirmDeleteBlockTarget, setConfirmDeleteBlockTarget] = useState<ScheduleBlock | null>(null);
+  const [confirmDeleteGoogleTarget, setConfirmDeleteGoogleTarget] = useState<GoogleCalendarEvent | null>(null);
 
   useEffect(() => {
     if (!feedback) return;
@@ -622,11 +625,19 @@ export default function CalendarView({
   };
 
   const handleDelete = async (appt: Appointment) => {
-    if (!confirm(`Excluir agendamento de ${appt.patientName}?`)) return;
+    setConfirmDeleteTarget(appt);
+  };
+
+  const confirmDeleteAppointment = async () => {
+    const appt = confirmDeleteTarget;
+    if (!appt) return;
+    setConfirmDeleteTarget(null);
     try {
       await onDeleteAppointment(appt.id);
+      setFeedback({ type: "success", message: `Agendamento de ${appt.patientName} excluído` });
     } catch (err) {
       console.error("Erro ao excluir agendamento do Firestore:", err);
+      setFeedback({ type: "error", message: "Erro ao excluir agendamento" });
     }
     if (appt.calendarEventId) {
       try {
@@ -638,7 +649,13 @@ export default function CalendarView({
   };
 
   const handleDeleteGoogleEventFn = async (ge: GoogleCalendarEvent) => {
-    if (!confirm(`Excluir evento "${ge.summary}" do Google Agenda?`)) return;
+    setConfirmDeleteGoogleTarget(ge);
+  };
+
+  const confirmDeleteGoogleEvent = async () => {
+    const ge = confirmDeleteGoogleTarget;
+    if (!ge) return;
+    setConfirmDeleteGoogleTarget(null);
     await onDeleteGoogleEvent(ge.id);
     onSyncGoogleEvents(selectedDate);
   };
@@ -824,7 +841,13 @@ export default function CalendarView({
   };
 
   const handleDeleteBlock = async (block: ScheduleBlock) => {
-    if (!confirm(`Excluir bloqueio "${block.reason}"?`)) return;
+    setConfirmDeleteBlockTarget(block);
+  };
+
+  const confirmDeleteBlock = async () => {
+    const block = confirmDeleteBlockTarget;
+    if (!block) return;
+    setConfirmDeleteBlockTarget(null);
     try {
       if (block.calendarEventId && isGoogleConnected) {
         try {
@@ -1151,6 +1174,115 @@ export default function CalendarView({
           {feedback.type === "success" ? <CheckCircle2 className="w-4 h-4 shrink-0" /> : <AlertCircle className="w-4 h-4 shrink-0" />}
           {feedback.message}
         </div>
+      )}
+
+      {/* Confirm Delete Appointment Modal */}
+      {confirmDeleteTarget && (
+        <>
+          <div className="fixed inset-0 z-50 bg-slate-900/40 backdrop-blur-sm" onClick={() => setConfirmDeleteTarget(null)} />
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4" onClick={() => setConfirmDeleteTarget(null)}>
+            <div className="bg-white dark:bg-slate-900 rounded-3xl shadow-2xl max-w-sm w-full p-6 space-y-4" onClick={(e) => e.stopPropagation()}>
+              <div className="flex items-center gap-3">
+                <div className="p-2.5 bg-rose-50 rounded-xl">
+                  <Trash2 className="w-5 h-5 text-rose-600" />
+                </div>
+                <div>
+                  <h3 className="text-sm font-bold text-slate-800">Excluir Agendamento</h3>
+                  <p className="text-[10px] text-slate-500">Esta ação não pode ser desfeita.</p>
+                </div>
+              </div>
+              <p className="text-xs text-slate-600">
+                Tem certeza que deseja excluir o agendamento de <strong>{confirmDeleteTarget.patientName}</strong>?
+              </p>
+              <div className="flex gap-2">
+                <button
+                  onClick={() => setConfirmDeleteTarget(null)}
+                  className="flex-1 text-xs font-bold text-slate-600 bg-slate-100 hover:bg-slate-200 py-2.5 rounded-xl transition-colors cursor-pointer"
+                >
+                  Cancelar
+                </button>
+                <button
+                  onClick={confirmDeleteAppointment}
+                  className="flex-1 text-xs font-bold text-white bg-rose-600 hover:bg-rose-700 py-2.5 rounded-xl transition-colors cursor-pointer"
+                >
+                  Excluir
+                </button>
+              </div>
+            </div>
+          </div>
+        </>
+      )}
+
+      {/* Confirm Delete Block Modal */}
+      {confirmDeleteBlockTarget && (
+        <>
+          <div className="fixed inset-0 z-50 bg-slate-900/40 backdrop-blur-sm" onClick={() => setConfirmDeleteBlockTarget(null)} />
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4" onClick={() => setConfirmDeleteBlockTarget(null)}>
+            <div className="bg-white dark:bg-slate-900 rounded-3xl shadow-2xl max-w-sm w-full p-6 space-y-4" onClick={(e) => e.stopPropagation()}>
+              <div className="flex items-center gap-3">
+                <div className="p-2.5 bg-rose-50 rounded-xl">
+                  <Trash2 className="w-5 h-5 text-rose-600" />
+                </div>
+                <div>
+                  <h3 className="text-sm font-bold text-slate-800">Excluir Bloqueio</h3>
+                  <p className="text-[10px] text-slate-500">Esta ação não pode ser desfeita.</p>
+                </div>
+              </div>
+              <p className="text-xs text-slate-600">
+                Tem certeza que deseja excluir o bloqueio <strong>"{confirmDeleteBlockTarget.reason}"</strong>?
+              </p>
+              <div className="flex gap-2">
+                <button
+                  onClick={() => setConfirmDeleteBlockTarget(null)}
+                  className="flex-1 text-xs font-bold text-slate-600 bg-slate-100 hover:bg-slate-200 py-2.5 rounded-xl transition-colors cursor-pointer"
+                >
+                  Cancelar
+                </button>
+                <button
+                  onClick={confirmDeleteBlock}
+                  className="flex-1 text-xs font-bold text-white bg-rose-600 hover:bg-rose-700 py-2.5 rounded-xl transition-colors cursor-pointer"
+                >
+                  Excluir
+                </button>
+              </div>
+            </div>
+          </div>
+        </>
+      )}
+      {confirmDeleteGoogleTarget && (
+        <>
+          <div className="fixed inset-0 z-50 bg-slate-900/40 backdrop-blur-sm" onClick={() => setConfirmDeleteGoogleTarget(null)} />
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4" onClick={() => setConfirmDeleteGoogleTarget(null)}>
+            <div className="bg-white dark:bg-slate-900 rounded-3xl shadow-2xl max-w-sm w-full p-6 space-y-4" onClick={(e) => e.stopPropagation()}>
+              <div className="flex items-center gap-3">
+                <div className="p-2.5 bg-rose-50 rounded-xl">
+                  <Trash2 className="w-5 h-5 text-rose-600" />
+                </div>
+                <div>
+                  <h3 className="text-sm font-bold text-slate-800">Excluir Evento Google</h3>
+                  <p className="text-[10px] text-slate-500">Esta ação não pode ser desfeita.</p>
+                </div>
+              </div>
+              <p className="text-xs text-slate-600">
+                Tem certeza que deseja excluir o evento <strong>"{confirmDeleteGoogleTarget.summary}"</strong> do Google Agenda?
+              </p>
+              <div className="flex gap-2">
+                <button
+                  onClick={() => setConfirmDeleteGoogleTarget(null)}
+                  className="flex-1 text-xs font-bold text-slate-600 bg-slate-100 hover:bg-slate-200 py-2.5 rounded-xl transition-colors cursor-pointer"
+                >
+                  Cancelar
+                </button>
+                <button
+                  onClick={confirmDeleteGoogleEvent}
+                  className="flex-1 text-xs font-bold text-white bg-rose-600 hover:bg-rose-700 py-2.5 rounded-xl transition-colors cursor-pointer"
+                >
+                  Excluir
+                </button>
+              </div>
+            </div>
+          </div>
+        </>
       )}
       {/* LEFT: Date selector + Schedule form (desktop & tablet) */}
         <div className="hidden md:block md:col-span-5 lg:col-span-4 space-y-6 order-2 lg:order-1">

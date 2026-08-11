@@ -297,6 +297,7 @@ export function useRealtimeData(enabled = true) {
       console.error(e);
       setSyncStatus("error");
       setSyncError(`Excluir agendamento: ${e?.message || String(e)}`);
+      throw e;
     }
   }, []);
 
@@ -364,6 +365,7 @@ export function useRealtimeData(enabled = true) {
       console.error(e);
       setSyncStatus("error");
       setSyncError(`Excluir serviço: ${e?.message || String(e)}`);
+      throw e;
     }
   }, []);
 
@@ -413,6 +415,7 @@ export function useRealtimeData(enabled = true) {
       console.error(e);
       setSyncStatus("error");
       setSyncError(`Excluir bloqueio: ${e?.message || String(e)}`);
+      throw e;
     }
   }, []);
 

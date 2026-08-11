@@ -9,7 +9,7 @@ import {
   Timestamp,
   getDoc,
 } from "firebase/firestore";
-import { db, isFirebaseConfigured } from "./firebase";
+import { db, auth, isFirebaseConfigured } from "./firebase";
 import type { Patient, Appointment, FinanceRecord, ClinicService, ScheduleBlock } from "../types";
 
 type Unsubscribe = () => void;
@@ -56,6 +56,7 @@ export function listenPatients(callback: (patients: Patient[]) => void, onError?
 
 export async function createPatient(patient: Patient): Promise<void> {
   if (!isFirebaseConfigured || !db) return;
+  if (!auth?.currentUser) throw new Error("Faça login para cadastrar pacientes");
   const docRef = doc(db, "patients", patient.id);
   const { id, ...data } = patient;
   await setDoc(docRef, data);
@@ -63,6 +64,7 @@ export async function createPatient(patient: Patient): Promise<void> {
 
 export async function updatePatient(patient: Patient): Promise<void> {
   if (!isFirebaseConfigured || !db) return;
+  if (!auth?.currentUser) throw new Error("Faça login para atualizar pacientes");
   const docRef = doc(db, "patients", patient.id);
   const { id, ...data } = patient;
   // Firestore's updateDoc throws on undefined values, which occur when
@@ -77,6 +79,7 @@ export async function deletePatient(id: string): Promise<void> {
   if (!isFirebaseConfigured || !db) {
     throw new Error("Firestore não configurado");
   }
+  if (!auth?.currentUser) throw new Error("Faça login para excluir pacientes");
   try {
     await deleteDoc(doc(db, "patients", id));
   } catch (error) {
@@ -95,6 +98,7 @@ export function listenAppointments(callback: (appointments: Appointment[]) => vo
 
 export async function createAppointment(appointment: Appointment): Promise<void> {
   if (!isFirebaseConfigured || !db) return;
+  if (!auth?.currentUser) throw new Error("Faça login para criar agendamentos");
   const docRef = doc(db, "appointments", appointment.id);
   const { id, ...data } = appointment;
   await setDoc(docRef, data);
@@ -102,6 +106,7 @@ export async function createAppointment(appointment: Appointment): Promise<void>
 
 export async function updateAppointment(appointment: Appointment): Promise<void> {
   if (!isFirebaseConfigured || !db) return;
+  if (!auth?.currentUser) throw new Error("Faça login para atualizar agendamentos");
   const docRef = doc(db, "appointments", appointment.id);
   const { id, ...data } = appointment;
   await updateDoc(docRef, data as any);
@@ -109,6 +114,7 @@ export async function updateAppointment(appointment: Appointment): Promise<void>
 
 export async function deleteAppointment(id: string): Promise<void> {
   if (!isFirebaseConfigured || !db) return;
+  if (!auth?.currentUser) throw new Error("Faça login para excluir agendamentos");
   await deleteDoc(doc(db, "appointments", id));
 }
 
@@ -122,6 +128,7 @@ export function listenFinances(callback: (finances: FinanceRecord[]) => void, on
 
 export async function createFinanceRecord(record: FinanceRecord): Promise<void> {
   if (!isFirebaseConfigured || !db) return;
+  if (!auth?.currentUser) throw new Error("Faça login para criar registros financeiros");
   const docRef = doc(db, "finances", record.id);
   const { id, ...data } = record;
   await setDoc(docRef, data);
@@ -131,6 +138,7 @@ export async function deleteFinanceRecord(id: string): Promise<void> {
   if (!isFirebaseConfigured || !db) {
     throw new Error("Firestore não configurado");
   }
+  if (!auth?.currentUser) throw new Error("Faça login para excluir registros financeiros");
   try {
     await deleteDoc(doc(db, "finances", id));
   } catch (error) {
@@ -149,6 +157,7 @@ export function listenServices(callback: (services: ClinicService[]) => void, on
 
 export async function createOrUpdateService(service: ClinicService): Promise<void> {
   if (!isFirebaseConfigured || !db) return;
+  if (!auth?.currentUser) throw new Error("Faça login para salvar serviços");
   const docRef = doc(db, "services", service.id);
   const { id, ...data } = service;
   await setDoc(docRef, data);
@@ -156,6 +165,7 @@ export async function createOrUpdateService(service: ClinicService): Promise<voi
 
 export async function deleteService(id: string): Promise<void> {
   if (!isFirebaseConfigured || !db) return;
+  if (!auth?.currentUser) throw new Error("Faça login para excluir serviços");
   await deleteDoc(doc(db, "services", id));
 }
 
@@ -169,6 +179,7 @@ export function listenScheduleBlocks(callback: (blocks: ScheduleBlock[]) => void
 
 export async function createScheduleBlock(block: ScheduleBlock): Promise<void> {
   if (!isFirebaseConfigured || !db) return;
+  if (!auth?.currentUser) throw new Error("Faça login para criar blocos de agenda");
   const docRef = doc(db, "scheduleBlocks", block.id);
   const { id, ...data } = block;
   await setDoc(docRef, data);
@@ -176,6 +187,7 @@ export async function createScheduleBlock(block: ScheduleBlock): Promise<void> {
 
 export async function updateScheduleBlock(block: ScheduleBlock): Promise<void> {
   if (!isFirebaseConfigured || !db) return;
+  if (!auth?.currentUser) throw new Error("Faça login para atualizar blocos de agenda");
   const docRef = doc(db, "scheduleBlocks", block.id);
   const { id, ...data } = block;
   await updateDoc(docRef, data as any);
@@ -183,6 +195,7 @@ export async function updateScheduleBlock(block: ScheduleBlock): Promise<void> {
 
 export async function deleteScheduleBlock(id: string): Promise<void> {
   if (!isFirebaseConfigured || !db) return;
+  if (!auth?.currentUser) throw new Error("Faça login para excluir blocos de agenda");
   await deleteDoc(doc(db, "scheduleBlocks", id));
 }
 

@@ -2,6 +2,7 @@ import {
   connectGoogleCalendar,
   disconnectGoogleCalendar,
   getAccessToken,
+  persistGoogleToken,
   silentConnectGoogle,
   isNativePlatform,
 } from "./googleCalendar";
@@ -15,6 +16,7 @@ import {
   getRedirectResult,
   signOut as firebaseSignOut,
   onAuthStateChanged,
+  GoogleAuthProvider,
   type User as FirebaseUser,
 } from "firebase/auth";
 
@@ -142,40 +144,49 @@ export async function logoutFirebase(): Promise<void> {
   } catch {}
 }
 
-// ====== LEGACY (GIS Popup — web only) ======
+// ====== FIREBASE AUTH + GOOGLE CALENDAR (Web) ======
 
 export async function loginWithGoogle(): Promise<AdminUser> {
-  let token = getAccessToken();
+  // Create a GoogleAuthProvider with Calendar API scopes
+  const provider = new GoogleAuthProvider();
+  provider.addScope("https://www.googleapis.com/auth/calendar");
+  provider.addScope("https://www.googleapis.com/auth/calendar.events");
+  provider.addScope("https://www.googleapis.com/auth/calendar.readonly");
 
-  if (!token) {
-    token = await connectGoogleCalendar();
+  // Sign in via Firebase Auth popup — this both:
+  // 1. Authenticates with Firebase Auth (request.auth != null for Firestore rules)
+  // 2. Gets a Google OAuth access token for Calendar API
+  const result = await signInWithPopup(auth, provider);
+  const user = result.user;
+
+  if (!user?.email || !isAuthorizedEmail(user.email)) {
+    await firebaseSignOut(auth);
+    throw new Error("UNAUTHORIZED:" + (user?.email || "unknown"));
   }
 
-  const info = await fetchGoogleUserInfo(token);
-  if (!info?.email) {
-    disconnectGoogleCalendar();
-    throw new Error("INVALID_RESPONSE");
+  // Extract Google OAuth access token for Calendar API
+  const credential = GoogleAuthProvider.credentialFromResult(result);
+  if (credential?.accessToken) {
+    persistGoogleToken(credential.accessToken);
   }
 
-  if (!isAuthorizedEmail(info.email)) {
-    disconnectGoogleCalendar();
-    throw new Error("UNAUTHORIZED:" + info.email);
-  }
-
-  const user: AdminUser = {
-    email: info.email,
-    name: info.name,
-    picture: info.picture,
-    loginAt: new Date().toISOString(),
-  };
-
-  saveAdminUser(user);
-  return user;
+  const adminUser = firebaseUserToAdminUser(user);
+  saveAdminUser(adminUser);
+  return adminUser;
 }
 
 export async function trySilentLogin(): Promise<AdminUser | null> {
   const persisted = getCurrentUser();
-  if (persisted) return persisted;
+  if (persisted) {
+    // If we have a persisted admin user, also check Firebase Auth state
+    // Firebase Auth session persists across page reloads
+    const firebaseUser = auth?.currentUser;
+    if (!firebaseUser && isAuthorizedEmail(persisted.email)) {
+      // Firebase Auth session expired or was cleared — try to restore silently
+      // This is a no-op if the user needs to re-authenticate
+    }
+    return persisted;
+  }
 
   try {
     const connected = await silentConnectGoogle();

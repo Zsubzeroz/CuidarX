@@ -35,6 +35,7 @@ import {
   type WhatsAppAutoConfig,
   type WhatsAppProvider,
 } from "./services/whatsappAutoService";
+import { auth } from "./services/firebase";
 import {
   loginWithGoogle,
   loginWithEmailPassword,
@@ -257,68 +258,61 @@ export default function App() {
   // antes de liberar os listeners Firestore. Sem isso, adminUser pode vir do localStorage
   // enquanto auth.currentUser ainda é null, causando "Missing permissions".
   useEffect(() => {
-    const unsub = onAuthStateChange((user) => {
-      console.warn(`[App] onAuthStateChanged: user=${user?.email || "null"}`);
-      setFirebaseAuthReady(true);
-    });
-    return unsub;
-  }, []);
-
-  // Admin login gate: tentar restaurar sessão autorizada silenciosamente.
-  // Trava de segurança máxima de 3s: o tablet/mobile NUNCA deve ficar preso na
-  // tela de carregamento, mesmo que o login do Google não responda.
-  useEffect(() => {
     if (isClienteRoute) return;
-    const init = async () => {
-      // Check Firebase Auth redirect result (Android)
-      const redirectUser = await handleFirebaseRedirectResult();
-      if (redirectUser) {
-        setAdminUser(redirectUser);
-        setIsGoogleConnected(true);
-        setAuthChecking(false);
-        const today = new Date().toISOString().split("T")[0];
-        handleSyncGoogleEvents(today);
-        return;
-      }
 
-      // Check localStorage for persisted session
-      const persisted = getCurrentUser();
-      if (persisted) {
-        setAdminUser(persisted);
-        setIsGoogleConnected(true);
-        setAuthChecking(false);
-        const today = new Date().toISOString().split("T")[0];
-        handleSyncGoogleEvents(today);
-        return;
-      }
+    let mounted = true;
+    let authResolved = false;
 
-      // Legacy: GIS token in URL (web redirect flow)
-      const cameFromRedirect = extractTokenFromUrl();
-      try {
-        let user: AdminUser | null = null;
-        if (cameFromRedirect) {
-          user = await loginWithGoogle();
-        } else {
-          user = await trySilentLogin();
-        }
-        setAdminUser(user);
-        if (user) {
+    const unsub = onAuthStateChange((user) => {
+      if (!mounted) return;
+      console.warn(`[App] onAuthStateChanged: user=${user?.email || "null"}`);
+
+      if (user) {
+        // Firebase Auth confirmed — safe to use Firestore writes
+        authResolved = true;
+        setFirebaseAuthReady(true);
+
+        // Restore persisted admin user from localStorage if available
+        const persisted = getCurrentUser();
+        if (persisted) {
+          setAdminUser(persisted);
           setIsGoogleConnected(true);
-          const today = new Date().toISOString().split("T")[0];
-          handleSyncGoogleEvents(today);
         }
-      } catch (err) {
-        console.warn("[App] Silent login falhou, liberando a UI:", err);
-      } finally {
+        setAuthChecking(false);
+        const today = new Date().toISOString().split("T")[0];
+        handleSyncGoogleEvents(today);
+      } else if (!authResolved) {
+        // First callback is always null (initial loading) — do NOT clear localStorage yet.
+        // Wait for a real resolution (user found or timeout).
+        setFirebaseAuthReady(true);
+      } else {
+        // Firebase Auth resolved with null AFTER having had a user — session expired/revoked
+        authResolved = true;
+        setFirebaseAuthReady(true);
+
+        const persisted = getCurrentUser();
+        if (persisted) {
+          console.warn("[App] Firebase Auth session expired — forcing logout");
+          localStorage.removeItem("google_admin_auth");
+        }
         setAuthChecking(false);
       }
-    };
-    init();
-    // Hard safety: libera a tela em no máximo 3 segundos, custe o que custar
+    });
+
+    // Hard safety: if Firebase Auth never resolves, treat as "no session"
     const authSafetyTimer = setTimeout(() => {
-      setAuthChecking(false);
+      if (mounted && !authResolved) {
+        authResolved = true;
+        setFirebaseAuthReady(true);
+        setAuthChecking(false);
+      }
     }, 3000);
-    return () => clearTimeout(authSafetyTimer);
+
+    return () => {
+      mounted = false;
+      unsub();
+      clearTimeout(authSafetyTimer);
+    };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -352,6 +346,11 @@ export default function App() {
   }, [isConnectingGoogle]);
 
   const handleConnectGoogle = async () => {
+    if (!auth?.currentUser) {
+      setAuthError("Faça login para conectar o Google Agenda.");
+      setTimeout(() => setAuthError(null), 5000);
+      return;
+    }
     try {
       await connectGoogleCalendar();
       setIsGoogleConnected(true);
@@ -393,6 +392,7 @@ export default function App() {
   const handleGoogleLogin = async () => {
     if (isLoggingIn) return;
     setIsLoggingIn(true);
+    setAuthError(null);
     try {
       await loginWithGoogle();
       setIsGoogleConnected(true);
@@ -401,14 +401,15 @@ export default function App() {
     } catch (err: any) {
       if (typeof err?.message === "string" && err.message.startsWith("UNAUTHORIZED")) {
         const attemptedEmail = err.message.split(":")[1] || "desconhecido";
-        alert("Acesso negado para: " + attemptedEmail);
+        setAuthError(`Acesso negado para: ${attemptedEmail}`);
       } else if (err?.message === "REDIRECT_PENDING") {
         return;
       } else if (err?.message === "Popup bloqueado") {
-        alert("Permita pop-ups para este site e tente novamente.");
+        setAuthError("Permita pop-ups para este site e tente novamente.");
       } else {
-        alert("Não foi possível conectar com o Google. Tente novamente.");
+        setAuthError("Não foi possível conectar com o Google. Tente novamente.");
       }
+      setTimeout(() => setAuthError(null), 5000);
     } finally {
       setIsLoggingIn(false);
     }
@@ -840,6 +841,7 @@ export default function App() {
         onUpdateAppointment={handleUpdateAppointment}
         onUpdateAppointmentStatus={handleUpdateAppointmentStatus}
         onDeleteAppointment={handleDeleteAppointment}
+        onAddPatient={handleAddPatient}
         onAddScheduleBlock={handleAddScheduleBlock}
         onUpdateScheduleBlock={handleUpdateScheduleBlock}
         onDeleteScheduleBlock={handleDeleteScheduleBlock}
@@ -970,6 +972,12 @@ export default function App() {
               )}
               <span className="hidden lg:inline text-[11px] font-bold ml-1.5">{isLoggingIn ? "Conectando..." : "Conectar Google Agenda"}</span>
             </button>
+          )}
+
+          {authError && (
+            <div className="absolute top-full right-0 mt-2 z-50 bg-rose-600 text-white text-[11px] font-bold px-3 py-1.5 rounded-lg shadow-lg max-w-[240px] whitespace-nowrap">
+              {authError}
+            </div>
           )}
 
           {/* Logout */}
