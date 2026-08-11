@@ -2,10 +2,10 @@ import React, { useState, useEffect, useRef, useMemo } from "react";
 import { Patient, Appointment, ClinicService, ScheduleBlock } from "../types";
 import {
   GoogleCalendarEvent,
-  updateGoogleCalendarEvent,
   buildEventTimeRange,
   buildBlockEventSummary,
   BLOCK_COLOR_ID,
+  getEventLocalDate,
 } from "../services/googleCalendar";
 import {
   Calendar,
@@ -36,6 +36,7 @@ import {
   PartyPopper,
   Layers,
 } from "lucide-react";
+import { syncPublicScheduleBlocks } from "../services/firestoreService";
 
 interface CalendarViewProps {
   patients: Patient[];
@@ -62,6 +63,7 @@ interface CalendarViewProps {
   onDisconnectGoogle: () => void;
   onSyncGoogleEvents: (date: string) => void;
   onCreateGoogleEvent: (summary: string, description: string, startTime: string, endTime: string, colorId?: string) => Promise<string | null>;
+  onUpdateGoogleEvent: (eventId: string, summary: string, description: string, startTime: string, endTime: string) => Promise<boolean>;
   onDeleteGoogleEvent: (eventId: string) => Promise<void>;
   expedienteStart?: string;
   expedienteEnd?: string;
@@ -96,12 +98,186 @@ interface ScheduleFormProps {
   onNotes: (v: string) => void;
 }
 
+// Returns "YYYY-MM-DD" in America/Sao_Paulo timezone (no UTC drift)
+const toDateStrBR = (d: Date): string => {
+  const parts = new Intl.DateTimeFormat("en-CA", { timeZone: "America/Sao_Paulo", year: "numeric", month: "2-digit", day: "2-digit" }).formatToParts(d);
+  const y = parts.find(p => p.type === "year")?.value || "0";
+  const m = parts.find(p => p.type === "month")?.value || "0";
+  const dd = parts.find(p => p.type === "day")?.value || "0";
+  return `${y}-${m}-${dd}`;
+};
+const getTodayBR = () => toDateStrBR(new Date());
+
 // Convert "HH:MM" -> minutes since midnight (NaN if invalid)
 const timeToMinutes = (t: string): number => {
   if (!t) return NaN;
   const [h, m] = t.split(":").map(Number);
   if (isNaN(h) || isNaN(m)) return NaN;
   return h * 60 + m;
+};
+
+// ── Week view helpers ──
+const HOUR_HEIGHT = 64; // px per hour
+const DAY_NAMES = ["SEG", "TER", "QUA", "QUI", "SEX", "SÁB", "DOM"];
+
+const getWeekDates = (dateStr: string): string[] => {
+  const d = new Date(dateStr + "T12:00:00-03:00");
+  const day = d.getDay();
+  const mondayOffset = (day + 6) % 7;
+  const monday = new Date(d);
+  monday.setDate(d.getDate() - mondayOffset);
+  return Array.from({ length: 7 }, (_, i) => {
+    const dt = new Date(monday);
+    dt.setDate(monday.getDate() + i);
+    return dt.toISOString().slice(0, 10);
+  });
+};
+
+const getWeekLabel = (dates: string[]): string => {
+  const start = new Date(dates[0] + "T12:00:00-03:00");
+  const end = new Date(dates[6] + "T12:00:00-03:00");
+  const fmt = (d: Date) => d.toLocaleDateString("pt-BR", { day: "numeric", month: "short" });
+  return `${fmt(start)} – ${fmt(end)}`;
+};
+
+function getEventPosition(
+  startStr: string,
+  endStr: string,
+  dayStartStr: string = "07:00",
+  hourHeight: number = 64
+): { top: number; height: number } {
+  const toMin = (t: string) => {
+    if (!t) return 420;
+    let timePart = t;
+    if (t.includes("T")) {
+      timePart = formatTimeStr(t);
+    }
+    const [h, m] = timePart.split(":").map(Number);
+    if (isNaN(h) || isNaN(m)) return 420;
+    return h * 60 + m;
+  };
+
+  const startMin = toMin(startStr);
+  const endMin = toMin(endStr);
+
+  const durationMin = Math.max(30, (isNaN(endMin) || endMin <= startMin) ? startMin + 30 : endMin - startMin);
+  const top = Math.max(0, ((startMin - 420) / 60) * hourHeight);
+  const height = Math.max(30, (durationMin / 60) * hourHeight);
+
+  return { top, height };
+}
+
+const layoutOverlaps = <T extends { start: string; end: string }>(events: T[]): (T & { left: string; width: string })[] => {
+  if (events.length === 0) return [];
+  const sorted = [...events].sort((a, b) => timeToMinutes(a.start) - timeToMinutes(b.start));
+  const groups = new Map<number, T[]>();
+  for (const evt of sorted) {
+    const s = timeToMinutes(evt.start);
+    if (!groups.has(s)) groups.set(s, []);
+    groups.get(s)!.push(evt);
+  }
+  const result: (T & { left: string; width: string })[] = [];
+  for (const [, group] of groups) {
+    if (group.length === 1) {
+      result.push({ ...group[0], left: "0%", width: "100%" });
+    } else {
+      const total = group.length;
+      group.forEach((evt, idx) => {
+        result.push({
+          ...evt,
+          left: `${(idx / total) * 100}%`,
+          width: `${(1 / total) * 100 - 1}%`,
+        });
+      });
+    }
+  }
+  return result;
+};
+
+const formatTimeStr = (isoString: string): string => {
+  if (!isoString) return "00:00";
+  try {
+    if (/^\d{2}:\d{2}$/.test(isoString)) return isoString;
+    const d = new Date(isoString);
+    if (isNaN(d.getTime())) return isoString.slice(11, 16) || "00:00";
+    const formatter = new Intl.DateTimeFormat("en-US", {
+      timeZone: "America/Sao_Paulo",
+      hour: "2-digit",
+      minute: "2-digit",
+      hourCycle: "h23",
+    });
+    const parts = formatter.formatToParts(d);
+    let hour = "", minute = "";
+    for (const part of parts) {
+      if (part.type === "hour") hour = part.value.padStart(2, "0");
+      if (part.type === "minute") minute = part.value.padStart(2, "0");
+    }
+    if (hour && minute) {
+      if (hour === "24") hour = "00";
+      return `${hour}:${minute}`;
+    }
+    return isoString.slice(11, 16) || "00:00";
+  } catch {
+    return isoString.slice(11, 16) || "00:00";
+  }
+};
+
+const addMinutes = (timeHHMM: string, minutes: number): string => {
+  const [h, m] = timeHHMM.split(":").map(Number);
+  const total = h * 60 + (m || 0) + minutes;
+  const nh = Math.floor(total / 60) % 24;
+  const nm = total % 60;
+  return `${String(nh).padStart(2, "0")}:${String(nm).padStart(2, "0")}`;
+};
+
+const getEventColors = (
+  evt: { status?: string; source?: string; colorId?: string },
+  type: "appointment" | "block" | "google",
+  view?: "day" | "week"
+): { bg: string; border: string; text: string } => {
+  if (view === "week") {
+    if (type === "block") {
+      return { bg: "bg-rose-100", border: "border-l-4 border-rose-600", text: "text-rose-900" };
+    }
+    if (type === "google") {
+      const summary = ((evt as any).summary || "").toLowerCase();
+      const isRoutine = /estágio|estagio|almoco|almoço|pilates|reunião|reuniao|bloqueio|feriado|férias|ferias|médico|medico/i.test(summary);
+      if (isRoutine) {
+        return { bg: "bg-rose-100", border: "border-l-4 border-rose-600", text: "text-rose-900" };
+      }
+      return { bg: "bg-teal-100", border: "border-l-4 border-teal-600", text: "text-teal-900" };
+    }
+    if (type === "appointment") {
+      return { bg: "bg-teal-100", border: "border-l-4 border-teal-600", text: "text-teal-900" };
+    }
+  }
+  if (type === "block") {
+    return { bg: "bg-rose-100", border: "border-l-4 border-rose-500", text: "text-rose-800" };
+  }
+  if (type === "appointment") {
+    switch (evt.status) {
+      case "confirmed":
+        return { bg: "bg-blue-50", border: "border-l-4 border-blue-500", text: "text-blue-800" };
+      case "completed":
+        return { bg: "bg-slate-50", border: "border-l-4 border-slate-400", text: "text-slate-500" };
+      case "canceled":
+        return { bg: "bg-slate-50", border: "border-l-4 border-slate-300", text: "text-slate-400 line-through" };
+      default:
+        return { bg: "bg-emerald-50", border: "border-l-4 border-emerald-500", text: "text-emerald-800" };
+    }
+  }
+  return { bg: "bg-amber-50", border: "border-l-4 border-amber-400", text: "text-amber-800" };
+};
+
+const formatTimeRange = (start: string, end: string): string => {
+  const fmt = (iso: string) => {
+    try {
+      return new Date(iso).toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" });
+    } catch {
+      return iso.slice(11, 16);
+    }
+  };
+  return `${fmt(start)} – ${fmt(end)}`;
 };
 
 // Hoisted to module scope: defined OUTSIDE the CalendarView component so its
@@ -296,6 +472,619 @@ const ScheduleForm = ({
   </form>
 );
 
+// ── Current Time Line ──
+const CurrentTimeLine: React.FC<{ dayStart: string; hourHeight: number }> = ({ dayStart, hourHeight }) => {
+  const [now, setNow] = useState(new Date());
+  useEffect(() => {
+    const id = setInterval(() => setNow(new Date()), 60000);
+    return () => clearInterval(id);
+  }, []);
+
+  const toMin = (t: string) => {
+    const [h, m] = t.split(":").map(Number);
+    return h * 60 + (m || 0);
+  };
+  const nowMin = now.getHours() * 60 + now.getMinutes();
+  const dayStartMin = toMin(dayStart);
+  const top = ((nowMin - dayStartMin) / 60) * hourHeight;
+  const totalHeight = 13 * hourHeight;
+  const visible = top >= 0 && top <= totalHeight;
+
+  if (!visible) return null;
+  return (
+    <div className="absolute left-0 right-0 z-20 pointer-events-none" style={{ top }}>
+      <div className="w-2.5 h-2.5 rounded-full bg-red-500 -ml-1" />
+      <div className="h-[2px] bg-red-500 ml-1.5" />
+    </div>
+  );
+};
+
+// ── Day Column (for Week Grid) ──
+interface DayColumnProps {
+  date: string;
+  isToday: boolean;
+  hours: string[];
+  dayStart: string;
+  dayEnd: string;
+  hourHeight: number;
+  view?: "day" | "week";
+  appointments: Appointment[];
+  googleEvents: GoogleCalendarEvent[];
+  blocks: ScheduleBlock[];
+  services: ClinicService[];
+  patients: Patient[];
+  onSlotClick: (time: string) => void;
+  onEditAppointment: (appt: Appointment) => void;
+  onDeleteAppointment: (appt: Appointment) => void;
+  onStatusChange: (appt: Appointment, status: Appointment["status"]) => void;
+  onEditBlock: (block: ScheduleBlock) => void;
+  onDeleteBlock: (block: ScheduleBlock) => void;
+  onEditGoogleEvent: (ge: GoogleCalendarEvent) => void;
+  onDeleteGoogleEvent: (ge: GoogleCalendarEvent) => void;
+}
+
+const DayColumn: React.FC<DayColumnProps> = ({
+  date, isToday, hours, dayStart, dayEnd, hourHeight, view,
+  appointments, googleEvents, blocks, services, patients,
+  onSlotClick, onEditAppointment, onDeleteAppointment, onStatusChange,
+  onEditBlock, onDeleteBlock, onEditGoogleEvent, onDeleteGoogleEvent,
+}) => {
+  const [selectedEvt, setSelectedEvt] = useState<{ type: string; data: any } | null>(null);
+
+  // Filter events for this day
+  const dayAppts = appointments.filter((a) => a.date === date);
+  const dayGoogle = googleEvents.filter((ge) => getEventLocalDate(ge.start) === date);
+  const dayBlocks = blocks.filter((b) => {
+    if (b.date === date) return true;
+    if (b.recurrence && b.recurrence.frequency !== "none") {
+      const d = new Date(date + "T12:00:00-03:00");
+      const dow = d.getDay();
+      if (b.recurrence.frequency === "diaria") return true;
+      if (b.recurrence.frequency === "dias_uteis") return dow >= 1 && dow <= 5;
+      if (b.recurrence.daysOfWeek?.includes(dow)) return true;
+    }
+    return false;
+  });
+
+  // ── Deduplication: keep local card, remove Google duplicate ──
+  const localCalendarEventIds = new Set<string>();
+  dayBlocks.forEach((b) => { if (b.calendarEventId) localCalendarEventIds.add(b.calendarEventId); });
+  dayAppts.forEach((a) => { if (a.calendarEventId) localCalendarEventIds.add(a.calendarEventId); });
+
+  const dedupedGoogle = dayGoogle.filter((ge) => {
+    if (localCalendarEventIds.has(ge.id)) return false;
+    const matchingBlock = dayBlocks.find(
+      (b) =>
+        !b.calendarEventId &&
+        formatTimeStr(ge.start) === b.startTime &&
+        formatTimeStr(ge.end) === b.endTime &&
+        (ge.summary || "").toLowerCase().includes((b.reason || "").toLowerCase())
+    );
+    if (matchingBlock) return false;
+    return true;
+  });
+
+  // Merge all events for overlap layout
+  const allEvents = [
+    ...dayBlocks.map((b) => ({
+      id: b.id, type: "block" as const, label: b.reason,
+      start: b.startTime, end: b.endTime, data: b,
+    })),
+    ...dedupedGoogle.map((ge) => ({
+      id: ge.id, type: "google" as const, label: ge.summary,
+      start: formatTimeStr(ge.start), end: formatTimeStr(ge.end), data: ge,
+    })),
+    ...dayAppts.map((a) => ({
+      id: a.id, type: "appointment" as const, label: a.patientName,
+      start: a.time, end: addMinutes(a.time, 60), data: a,
+    })),
+  ];
+
+  // Blocks always full-width background strips; only non-block events share columns
+  const blockEvts = allEvents.filter((e) => e.type === "block");
+  const nonBlockEvts = allEvents.filter((e) => e.type !== "block");
+  const positioned = [
+    ...blockEvts.map((e) => ({ ...e, left: "0%", width: "100%" })),
+    ...layoutOverlaps(nonBlockEvts),
+  ];
+
+  const totalHeight = hours.length * hourHeight;
+
+  return (
+    <div className="flex-1 relative border-l border-slate-100 min-w-0">
+      {/* Grid lines */}
+      {hours.map((hour) => (
+        <div
+          key={hour}
+          className="border-b border-gray-100 hover:bg-slate-50/50 cursor-pointer transition-colors"
+          style={{ height: hourHeight / 2 }}
+          onClick={() => onSlotClick(hour)}
+        />
+      ))}
+
+      {/* Events */}
+      {positioned.map((evt) => {
+        const { top, height } = getEventPosition(evt.start, evt.end, dayStart, hourHeight);
+        const colors = getEventColors(evt.data, evt.type, view);
+        return (
+          <div
+            key={`${evt.type}-${evt.id}`}
+            className={`absolute z-10 overflow-hidden text-ellipsis whitespace-nowrap p-2 rounded-lg ${colors.bg} ${colors.border} ${colors.text} cursor-pointer hover:shadow-md transition-shadow`}
+            style={{ top, height, left: evt.left, width: evt.width, minHeight: 18 }}
+            onClick={() => setSelectedEvt({ type: evt.type, data: evt.data })}
+          >
+            <div className="truncate font-bold">{evt.label}</div>
+            {height > 28 && (
+              <div className="truncate opacity-70 text-[9px]">
+                {evt.start} – {evt.end}
+              </div>
+            )}
+          </div>
+        );
+      })}
+
+      {/* Current time line */}
+      {isToday && <CurrentTimeLine dayStart={dayStart} hourHeight={hourHeight} />}
+
+      {/* Event detail popover */}
+      {selectedEvt && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4" onClick={() => setSelectedEvt(null)}>
+          <div className="bg-white rounded-2xl shadow-2xl max-w-xs w-full p-4 space-y-3" onClick={(e) => e.stopPropagation()}>
+            <div className="flex items-center justify-between">
+              <h4 className="text-sm font-bold text-slate-800 truncate">{selectedEvt.data.patientName || selectedEvt.data.reason || selectedEvt.data.summary}</h4>
+              <button onClick={() => setSelectedEvt(null)} className="p-1 hover:bg-slate-100 rounded-lg cursor-pointer">
+                <XCircle className="w-4 h-4 text-slate-400" />
+              </button>
+            </div>
+            {selectedEvt.type === "appointment" && (
+              <div className="space-y-2">
+                <p className="text-[11px] text-slate-600">{selectedEvt.data.service} — R$ {selectedEvt.data.price}</p>
+                <div className="flex gap-1.5 flex-wrap">
+                  {selectedEvt.data.status !== "confirmed" && (
+                    <button onClick={() => { onStatusChange(selectedEvt.data, "confirmed"); setSelectedEvt(null); }} className="text-[10px] font-bold px-2 py-1 rounded bg-blue-50 text-blue-700 hover:bg-blue-100 cursor-pointer">
+                      <CheckCircle2 className="w-3 h-3 inline" /> Confirmar
+                    </button>
+                  )}
+                  {selectedEvt.data.status !== "completed" && (
+                    <button onClick={() => { onStatusChange(selectedEvt.data, "completed"); setSelectedEvt(null); }} className="text-[10px] font-bold px-2 py-1 rounded bg-emerald-50 text-emerald-700 hover:bg-emerald-100 cursor-pointer">
+                      <Check className="w-3 h-3 inline" /> Concluir
+                    </button>
+                  )}
+                  <button onClick={() => { onEditAppointment(selectedEvt.data); setSelectedEvt(null); }} className="text-[10px] font-bold px-2 py-1 rounded bg-blue-50 text-blue-600 hover:bg-blue-100 cursor-pointer">
+                    <Pencil className="w-3 h-3 inline" /> Editar
+                  </button>
+                  <button onClick={() => { onDeleteAppointment(selectedEvt.data); setSelectedEvt(null); }} className="text-[10px] font-bold px-2 py-1 rounded bg-rose-50 text-rose-600 hover:bg-rose-100 cursor-pointer">
+                    <Trash2 className="w-3 h-3 inline" /> Excluir
+                  </button>
+                </div>
+              </div>
+            )}
+            {selectedEvt.type === "block" && (
+              <div className="space-y-2">
+                <p className="text-[11px] text-slate-600">{selectedEvt.data.startTime} – {selectedEvt.data.endTime}</p>
+                <div className="flex gap-1.5">
+                  <button onClick={() => { onEditBlock(selectedEvt.data); setSelectedEvt(null); }} className="text-[10px] font-bold px-2 py-1 rounded bg-blue-50 text-blue-600 hover:bg-blue-100 cursor-pointer">
+                    <Pencil className="w-3 h-3 inline" /> Editar
+                  </button>
+                  <button onClick={() => { onDeleteBlock(selectedEvt.data); setSelectedEvt(null); }} className="text-[10px] font-bold px-2 py-1 rounded bg-rose-50 text-rose-600 hover:bg-rose-100 cursor-pointer">
+                    <Trash2 className="w-3 h-3 inline" /> Excluir
+                  </button>
+                </div>
+              </div>
+            )}
+            {selectedEvt.type === "google" && (
+              <div className="space-y-2">
+                <p className="text-[11px] text-slate-600">{formatTimeRange(selectedEvt.data.start, selectedEvt.data.end)}</p>
+                <div className="flex gap-1.5">
+                  <button onClick={() => { onEditGoogleEvent(selectedEvt.data); setSelectedEvt(null); }} className="text-[10px] font-bold px-2 py-1 rounded bg-blue-50 text-blue-600 hover:bg-blue-100 cursor-pointer">
+                    <Pencil className="w-3 h-3 inline" /> Editar
+                  </button>
+                  <button onClick={() => { onDeleteGoogleEvent(selectedEvt.data); setSelectedEvt(null); }} className="text-[10px] font-bold px-2 py-1 rounded bg-rose-50 text-rose-600 hover:bg-rose-100 cursor-pointer">
+                    <Trash2 className="w-3 h-3 inline" /> Excluir
+                  </button>
+                </div>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+};
+
+// ── Mobile Month Calendar (iOS-style) ──
+interface MobileMonthCalendarProps {
+  selectedDate: string;
+  todayStr: string;
+  onSelectDate: (date: string) => void;
+  appointments: Appointment[];
+  googleEvents: GoogleCalendarEvent[];
+  scheduleBlocks: ScheduleBlock[];
+  patients: Patient[];
+  onEditAppointment: (appt: Appointment) => void;
+  onDeleteAppointment: (appt: Appointment) => void;
+  onStatusChange: (appt: Appointment, status: Appointment["status"]) => void;
+  onEditGoogleEvent: (ge: GoogleCalendarEvent) => void;
+  onDeleteGoogleEvent: (ge: GoogleCalendarEvent) => void;
+  onNewAppointment: (date: string) => void;
+}
+
+const MONTH_NAMES_PT = ["Janeiro","Fevereiro","Março","Abril","Maio","Junho","Julho","Agosto","Setembro","Outubro","Novembro","Dezembro"];
+const WEEK_DAY_ABBR = ["D","S","T","Q","Q","S","S"];
+
+function getMonthDays(year: number, month: number): (string | null)[] {
+  const firstDay = new Date(year, month, 1).getDay(); // 0=Sun
+  const daysInMonth = new Date(year, month + 1, 0).getDate();
+  const cells: (string | null)[] = [];
+  for (let i = 0; i < firstDay; i++) cells.push(null);
+  for (let d = 1; d <= daysInMonth; d++) {
+    cells.push(`${year}-${String(month + 1).padStart(2, "0")}-${String(d).padStart(2, "0")}`);
+  }
+  while (cells.length % 7 !== 0) cells.push(null);
+  return cells;
+}
+
+const MobileMonthCalendar: React.FC<MobileMonthCalendarProps> = ({
+  selectedDate, todayStr, onSelectDate,
+  appointments, googleEvents, scheduleBlocks, patients,
+  onEditAppointment, onDeleteAppointment, onStatusChange,
+  onEditGoogleEvent, onDeleteGoogleEvent, onNewAppointment,
+}) => {
+  const [viewYear, setViewYear] = useState(() => {
+    const d = new Date(selectedDate + "T12:00:00");
+    return d.getFullYear();
+  });
+  const [viewMonth, setViewMonth] = useState(() => {
+    const d = new Date(selectedDate + "T12:00:00");
+    return d.getMonth();
+  });
+
+  const cells = useMemo(() => getMonthDays(viewYear, viewMonth), [viewYear, viewMonth]);
+
+  const changeMonth = (delta: number) => {
+    let m = viewMonth + delta;
+    let y = viewYear;
+    if (m < 0) { m = 11; y--; }
+    if (m > 11) { m = 0; y++; }
+    setViewMonth(m);
+    setViewYear(y);
+  };
+
+  // Navigate to selected date's month when selectedDate changes
+  useEffect(() => {
+    const d = new Date(selectedDate + "T12:00:00");
+    setViewYear(d.getFullYear());
+    setViewMonth(d.getMonth());
+  }, []);
+
+  const hasEvents = (dateStr: string): { hasAppt: boolean; hasGoogle: boolean; hasBlock: boolean } => {
+    const hasAppt = appointments.some((a) => a.date === dateStr && a.status !== "canceled");
+    const hasGoogle = googleEvents.some((ge) => getEventLocalDate(ge.start) === dateStr);
+    const hasBlock = scheduleBlocks.some((b) => b.date === dateStr);
+    return { hasAppt, hasGoogle, hasBlock };
+  };
+
+  // Day events list
+  const dayAppointments = appointments
+    .filter((a) => a.date === selectedDate)
+    .sort((a, b) => a.time.localeCompare(b.time));
+
+  const dayGoogleEvents = googleEvents
+    .filter((ge) => getEventLocalDate(ge.start) === selectedDate)
+    .sort((a, b) => (a.start || "").localeCompare(b.start || ""));
+
+  const dayBlocks = scheduleBlocks.filter((b) => b.date === selectedDate);
+
+  const selectedDateFormatted = (() => {
+    const d = new Date(selectedDate + "T12:00:00");
+    return d.toLocaleDateString("pt-BR", { weekday: "long", day: "numeric", month: "long" });
+  })();
+
+  return (
+    <div className="flex flex-col bg-white rounded-2xl overflow-hidden shadow-sm border border-slate-100">
+      {/* Month header */}
+      <div className="flex items-center justify-between px-4 pt-4 pb-2">
+        <button
+          onClick={() => changeMonth(-1)}
+          className="p-2 rounded-full hover:bg-slate-100 active:bg-slate-200 transition-colors cursor-pointer"
+        >
+          <ChevronLeft className="w-4 h-4 text-slate-500" />
+        </button>
+        <span className="text-sm font-bold text-slate-800">
+          {MONTH_NAMES_PT[viewMonth]} {viewYear}
+        </span>
+        <button
+          onClick={() => changeMonth(1)}
+          className="p-2 rounded-full hover:bg-slate-100 active:bg-slate-200 transition-colors cursor-pointer"
+        >
+          <ChevronRight className="w-4 h-4 text-slate-500" />
+        </button>
+      </div>
+
+      {/* Week day labels */}
+      <div className="grid grid-cols-7 px-2 pb-1">
+        {WEEK_DAY_ABBR.map((d, i) => (
+          <div key={i} className="text-center text-[10px] font-bold text-slate-400 uppercase py-1">
+            {d}
+          </div>
+        ))}
+      </div>
+
+      {/* Day cells */}
+      <div className="grid grid-cols-7 px-2 pb-3 gap-y-1">
+        {cells.map((dateStr, idx) => {
+          if (!dateStr) return <div key={idx} />;
+          const isToday = dateStr === todayStr;
+          const isSelected = dateStr === selectedDate;
+          const dayNum = parseInt(dateStr.slice(8));
+          const { hasAppt, hasGoogle, hasBlock } = hasEvents(dateStr);
+          const hasAny = hasAppt || hasGoogle || hasBlock;
+          return (
+            <button
+              key={dateStr}
+              onClick={() => onSelectDate(dateStr)}
+              className={`relative flex flex-col items-center py-1 rounded-xl transition-all active:scale-95 cursor-pointer ${
+                isSelected
+                  ? "bg-brand text-white"
+                  : isToday
+                  ? "bg-brand/10 text-brand"
+                  : "text-slate-700 hover:bg-slate-50"
+              }`}
+            >
+              <span className={`text-xs font-bold ${isSelected ? "text-white" : isToday ? "text-brand" : "text-slate-800"}`}>
+                {dayNum}
+              </span>
+              {/* Event dots */}
+              <div className="flex gap-0.5 mt-0.5 h-1">
+                {hasAppt && (
+                  <span className={`w-1 h-1 rounded-full ${isSelected ? "bg-white" : "bg-brand"}`} />
+                )}
+                {hasGoogle && (
+                  <span className={`w-1 h-1 rounded-full ${isSelected ? "bg-gold/80" : "bg-gold"}`} />
+                )}
+                {hasBlock && (
+                  <span className={`w-1 h-1 rounded-full ${isSelected ? "bg-white/60" : "bg-rose-400"}`} />
+                )}
+              </div>
+            </button>
+          );
+        })}
+      </div>
+
+      {/* Divider */}
+      <div className="h-px bg-slate-100 mx-4" />
+
+      {/* Selected day events */}
+      <div className="px-4 py-3 space-y-2 max-h-[40vh] overflow-y-auto">
+        <div className="flex items-center justify-between mb-2">
+          <h4 className="text-[11px] font-bold text-slate-500 uppercase tracking-wider capitalize">
+            {selectedDateFormatted}
+          </h4>
+          <button
+            onClick={() => onNewAppointment(selectedDate)}
+            className="flex items-center gap-1 text-[10px] font-bold text-brand bg-brand/5 hover:bg-brand hover:text-white px-2.5 py-1.5 rounded-lg border border-brand/20 transition-all cursor-pointer active:scale-95"
+          >
+            <Plus className="w-3 h-3" />
+            Agendar
+          </button>
+        </div>
+
+        {dayBlocks.map((b) => (
+          <div key={b.id} className="flex items-center gap-2.5 p-2.5 rounded-xl bg-rose-50 border border-rose-100">
+            <div className="w-1 self-stretch rounded-full bg-rose-400 shrink-0" />
+            <div className="flex-1 min-w-0">
+              <p className="text-[11px] font-bold text-rose-700">{b.reason}</p>
+              <p className="text-[10px] text-rose-500">{b.startTime} – {b.endTime}</p>
+            </div>
+            <span className="text-[9px] font-bold text-rose-500 bg-rose-100 px-1.5 py-0.5 rounded uppercase">Bloqueio</span>
+          </div>
+        ))}
+
+        {dayGoogleEvents.map((ge) => (
+          <div key={ge.id} className="flex items-center gap-2.5 p-2.5 rounded-xl bg-amber-50 border border-amber-100">
+            <div className="w-1 self-stretch rounded-full bg-gold shrink-0" />
+            <div className="flex-1 min-w-0">
+              <p className="text-[11px] font-bold text-amber-800 truncate">{ge.summary}</p>
+              <p className="text-[10px] text-amber-600">
+                {formatTimeStr(ge.start)} – {formatTimeStr(ge.end)}
+              </p>
+            </div>
+            <div className="flex gap-1 shrink-0">
+              <button onClick={() => onEditGoogleEvent(ge)} className="p-1 rounded-lg bg-white border border-amber-200 text-amber-600 cursor-pointer">
+                <Pencil className="w-3 h-3" />
+              </button>
+              <button onClick={() => onDeleteGoogleEvent(ge)} className="p-1 rounded-lg bg-white border border-rose-200 text-rose-500 cursor-pointer">
+                <Trash2 className="w-3 h-3" />
+              </button>
+            </div>
+          </div>
+        ))}
+
+        {dayAppointments.map((appt) => {
+          const p = patients.find((pt) => pt.id === appt.patientId);
+          const statusColors: Record<string, string> = {
+            confirmed: "bg-blue-50 border-blue-100",
+            completed: "bg-slate-50 border-slate-100",
+            canceled: "bg-slate-50 border-slate-100 opacity-60",
+            scheduled: "bg-emerald-50 border-emerald-100",
+          };
+          const barColors: Record<string, string> = {
+            confirmed: "bg-blue-400",
+            completed: "bg-slate-300",
+            canceled: "bg-slate-300",
+            scheduled: "bg-brand",
+          };
+          const colorClass = statusColors[appt.status] || statusColors.scheduled;
+          const barColor = barColors[appt.status] || barColors.scheduled;
+          return (
+            <div key={appt.id} className={`flex items-center gap-2.5 p-2.5 rounded-xl border ${colorClass}`}>
+              <div className={`w-1 self-stretch rounded-full ${barColor} shrink-0`} />
+              <div className="flex-1 min-w-0">
+                <div className="flex items-center gap-1.5 flex-wrap">
+                  <p className="text-[11px] font-bold text-slate-800 truncate">{appt.patientName}</p>
+                  {p?.isDiabetic && (
+                    <span className="bg-amber-100 text-amber-700 text-[7px] px-1 rounded font-bold uppercase">Diab.</span>
+                  )}
+                </div>
+                <p className="text-[10px] text-slate-500">{appt.time} · {appt.service}</p>
+                <p className="text-[10px] font-bold text-slate-600">R$ {appt.price}</p>
+              </div>
+              <div className="flex flex-col gap-1 shrink-0">
+                {appt.status !== "completed" && appt.status !== "canceled" && (
+                  <button
+                    onClick={() => onStatusChange(appt, "completed")}
+                    className="p-1 rounded-lg bg-white border border-emerald-200 text-emerald-600 cursor-pointer active:scale-95"
+                  >
+                    <CheckCircle2 className="w-3 h-3" />
+                  </button>
+                )}
+                <button
+                  onClick={() => onEditAppointment(appt)}
+                  className="p-1 rounded-lg bg-white border border-slate-200 text-slate-500 cursor-pointer active:scale-95"
+                >
+                  <Pencil className="w-3 h-3" />
+                </button>
+                <button
+                  onClick={() => onDeleteAppointment(appt)}
+                  className="p-1 rounded-lg bg-white border border-rose-200 text-rose-500 cursor-pointer active:scale-95"
+                >
+                  <Trash2 className="w-3 h-3" />
+                </button>
+              </div>
+            </div>
+          );
+        })}
+
+        {dayAppointments.length === 0 && dayGoogleEvents.length === 0 && dayBlocks.length === 0 && (
+          <div className="text-center py-6 text-slate-300">
+            <Calendar className="w-8 h-8 mx-auto mb-1.5" />
+            <p className="text-xs font-medium">Nenhum evento neste dia</p>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+};
+
+// ── Week Grid ──
+interface WeekGridProps {
+  weekDates: string[];
+  selectedDate: string;
+  todayStr: string;
+  onSelectDate: (date: string) => void;
+  appointments: Appointment[];
+  googleEvents: GoogleCalendarEvent[];
+  scheduleBlocks: ScheduleBlock[];
+  services: ClinicService[];
+  patients: Patient[];
+  dayHours: string[];
+  expedienteStart: string;
+  expedienteEnd: string;
+  onEditAppointment: (appt: Appointment) => void;
+  onDeleteAppointment: (appt: Appointment) => void;
+  onStatusChange: (appt: Appointment, status: Appointment["status"]) => void;
+  onCreateBlock: (date: string, startTime: string) => void;
+  onEditBlock: (block: ScheduleBlock) => void;
+  onDeleteBlock: (block: ScheduleBlock) => void;
+  onEditGoogleEvent: (ge: GoogleCalendarEvent) => void;
+  onDeleteGoogleEvent: (ge: GoogleCalendarEvent) => void;
+  onCreateAppointment: (date: string, time: string) => void;
+  view?: "day" | "week";
+}
+
+const WeekGrid: React.FC<WeekGridProps> = ({
+  weekDates, selectedDate, todayStr, onSelectDate,
+  appointments, googleEvents, scheduleBlocks, services, patients,
+  dayHours, expedienteStart, expedienteEnd,
+  onEditAppointment, onDeleteAppointment, onStatusChange,
+  onCreateBlock, onEditBlock, onDeleteBlock,
+  onEditGoogleEvent, onDeleteGoogleEvent, onCreateAppointment, view,
+}) => {
+  const hours = dayHours;
+  const totalHeight = hours.length * HOUR_HEIGHT;
+
+  return (
+    <div className="flex flex-col border border-slate-200 rounded-2xl overflow-hidden bg-white shadow-sm">
+      {/* Header — day names */}
+      <div className="flex overflow-x-auto border-b border-slate-200 sticky top-0 bg-white z-10 custom-scrollbar">
+        <div className="flex min-w-[640px] md:min-w-0 flex-1">
+          <div className="w-12 shrink-0 border-r border-slate-100 bg-slate-50/50" />
+          {weekDates.map((date, i) => {
+            const isToday = date === todayStr;
+            const isSelected = date === selectedDate;
+            const d = new Date(date + "T12:00:00-03:00");
+            return (
+              <div
+                key={date}
+                onClick={() => onSelectDate(date)}
+                className={`flex-1 text-center py-2.5 cursor-pointer border-l border-slate-100 transition-all hover:bg-slate-50 ${
+                  isSelected ? "bg-brand/5 border-b-2 border-b-brand" : ""
+                }`}
+              >
+                <div className="text-[10px] font-semibold text-slate-400 uppercase tracking-wider">
+                  {DAY_NAMES[i]}
+                </div>
+                <div
+                  className={`text-xs md:text-sm font-bold mx-auto w-7 h-7 flex items-center justify-center rounded-full transition-transform active:scale-95 ${
+                    isToday ? "bg-brand text-white shadow-sm" : isSelected ? "bg-slate-200 text-slate-900" : "text-slate-700"
+                  }`}
+                >
+                  {d.getDate()}
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      </div>
+
+      {/* Body — scrollable */}
+      <div className="flex overflow-x-auto overflow-y-auto flex-1 custom-scrollbar" style={{ maxHeight: "calc(100vh - 240px)" }}>
+        <div className="flex min-w-[640px] md:min-w-0 flex-1">
+          {/* Time gutter */}
+          <div className="w-12 shrink-0 relative border-r border-slate-100 bg-slate-50/30">
+            {hours.map((hour) => (
+              <div
+                key={hour}
+                className="relative flex items-start justify-end pr-2"
+                style={{ height: HOUR_HEIGHT / 2 }}
+              >
+                <span className="text-[10px] text-slate-400 font-semibold -mt-2">{hour}</span>
+              </div>
+            ))}
+          </div>
+
+          {/* 7 day columns */}
+          {weekDates.map((date) => (
+            <DayColumn
+              key={date}
+              date={date}
+              isToday={date === todayStr}
+              hours={hours}
+              dayStart={expedienteStart}
+              dayEnd={expedienteEnd}
+              hourHeight={HOUR_HEIGHT}
+              view={view || "week"}
+              appointments={appointments}
+              googleEvents={googleEvents}
+              blocks={scheduleBlocks}
+              services={services}
+              patients={patients}
+              onSlotClick={(time) => onCreateAppointment(date, time)}
+              onEditAppointment={onEditAppointment}
+              onDeleteAppointment={onDeleteAppointment}
+              onStatusChange={onStatusChange}
+              onEditBlock={onEditBlock}
+              onDeleteBlock={onDeleteBlock}
+              onEditGoogleEvent={onEditGoogleEvent}
+              onDeleteGoogleEvent={onDeleteGoogleEvent}
+            />
+          ))}
+        </div>
+      </div>
+    </div>
+  );
+};
+
 export default function CalendarView({
   patients,
   appointments,
@@ -321,16 +1110,17 @@ export default function CalendarView({
   onDisconnectGoogle,
   onSyncGoogleEvents,
   onCreateGoogleEvent,
+  onUpdateGoogleEvent,
   onDeleteGoogleEvent,
-  expedienteStart = "08:00",
+  expedienteStart = "07:00",
   expedienteEnd = "20:00",
 }: CalendarViewProps) {
-  const [selectedDate, setSelectedDate] = useState(new Date().toISOString().split("T")[0]);
+  const [selectedDate, setSelectedDate] = useState(getTodayBR());
   const [showAddForm, setShowAddForm] = useState(false);
   const [editingAppt, setEditingAppt] = useState<Appointment | null>(null);
 
   const [patientId, setPatientId] = useState(patients[0]?.id || "");
-  const [formDate, setFormDate] = useState(new Date().toISOString().split("T")[0]);
+  const [formDate, setFormDate] = useState(getTodayBR());
   const [time, setTime] = useState("09:00");
   const [service, setService] = useState("");
   const [price, setPrice] = useState(0);
@@ -346,7 +1136,7 @@ export default function CalendarView({
   const [showTomorrowReminders, setShowTomorrowReminders] = useState(false);
   const [showBlockModal, setShowBlockModal] = useState(false);
   const [editingBlock, setEditingBlock] = useState<ScheduleBlock | null>(null);
-  const [blockDate, setBlockDate] = useState(new Date().toISOString().split("T")[0]);
+  const [blockDate, setBlockDate] = useState(getTodayBR());
   const [blockStart, setBlockStart] = useState("12:00");
   const [blockEnd, setBlockEnd] = useState("13:30");
   const [blockReason, setBlockReason] = useState("Almoço");
@@ -355,7 +1145,7 @@ export default function CalendarView({
   const [frequency, setFrequency] = useState<"diaria" | "semanal" | "dias_uteis" | "personalizada">("diaria");
   const [selectedDays, setSelectedDays] = useState<number[]>([]);
   const [feedback, setFeedback] = useState<{ type: "success" | "error"; message: string } | null>(null);
-  const [viewMode, setViewMode] = useState<"app" | "google">("app");
+  const [calendarView, setCalendarView] = useState<"day" | "week">("week");
   const [confirmDeleteTarget, setConfirmDeleteTarget] = useState<Appointment | null>(null);
   const [confirmDeleteBlockTarget, setConfirmDeleteBlockTarget] = useState<ScheduleBlock | null>(null);
   const [confirmDeleteGoogleTarget, setConfirmDeleteGoogleTarget] = useState<GoogleCalendarEvent | null>(null);
@@ -454,6 +1244,14 @@ export default function CalendarView({
     }
   }, [selectedDate, isGoogleConnected]);
 
+  // Sync all 7 days of the week when week view is active
+  useEffect(() => {
+    if (isGoogleConnected && calendarView === "week") {
+      const weekDates = getWeekDates(selectedDate);
+      weekDates.forEach((d) => onSyncGoogleEvents(d));
+    }
+  }, [selectedDate, isGoogleConnected, calendarView]);
+
   const handleServiceChange = (srv: string) => {
     setService(srv);
     if (servicePrices[srv] !== undefined) {
@@ -496,7 +1294,7 @@ export default function CalendarView({
     const apptStartMin = sh * 60 + sm;
     const apptEndMin = apptStartMin + getServiceDuration();
 
-    const dayGoogleEvents = googleEvents.filter((ge) => ge.start?.slice(0, 10) === formDate);
+    const dayGoogleEvents = googleEvents.filter((ge) => getEventLocalDate(ge.start) === formDate);
     const conflictingGoogleEvent = dayGoogleEvents.find((ge) => {
       if (editingAppt && editingAppt.calendarEventId === ge.id) return false;
       const geStart = timeToMinutes(formatGoogleTime(ge.start));
@@ -575,7 +1373,7 @@ export default function CalendarView({
 
       if (editingAppt.calendarEventId && isGoogleConnected) {
         const { start: dtStart, end: dtEnd } = buildEventTimeRange(formDate, time, getServiceDuration());
-        await onEditGoogleEvent(editingAppt.calendarEventId, `${service} - ${resolvedPatientName}`, notes || "", dtStart, dtEnd);
+        await onUpdateGoogleEvent(editingAppt.calendarEventId, `${service} - ${resolvedPatientName}`, notes || "", dtStart, dtEnd);
         onSyncGoogleEvents(formDate);
       }
     } else {
@@ -668,7 +1466,7 @@ export default function CalendarView({
 
   const handleSaveGoogleEvent = async () => {
     if (!editingGoogleEvent) return;
-    await onEditGoogleEvent(
+    await onUpdateGoogleEvent(
       editingGoogleEvent.id,
       geEditSummary,
       geEditDescription,
@@ -723,7 +1521,7 @@ export default function CalendarView({
         const statusLine = `Status: ${STATUS_LABELS[newStatus]}`;
         const newDescription = baseDescription ? `${statusLine}\n${baseDescription}` : statusLine;
 
-        await onEditGoogleEvent(appt.calendarEventId, newSummary, newDescription, start, end);
+        await onUpdateGoogleEvent(appt.calendarEventId, newSummary, newDescription, start, end);
         onSyncGoogleEvents(selectedDate);
       }
 
@@ -761,7 +1559,7 @@ export default function CalendarView({
         if (isGoogleConnected) {
           if (calendarEventId) {
             try {
-              await onEditGoogleEvent(calendarEventId, buildBlockEventSummary(reason), `Bloqueio criado no app · ${reason}`, dtStart, dtEnd);
+              await onUpdateGoogleEvent(calendarEventId, buildBlockEventSummary(reason), `Bloqueio criado no app · ${reason}`, dtStart, dtEnd);
             } catch (err) {
               console.error("Erro ao atualizar bloqueio no Google Calendar:", err);
             }
@@ -913,10 +1711,10 @@ export default function CalendarView({
   const dayHours = useMemo(() => {
     const toMinutes = (t: string) => {
       const [h, m] = t.split(":").map(Number);
-      return (isNaN(h) ? 8 : h) * 60 + (isNaN(m) ? 0 : m);
+      return (isNaN(h) ? 7 : h) * 60 + (isNaN(m) ? 0 : m);
     };
-    const startMin = toMinutes(expedienteStart);
-    const endMin = toMinutes(expedienteEnd);
+    const startMin = toMinutes(expedienteStart || "07:00");
+    const endMin = toMinutes(expedienteEnd || "20:00");
     const hours: string[] = [];
     for (let min = startMin; min < endMin; min += 30) {
       const hh = String(Math.floor(min / 60)).padStart(2, "0");
@@ -944,28 +1742,6 @@ export default function CalendarView({
   };
 
   // Official Google Calendar embed (100% fidelity with Google Agenda web)
-  const googleEmbedCalendarId =
-    import.meta.env.VITE_GOOGLE_CALENDAR_EMBED_ID || "fabriciapodologa@gmail.com";
-
-  const getEmbedWeekDates = (dateStr: string) => {
-    const d = new Date(dateStr + "T12:00:00-03:00");
-    if (isNaN(d.getTime())) return "";
-    const day = d.getDay();
-    const monday = new Date(d);
-    monday.setDate(d.getDate() - ((day + 6) % 7));
-    const sunday = new Date(monday);
-    sunday.setDate(monday.getDate() + 6);
-    const fmt = (dt: Date) =>
-      `${dt.getFullYear()}${String(dt.getMonth() + 1).padStart(2, "0")}${String(dt.getDate()).padStart(2, "0")}`;
-    return `${fmt(monday)}/${fmt(sunday)}`;
-  };
-
-  const googleEmbedUrl = (() => {
-    const base = `https://calendar.google.com/calendar/embed?src=${encodeURIComponent(googleEmbedCalendarId)}&ctz=America%2FSao_Paulo&hl=pt_BR&mode=WEEK`;
-    const dates = getEmbedWeekDates(selectedDate);
-    return dates ? `${base}&dates=${dates}` : base;
-  })();
-
   const formatPhoneForWa = (phone: string) => {
     const digits = phone.replace(/\D/g, "");
     if (digits.startsWith("55")) return digits;
@@ -983,24 +1759,24 @@ export default function CalendarView({
   };
 
   const getTomorrowDateStr = () => {
-    const d = new Date();
+    const d = new Date(selectedDate + "T12:00:00-03:00");
     d.setDate(d.getDate() + 1);
-    return d.toISOString().split("T")[0];
+    return toDateStrBR(d);
   };
 
   const tomorrowAppointments = appointments.filter((a) => a.date === getTomorrowDateStr() && a.status !== "canceled");
-  const tomorrowPatientsWithPhone = tomorrowAppointments.filter((a) => {
-    const p = patients.find((pt) => pt.id === a.patientId);
-    return p?.phone;
-  });
-
-  const onEditGoogleEvent = async (eventId: string, summary: string, description: string, start: string, end: string) => {
-    try {
-      await updateGoogleCalendarEvent(eventId, summary, description, start, end);
-    } catch (err) {
-      console.error("Error updating Google Calendar event:", err);
-    }
+  
+  const getApptPhone = (appt: Appointment): string | undefined => {
+    const p = patients.find((pt) => pt.id === appt.patientId);
+    if (p?.phone) return p.phone;
+    if ((appt as any).patientPhone) return (appt as any).patientPhone;
+    if ((appt as any).phone) return (appt as any).phone;
+    return undefined;
   };
+  
+  const tomorrowPatientsWithPhone = tomorrowAppointments.filter((a) => {
+    return !!getApptPhone(a);
+  });
 
   const getApptForHour = (hour: string) => {
     const [sh, sm] = hour.split(":").map(Number);
@@ -1018,7 +1794,7 @@ export default function CalendarView({
     const [sh, sm] = hour.split(":").map(Number);
     const slotStart = sh * 60 + sm;
     const slotEnd = slotStart + 30;
-    const dayGoogleEvents = googleEvents.filter((ge) => ge.start?.slice(0, 10) === selectedDate);
+    const dayGoogleEvents = googleEvents.filter((ge) => getEventLocalDate(ge.start) === selectedDate);
     // Bloqueio RÍGIDO: o evento ocupa QUALQUER slot com sobreposição real de intervalo
     // (ex.: "Estágio 07:00–12:00" bloqueia 07:00, 07:30, ..., 11:30 — não apenas o início).
     return dayGoogleEvents.find((ge) => {
@@ -1072,12 +1848,12 @@ export default function CalendarView({
   });
   const overflowAppointments = dailyAppointments.filter((a) => !matchedApptIds.has(a.id));
 
-  const dayGoogleEventCount = googleEvents.filter((ge) => ge.start?.slice(0, 10) === selectedDate).length
-    + dailyAppointments.filter((a) => a.source === "google").length;
-  const dayGoogleEventIds = new Set(
-    googleEvents.filter((ge) => ge.start?.slice(0, 10) === selectedDate).map((ge) => ge.id)
+  const dayGoogleEventCount = googleEvents.filter((ge) => getEventLocalDate(ge.start) === selectedDate).length;
+  const dayGoogleIds = useMemo(
+    () => googleEvents.filter((ge) => getEventLocalDate(ge.start) === selectedDate).map((ge) => ge.id),
+    [googleEvents, selectedDate]
   );
-  const unlinkedAppts = dailyAppointments.filter((a) => !a.calendarEventId || !dayGoogleEventIds.size);
+  const unlinkedAppts = dailyAppointments.filter((a) => !a.calendarEventId || !dayGoogleIds.length);
 
   // Horários realmente livres para novos agendamentos (sem eventos Google nem bloqueios).
   // Ao editar, mantém todos para preservar o horário atual do agendamento.
@@ -1119,54 +1895,6 @@ export default function CalendarView({
 
   return (
     <>
-      {viewMode === "google" ? (
-        <div id="calendar-tab" className="w-full">
-          <div className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-100 dark:border-slate-800 shadow-sm overflow-hidden">
-            <div className="flex items-center justify-between gap-3 px-5 py-4 border-b border-slate-100 dark:border-slate-800 flex-wrap">
-              <div className="flex items-center gap-2">
-                <Calendar className="w-4 h-4 text-gold" />
-                <h3 className="text-xs font-bold text-slate-800 dark:text-slate-100 uppercase tracking-wider">
-                  Google Agenda Oficial
-                </h3>
-                <span className="text-[9px] font-bold text-gold bg-emerald-50 dark:bg-emerald-50 px-2 py-0.5 rounded-full border border-emerald-100">
-                  Semana de {formatDateBR(selectedDate)}
-                </span>
-              </div>
-              <div className="flex items-center gap-2">
-                <button
-                  onClick={() => changeDate(-7)}
-                  className="text-[10px] font-bold text-slate-600 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-800 px-3 py-1.5 rounded-lg border border-slate-100 dark:border-slate-700 flex items-center gap-1 cursor-pointer"
-                >
-                  <ChevronLeft className="w-3.5 h-3.5" /> Semana anterior
-                </button>
-                <button
-                  onClick={() => changeDate(7)}
-                  className="text-[10px] font-bold text-slate-600 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-800 px-3 py-1.5 rounded-lg border border-slate-100 dark:border-slate-700 flex items-center gap-1 cursor-pointer"
-                >
-                  Próxima semana <ChevronRight className="w-3.5 h-3.5" />
-                </button>
-              </div>
-            </div>
-            {/* Desktop only: iframe Google Calendar */}
-            <div className="relative w-full hidden lg:block">
-              {!isGoogleConfigured && (
-                <div className="absolute inset-0 z-10 flex items-center justify-center bg-slate-50/80 backdrop-blur-sm">
-                  <p className="text-[11px] font-bold text-slate-500 bg-white px-4 py-2.5 rounded-xl border border-slate-200 shadow-sm">
-                    Configure <code className="font-mono text-gold">VITE_GOOGLE_CALENDAR_EMBED_ID</code> para exibir a agenda oficial.
-                  </p>
-                </div>
-              )}
-              <iframe
-                src={googleEmbedUrl}
-                title="Google Agenda Oficial - Dra. Fabrícia Rodrigues"
-                className="w-full h-[82vh] min-h-[480px] border-0"
-                allow="autoplay; clipboard-write; encrypted-media; fullscreen; picture-in-picture"
-                referrerPolicy="no-referrer-when-downgrade"
-              />
-            </div>
-          </div>
-        </div>
-      ) : (
       <div id="calendar-tab" className="grid grid-cols-1 md:grid-cols-12 gap-6 items-start">
       {/* Status feedback toast */}
       {feedback && (
@@ -1284,217 +2012,77 @@ export default function CalendarView({
           </div>
         </>
       )}
-      {/* LEFT: Date selector + Schedule form (desktop & tablet) */}
+      {/* LEFT: Google status + Schedule form (desktop & tablet) */}
         <div className="hidden md:block md:col-span-5 lg:col-span-4 space-y-6 order-2 lg:order-1">
-          <div className="bg-white dark:bg-slate-900 p-6 rounded-2xl border border-slate-100 dark:border-slate-800 shadow-sm flex flex-col gap-4">
-          <span className="text-[10px] uppercase font-bold text-slate-400 tracking-wider text-left">Data</span>
-          <div className="flex justify-between items-center bg-slate-50 border border-slate-100 p-2 rounded-xl">
-            <button
-              onClick={() => changeDate(-1)}
-              className="text-xs font-bold text-slate-600 hover:bg-white px-3 py-1.5 rounded-lg border border-transparent hover:border-slate-200 transition-all cursor-pointer"
-            >
-              <ChevronLeft className="w-4 h-4" />
-            </button>
-            <span className="text-xs font-bold text-slate-800">
-              {new Date(selectedDate + "T00:00:00").toLocaleDateString("pt-BR", {
-                weekday: "short",
-                day: "2-digit",
-                month: "short",
-                year: "numeric",
-              })}
-            </span>
-            <button
-              onClick={() => changeDate(1)}
-              className="text-xs font-bold text-slate-600 hover:bg-white px-3 py-1.5 rounded-lg border border-transparent hover:border-slate-200 transition-all cursor-pointer"
-            >
-              <ChevronRight className="w-4 h-4" />
-            </button>
-          </div>
-          <input
-            type="date"
-            value={selectedDate}
-            onChange={(e) => setSelectedDate(e.target.value)}
-            className="w-full text-xs bg-slate-50 border border-slate-200 p-2.5 rounded-xl focus:outline-none focus:ring-1 focus:ring-gold"
-          />
-        </div>
+          {/* Google Calendar Status — simplified */}
+          <div className="bg-white dark:bg-slate-900 p-4 rounded-2xl border border-slate-100 dark:border-slate-800 shadow-sm">
+            <div className="flex items-center gap-2 mb-3">
+              <Calendar className="w-4 h-4 text-gold" />
+              <span className="text-[10px] uppercase font-bold text-slate-400 tracking-wider">Google Agenda</span>
+            </div>
 
-        {/* Google Calendar Status */}
-        <div className="bg-white dark:bg-slate-900 p-6 rounded-2xl border border-slate-100 dark:border-slate-800 shadow-sm space-y-4">
-          <div className="flex items-center justify-between">
-            <span className="text-[10px] uppercase font-bold text-slate-400 tracking-wider">Google Agenda</span>
-            {isGoogleConnected ? (
-              <span className="text-[9px] font-bold text-gold bg-emerald-50 px-2 py-0.5 rounded-full flex items-center gap-1">
-                <span className="w-1.5 h-1.5 bg-gold rounded-full animate-pulse" />
-                Conectado
+            <div className="flex items-center gap-2 mb-3">
+              <span className={`w-2 h-2 rounded-full ${isGoogleConnected ? "bg-emerald-500" : "bg-slate-300"}`} />
+              <span className="text-[11px] text-slate-600">
+                {isGoogleConnected ? "Conectado" : "Desconectado"}
               </span>
-            ) : (
-              <span className="text-[9px] font-bold text-amber-600 bg-amber-50 px-2 py-0.5 rounded-full flex items-center gap-1">
-                <span className="w-1.5 h-1.5 bg-amber-400 rounded-full" />
-                Desconectado
-              </span>
-            )}
-          </div>
+            </div>
 
-          {isGoogleConfigured ? (
-            isGoogleConnected ? (
-              googlePermissionError ? (
-                <div className="space-y-3">
-                  <div className="bg-amber-50 border border-amber-200 rounded-xl p-4 space-y-3">
-                    <div className="flex items-start gap-2.5">
-                      <AlertCircle className="w-5 h-5 text-amber-600 shrink-0 mt-0.5" />
-                      <div className="space-y-1.5">
-                        <p className="text-xs font-bold text-amber-900">Conta sem permissão</p>
-                        <p className="text-[10px] text-amber-800 leading-relaxed">
-                          A conta conectada não tem permissão para acessar a agenda oficial da clínica.
-                          Conecte com a conta <strong className="text-amber-950">fabriciapodologa@gmail.com</strong>.
-                        </p>
-                      </div>
-                    </div>
+            {isGoogleConfigured ? (
+              isGoogleConnected ? (
+                googlePermissionError ? (
+                  <div className="space-y-2">
+                    <p className="text-[10px] text-amber-600">Permissão negada. Verifique a conta Google.</p>
                     <button
                       onClick={onGoogleLoginBrowser}
-                      className="w-full text-[10px] font-bold text-white bg-amber-600 hover:bg-amber-700 py-2 rounded-xl transition-all flex items-center justify-center gap-1.5 cursor-pointer shadow-sm"
+                      className="w-full text-[10px] font-bold text-amber-700 bg-amber-50 hover:bg-amber-100 py-2 rounded-xl border border-amber-200 transition-all flex items-center justify-center gap-1.5"
                     >
-                      <ExternalLink className="w-3.5 h-3.5" /> Alternar Conta do Google
+                      <ExternalLink className="w-3.5 h-3.5" /> Alternar Conta
                     </button>
                     <button
                       onClick={onDisconnectGoogle}
                       className="w-full text-[10px] font-bold text-rose-600 bg-rose-50 hover:bg-rose-100 py-2 rounded-xl border border-rose-100 cursor-pointer transition-all flex items-center justify-center gap-1"
                     >
-                      <Unlink className="w-3 h-3" /> Desconectar Conta Atual
+                      <Unlink className="w-3 h-3" /> Desconectar
                     </button>
                   </div>
-                </div>
+                ) : (
+                  <button
+                    onClick={onDisconnectGoogle}
+                    className="w-full text-[10px] font-bold text-rose-600 bg-rose-50 hover:bg-rose-100 py-2 rounded-xl border border-rose-100 cursor-pointer transition-all flex items-center justify-center gap-1"
+                  >
+                    <Unlink className="w-3 h-3" /> Desconectar
+                  </button>
+                )
               ) : (
-              <div className="space-y-2">
-                <p className="text-[10px] text-slate-500">
-                  {dayGoogleEventCount} evento(s) para este dia.
-                </p>
-                <button
-                  onClick={() => onSyncGoogleEvents(selectedDate)}
-                  disabled={isSyncingGoogle}
-                  className="w-full text-[10px] font-bold text-gold bg-emerald-50 hover:bg-gold/10 py-2 rounded-xl border border-emerald-100 cursor-pointer transition-all flex items-center justify-center gap-1 disabled:opacity-50"
-                >
-                  <RefreshCw className={`w-3 h-3 ${isSyncingGoogle ? "animate-spin" : ""}`} />
-                  {isSyncingGoogle ? "Sincronizando..." : "Sincronizar Mês"}
-                </button>
-                <button
-                  onClick={onDisconnectGoogle}
-                  className="w-full text-[10px] font-bold text-rose-600 bg-rose-50 hover:bg-rose-100 py-2 rounded-xl border border-rose-100 cursor-pointer transition-all flex items-center justify-center gap-1"
-                >
-                  <Unlink className="w-3 h-3" /> Desconectar Google
-                </button>
-              </div>
+                <div className="space-y-2">
+                  <button
+                    onClick={handleConnectClick}
+                    disabled={effectiveConnecting}
+                    className="w-full text-[10px] font-bold text-white bg-brand hover:bg-brand-700 py-2 rounded-xl shadow-sm transition-all flex items-center justify-center gap-1.5 disabled:opacity-60 disabled:cursor-not-allowed"
+                  >
+                    {effectiveConnecting ? (
+                      <><RefreshCw className="w-3.5 h-3.5 animate-spin" /> Conectando...</>
+                    ) : (
+                      <><Link2 className="w-3.5 h-3.5" /> Conectar Google Agenda</>
+                    )}
+                  </button>
+                  {onGoogleLoginBrowser && (
+                    <button
+                      onClick={onGoogleLoginBrowser}
+                      className="w-full text-[10px] font-bold text-slate-600 bg-slate-50 hover:bg-slate-100 py-2 rounded-xl border border-slate-100 transition-all flex items-center justify-center gap-1.5"
+                    >
+                      <ExternalLink className="w-3.5 h-3.5" /> Login via Navegador
+                    </button>
+                  )}
+                </div>
               )
             ) : (
-              <div className="space-y-2">
-                <button
-                  onClick={handleConnectClick}
-                  disabled={effectiveConnecting}
-                  className="w-full text-[10px] font-bold text-white bg-blue-600 hover:bg-blue-700 py-2.5 rounded-xl shadow-sm transition-all flex items-center justify-center gap-1.5 disabled:opacity-60 disabled:cursor-not-allowed"
-                >
-                  {effectiveConnecting ? (
-                    <><RefreshCw className="w-3.5 h-3.5 animate-spin" /> Conectando...</>
-                  ) : (
-                    <><Link2 className="w-3.5 h-3.5" /> Conectar Google Agenda</>
-                  )}
-                </button>
-                <button
-                  onClick={onGoogleLoginBrowser}
-                  className="w-full text-[10px] font-bold text-amber-700 bg-amber-50 hover:bg-amber-100 py-2 rounded-xl border border-amber-200 transition-all flex items-center justify-center gap-1.5"
-                >
-                  <ExternalLink className="w-3.5 h-3.5" /> Login via Navegador Chrome
-                </button>
-                <p className="text-[9px] text-slate-400 text-center leading-tight">
-                  Conecte para importar seus eventos do Google Agenda
-                </p>
-              </div>
-            )
-          ) : (
-            <p className="text-[10px] text-slate-400 text-center">
-              Configure VITE_GOOGLE_CALENDAR_CLIENT_ID no .env
-            </p>
-          )}
-
-          {/* Always show sync button for refreshing Firestore data */}
-          <div className="pt-2 border-t border-slate-100">
-            <button
-              onClick={() => onSyncGoogleEvents(selectedDate)}
-              disabled={isSyncingGoogle}
-              className="w-full text-[10px] font-bold text-slate-600 bg-slate-50 hover:bg-slate-100 py-2 rounded-xl border border-slate-100 cursor-pointer transition-all flex items-center justify-center gap-1 disabled:opacity-50"
-            >
-              <RefreshCw className={`w-3 h-3 ${isSyncingGoogle ? "animate-spin" : ""}`} />
-              {isSyncingGoogle ? "Sincronizando..." : "Atualizar Dados"}
-            </button>
+              <p className="text-[10px] text-slate-400 text-center">
+                Configure VITE_GOOGLE_CALENDAR_CLIENT_ID no .env
+              </p>
+            )}
           </div>
-        </div>
-
-        {(() => {
-          const googleApptCount = appointments.filter((a) => a.source === "google").length;
-          const showMiniCalendar = (isGoogleConnected && googleEvents.length > 0) || googleApptCount > 0;
-          if (!showMiniCalendar) return null;
-          return (
-              <div className="bg-white p-6 rounded-2xl border border-gold/30 shadow-md shadow-gold/5">
-            <h3 className="text-[10px] uppercase font-bold text-gold tracking-wider mb-3 flex items-center gap-1">
-              <Calendar className="w-3.5 h-3.5 text-gold" /> Agenda do Mês
-            </h3>
-            {(() => {
-              const d = new Date(selectedDate + "T12:00:00-03:00");
-              const year = d.getFullYear();
-              const month = d.getMonth();
-              const firstDay = new Date(year, month, 1).getDay();
-              const daysInMonth = new Date(year, month + 1, 0).getDate();
-              const monthName = d.toLocaleDateString("pt-BR", { month: "long", year: "numeric" });
-              const eventDates = new Set([
-                ...googleEvents.map((ge) => ge.start?.slice(0, 10)),
-                ...appointments.filter((a) => a.source === "google").map((a) => a.date),
-              ]);
-              const dayNames = ["D", "S", "T", "Q", "Q", "S", "S"];
-              return (
-                <div>
-                  <div className="bg-[#0F3B2E]/5 rounded-xl px-3 py-1.5 mb-3 border border-[#C8A45A]/20">
-                    <p className="text-[11px] font-bold text-[#0F3B2E] capitalize text-center font-display">{monthName}</p>
-                  </div>
-                  <div className="grid grid-cols-7 gap-0.5 text-center">
-                    {dayNames.map((dn, i) => (
-                      <div key={i} className="text-[8px] font-bold text-slate-400 py-0.5">{dn}</div>
-                    ))}
-                    {Array.from({ length: firstDay }).map((_, i) => (
-                      <div key={`empty-${i}`} />
-                    ))}
-                    {Array.from({ length: daysInMonth }).map((_, i) => {
-                      const day = i + 1;
-                      const dateStr = `${year}-${String(month + 1).padStart(2, "0")}-${String(day).padStart(2, "0")}`;
-                      const hasEvents = eventDates.has(dateStr);
-                      const isSelected = dateStr === selectedDate;
-                      const isToday = dateStr === new Date().toISOString().slice(0, 10);
-                      return (
-                        <button
-                          key={day}
-                          onClick={() => setSelectedDate(dateStr)}
-                          className={`relative text-[10px] py-1 rounded-md font-medium cursor-pointer transition-all ${
-                            isSelected
-                              ? "bg-brand text-white font-bold"
-                              : isToday
-                              ? "bg-emerald-50 text-emerald-700 font-bold ring-1 ring-gold/60"
-                              : hasEvents
-                              ? "text-emerald-700 hover:bg-emerald-50"
-                              : "text-slate-500 hover:bg-slate-50"
-                          }`}
-                        >
-                          {day}
-                          {hasEvents && !isSelected && (
-                            <span className="absolute -bottom-0 left-1/2 -translate-x-1/2 w-1 h-1 bg-gold rounded-full" />
-                          )}
-                        </button>
-                      );
-                    })}
-                  </div>
-                </div>
-              );
-            })()}
-          </div>
-        );
-        })()}
 
         <div ref={editFormRef} className={`bg-white dark:bg-slate-900 p-6 rounded-2xl border transition-all duration-300 scroll-mt-24 ${
           editingAppt
@@ -1526,35 +2114,55 @@ export default function CalendarView({
 
       {/* RIGHT: Hourly agenda */}
       <div className="md:col-span-7 lg:col-span-8 bg-white dark:bg-slate-900 p-6 rounded-2xl border border-slate-100 dark:border-slate-800 shadow-sm text-left order-1 lg:order-2">
-        {/* View mode toggle — centralizado acima do titulo (apenas desktop) */}
-        <div className="hidden lg:flex lg:flex-col lg:items-center lg:gap-1.5 lg:mb-5">
-          <div className="inline-flex items-center gap-1 p-1 bg-slate-50 rounded-2xl border border-slate-100 shadow-sm">
+        {/* View toggle + Today button + Date navigation (desktop only) */}
+        <div className="hidden md:flex items-center justify-between gap-3 mb-5 flex-wrap">
+          <div className="flex items-center gap-2">
             <button
-              onClick={() => setViewMode("app")}
-              className={`flex items-center gap-1.5 px-4 py-2 rounded-xl text-[11px] font-bold transition-all cursor-pointer ${
-                viewMode === "app"
-                  ? "bg-brand text-white shadow-sm"
-                  : "text-slate-500 hover:bg-white dark:text-slate-400 dark:hover:bg-slate-800"
-              }`}
+              onClick={() => changeDate(-1)}
+              className="p-1.5 rounded-lg hover:bg-slate-100 text-slate-500 cursor-pointer"
             >
-              <Calendar className="w-3.5 h-3.5" /> Visualização do App
+              <ChevronLeft className="w-4 h-4" />
+            </button>
+            <h3 className="text-sm font-bold text-slate-800 min-w-[140px] text-center">
+              {calendarView === "week"
+                ? getWeekLabel(getWeekDates(selectedDate))
+                : formatDateBR(selectedDate)}
+            </h3>
+            <button
+              onClick={() => changeDate(1)}
+              className="p-1.5 rounded-lg hover:bg-slate-100 text-slate-500 cursor-pointer"
+            >
+              <ChevronRight className="w-4 h-4" />
             </button>
             <button
-              onClick={() => setViewMode("google")}
-              className={`flex items-center gap-1.5 px-4 py-2 rounded-xl text-[11px] font-bold transition-all cursor-pointer ${
-                viewMode === "app"
-                  ? "text-slate-500 hover:bg-white dark:text-slate-400 dark:hover:bg-slate-800"
-                  : "bg-brand text-white shadow-sm"
-              }`}
+              onClick={() => setSelectedDate(getTodayBR())}
+              className="ml-2 px-3 py-1 text-[11px] font-bold text-brand border border-brand/20 rounded-lg hover:bg-brand/5 cursor-pointer"
             >
-              <ExternalLink className="w-3.5 h-3.5" /> Google Agenda Oficial
+              Hoje
             </button>
           </div>
-          <p className="text-[9px] text-slate-400">
-            {viewMode === "app"
-              ? "Grade inteligente com bloqueios, status e integração WhatsApp."
-              : "Calendário oficial do Google embutido via iframe — fidelidade 100%."}
-          </p>
+          <div className="inline-flex items-center gap-0.5 p-0.5 bg-slate-100 rounded-lg">
+            <button
+              onClick={() => setCalendarView("day")}
+              className={`px-3 py-1.5 text-[11px] font-bold rounded-md transition cursor-pointer ${
+                calendarView === "day"
+                  ? "bg-white text-brand shadow-sm"
+                  : "text-slate-500 hover:text-slate-700"
+              }`}
+            >
+              Dia
+            </button>
+            <button
+              onClick={() => setCalendarView("week")}
+              className={`px-3 py-1.5 text-[11px] font-bold rounded-md transition cursor-pointer ${
+                calendarView === "week"
+                  ? "bg-white text-brand shadow-sm"
+                  : "text-slate-500 hover:text-slate-700"
+              }`}
+            >
+              Semana
+            </button>
+          </div>
         </div>
 
         {/* Mobile Google status bar */}
@@ -1623,7 +2231,7 @@ export default function CalendarView({
           )}
         </div>
 
-        <div className="flex items-center justify-between gap-2 mb-4">
+        <div className="hidden md:flex items-center justify-between gap-2 mb-4">
           <h3 className="text-sm font-bold text-slate-800 uppercase tracking-wider">
             Agenda do Dia
           </h3>
@@ -1641,13 +2249,27 @@ export default function CalendarView({
 
         {/* Lembretes de Amanhã */}
         <div className="mb-4 space-y-2">
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
             <button
               onClick={() => { setEditingBlock(null); setShowBlockModal(true); }}
               className="w-full flex items-center justify-center gap-2 bg-rose-50 hover:bg-rose-100 text-rose-700 border border-rose-200 hover:border-rose-300 font-bold text-xs py-3 rounded-xl transition-all shadow-sm cursor-pointer"
             >
               <Lock className="w-4 h-4 text-rose-500" />
               Bloquear Horário
+            </button>
+            <button
+              onClick={async () => {
+                try {
+                  const result = await syncPublicScheduleBlocks();
+                  alert(`Sincronização concluída!\n${result.written} horários sincronizados.\n${result.deleted} registros obsoletos removidos.`);
+                } catch (err: any) {
+                  alert(`Falha na sincronização: ${err.message}`);
+                }
+              }}
+              className="w-full flex items-center justify-center gap-2 bg-amber-50 hover:bg-amber-100 text-amber-700 border border-amber-200 hover:border-amber-300 font-bold text-xs py-3 rounded-xl transition-all shadow-sm cursor-pointer"
+            >
+              <RefreshCw className="w-4 h-4 text-amber-500" />
+              Sincronizar Portal
             </button>
             <button
               onClick={() => setShowTomorrowReminders(true)}
@@ -1657,32 +2279,6 @@ export default function CalendarView({
               Lembretes de Amanhã ({tomorrowAppointments.length})
             </button>
           </div>
-          {dayBlocks.length > 0 && (
-            <div className="flex flex-wrap gap-1.5">
-              {dayBlocks.map((b) => (
-                <span key={b.id} className="inline-flex items-center gap-1 text-[9px] font-bold text-rose-700 bg-rose-50 border border-rose-100 px-2 py-1 rounded-lg">
-                  <Ban className="w-3 h-3 text-rose-500" />
-                  {b.startTime}–{b.endTime} · {b.reason}
-                  <button
-                    type="button"
-                    onClick={() => handleEditBlock(b)}
-                    className="text-rose-400 hover:text-rose-700 cursor-pointer"
-                    title="Editar bloqueio"
-                  >
-                    <Pencil className="w-3 h-3" />
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => handleDeleteBlock(b)}
-                    className="ml-0.5 text-rose-400 hover:text-rose-700 cursor-pointer"
-                    title="Remover bloqueio"
-                  >
-                    <XCircle className="w-3 h-3" />
-                  </button>
-                </span>
-              ))}
-            </div>
-          )}
         </div>
 
         {/* Bloquear Horário Modal */}
@@ -1870,16 +2466,15 @@ export default function CalendarView({
                   </button>
                 </div>
                 <div className="p-5 space-y-3">
-                  {tomorrowPatientsWithPhone.length === 0 ? (
+                  {tomorrowAppointments.length === 0 ? (
                     <div className="text-center py-8 text-slate-400">
                       <MessageCircle className="w-10 h-10 mx-auto mb-2 text-slate-300" />
-                      <p className="text-xs font-bold">Nenhum paciente com WhatsApp cadastrado para amanhã</p>
-                      <p className="text-[10px] mt-1">Cadastre os telefones dos pacientes para enviar lembretes.</p>
+                      <p className="text-xs font-bold">Nenhum agendamento para amanhã</p>
+                      <p className="text-[10px] mt-1">Agendamentos aparecerão aqui quando cadastrados.</p>
                     </div>
                   ) : (
-                    tomorrowPatientsWithPhone.map((appt) => {
-                      const p = patients.find((pt) => pt.id === appt.patientId);
-                      if (!p?.phone) return null;
+                    tomorrowAppointments.map((appt) => {
+                      const phone = getApptPhone(appt);
                       return (
                         <div key={appt.id} className="flex items-center justify-between p-3 bg-slate-50 rounded-xl border border-slate-100">
                           <div className="min-w-0 flex-1">
@@ -1887,22 +2482,30 @@ export default function CalendarView({
                             <p className="text-[10px] text-slate-500">{appt.time} — {appt.service}</p>
                           </div>
                           <div className="flex gap-1.5 shrink-0 ml-3">
-                            <a
-                              href={buildWhatsAppConfirmUrl(appt.patientName, p.phone, appt.date, appt.time)}
-                              target="_blank"
-                              rel="noreferrer"
-                              className="text-[9px] font-bold text-white bg-brand hover:bg-brand-700 px-3 py-2 rounded-lg transition-all flex items-center gap-1 shadow-sm"
-                            >
-                              <Send className="w-3 h-3" /> Confirmar
-                            </a>
-                            <a
-                              href={buildWhatsAppDetailsUrl(appt.patientName, p.phone, appt.date, appt.time, appt.service, appt.price)}
-                              target="_blank"
-                              rel="noreferrer"
-                              className="text-[9px] font-bold text-slate-600 bg-white hover:bg-slate-50 px-2 py-2 rounded-lg border border-slate-200 transition-all flex items-center gap-1"
-                            >
-                              <MessageCircle className="w-3 h-3" /> Detalhes
-                            </a>
+                            {phone ? (
+                              <>
+                                <a
+                                  href={buildWhatsAppConfirmUrl(appt.patientName, phone, appt.date, appt.time)}
+                                  target="_blank"
+                                  rel="noreferrer"
+                                  className="text-[9px] font-bold text-white bg-brand hover:bg-brand-700 px-3 py-2 rounded-lg transition-all flex items-center gap-1 shadow-sm"
+                                >
+                                  <Send className="w-3 h-3" /> Confirmar
+                                </a>
+                                <a
+                                  href={buildWhatsAppDetailsUrl(appt.patientName, phone, appt.date, appt.time, appt.service, appt.price)}
+                                  target="_blank"
+                                  rel="noreferrer"
+                                  className="text-[9px] font-bold text-slate-600 bg-white hover:bg-slate-50 px-2 py-2 rounded-lg border border-slate-200 transition-all flex items-center gap-1"
+                                >
+                                  <MessageCircle className="w-3 h-3" /> Detalhes
+                                </a>
+                              </>
+                            ) : (
+                              <span className="text-[9px] font-bold text-slate-400 bg-slate-100 px-3 py-2 rounded-lg">
+                                Sem WhatsApp
+                              </span>
+                            )}
                           </div>
                         </div>
                       );
@@ -1917,23 +2520,32 @@ export default function CalendarView({
           </>
         )}
 
-        {/* Mobile date nav */}
-        <div className="md:hidden flex items-center justify-between bg-slate-50 border border-slate-100 p-2 rounded-xl mb-4">
-          <button onClick={() => changeDate(-1)} className="p-1.5 rounded-lg hover:bg-white text-slate-600 cursor-pointer">
-            <ChevronLeft className="w-4 h-4" />
-          </button>
-          <span className="text-xs font-bold text-slate-800">
-            {new Date(selectedDate + "T00:00:00").toLocaleDateString("pt-BR", {
-              weekday: "short",
-              day: "2-digit",
-              month: "short",
-            })}
-          </span>
-          <button onClick={() => changeDate(1)} className="p-1.5 rounded-lg hover:bg-white text-slate-600 cursor-pointer">
-            <ChevronRight className="w-4 h-4" />
-          </button>
+        {/* Mobile: iOS-style monthly calendar */}
+        <div className="md:hidden">
+          <MobileMonthCalendar
+            selectedDate={selectedDate}
+            todayStr={getTodayBR()}
+            onSelectDate={setSelectedDate}
+            appointments={appointments}
+            googleEvents={googleEvents}
+            scheduleBlocks={scheduleBlocks}
+            patients={patients}
+            onEditAppointment={handleEditAppointment}
+            onDeleteAppointment={handleDelete}
+            onStatusChange={handleStatusChange}
+            onEditGoogleEvent={handleStartEditGoogleEvent}
+            onDeleteGoogleEvent={handleDeleteGoogleEventFn}
+            onNewAppointment={(date) => {
+              setFormDate(date);
+              setEditingAppt(null);
+              setShowAddForm(true);
+            }}
+          />
         </div>
 
+        {/* Desktop: day / week grid */}
+        <div className="hidden md:block">
+        {calendarView === "day" ? (
         <div className="space-y-3">
           {/* Empty state message */}
           {dailyAppointments.length === 0 && !isGoogleConnected && (
@@ -1953,7 +2565,7 @@ export default function CalendarView({
 
             // Google events
             googleEvents
-              .filter((ge) => ge.start?.slice(0, 10) === selectedDate)
+              .filter((ge) => getEventLocalDate(ge.start) === selectedDate)
               .forEach((ge) => {
                 const gStart = timeToMinutes(formatGoogleTime(ge.start));
                 const gEnd = timeToMinutes(formatGoogleTime(ge.end));
@@ -2413,7 +3025,7 @@ export default function CalendarView({
 
           {/* Google Calendar events outside grid hours */}
           {(() => {
-            const dayGoogleEvents = googleEvents.filter((ge) => ge.start?.slice(0, 10) === selectedDate);
+            const dayGoogleEvents = googleEvents.filter((ge) => getEventLocalDate(ge.start) === selectedDate);
             const matchedGoogleIds = new Set<string>();
             dayGoogleEvents.forEach((ge) => {
               const geTime = formatGoogleTime(ge.start);
@@ -2528,7 +3140,7 @@ export default function CalendarView({
                           <button onClick={() => handleEditAppointment(appt)} className="text-[9px] font-bold text-blue-600 bg-blue-50 hover:bg-blue-500 hover:text-white px-2 py-1 rounded transition-colors cursor-pointer">
                             <Pencil className="w-3 h-3 inline" /> Editar
                           </button>
-                          <button onClick={() => handleDelete(appt)} className="text-[9px] font-bold text-rose-600 bg-rose-50 hover:bg-rose-600 hover:text-white px-2 py-1 rounded transition-colors ml-auto cursor-pointer">
+                           <button onClick={() => handleDelete(appt)} className="text-[9px] font-bold text-rose-600 bg-rose-50 hover:bg-rose-600 hover:text-white px-2 py-1 rounded transition-colors ml-auto cursor-pointer">
                             <Trash2 className="w-3 h-3 inline" /> Excluir
                           </button>
                         </div>
@@ -2539,6 +3151,49 @@ export default function CalendarView({
               })}
             </div>
           )}
+        </div>
+        ) : (
+          /* ── Week Grid View ── */
+          <WeekGrid
+            weekDates={getWeekDates(selectedDate)}
+            selectedDate={selectedDate}
+            todayStr={getTodayBR()}
+            onSelectDate={setSelectedDate}
+            appointments={appointments}
+            googleEvents={googleEvents}
+            scheduleBlocks={scheduleBlocks}
+            services={services}
+            patients={patients}
+            dayHours={dayHours}
+            expedienteStart={expedienteStart}
+            expedienteEnd={expedienteEnd}
+            view="week"
+            onEditAppointment={handleEditAppointment}
+            onDeleteAppointment={handleDelete}
+            onStatusChange={handleStatusChange}
+            onCreateBlock={(date, startTime) => {
+              setBlockDate(date);
+              setBlockStart(startTime);
+              setBlockEnd(startTime);
+              setEditingBlock(null);
+              setShowBlockModal(true);
+            }}
+            onEditBlock={handleEditBlock}
+            onDeleteBlock={handleDeleteBlock}
+            onEditGoogleEvent={handleStartEditGoogleEvent}
+            onDeleteGoogleEvent={handleDeleteGoogleEventFn}
+            onCreateAppointment={(date, time) => {
+              setFormDate(date);
+              setTime(time);
+              setEditingAppt(null);
+              if (window.innerWidth < 768) {
+                setShowAddForm(true);
+              } else {
+                scrollFormIntoView();
+              }
+            }}
+          />
+        )}
         </div>
       </div>
 
@@ -2568,7 +3223,6 @@ export default function CalendarView({
         </div>
       )}
     </div>
-      )}
     </>
   );
 }

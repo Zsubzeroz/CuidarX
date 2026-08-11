@@ -34,8 +34,16 @@ export default function DashboardView({
   onNavigate,
   onQuickSchedule,
 }: DashboardProps) {
-  const todayStr = new Date().toISOString().split("T")[0];
-  const currentMonthPrefix = new Date().toISOString().slice(0, 7);
+  const toDateStrBR = (d: Date): string => {
+    const parts = new Intl.DateTimeFormat("en-CA", { timeZone: "America/Sao_Paulo", year: "numeric", month: "2-digit", day: "2-digit" }).formatToParts(d);
+    const y = parts.find(p => p.type === "year")?.value || "0";
+    const m = parts.find(p => p.type === "month")?.value || "0";
+    const dd = parts.find(p => p.type === "day")?.value || "0";
+    return `${y}-${m}-${dd}`;
+  };
+  const todayStr = toDateStrBR(new Date());
+  const monthParts = new Intl.DateTimeFormat("en-CA", { timeZone: "America/Sao_Paulo", year: "numeric", month: "2-digit" }).formatToParts(new Date());
+  const currentMonthPrefix = `${monthParts.find(p => p.type === "year")?.value}-${monthParts.find(p => p.type === "month")?.value}`;
 
   // Calcs
   const totalPatients = patients.length;
@@ -86,7 +94,7 @@ export default function DashboardView({
   const last7DaysData = Array.from({ length: 7 }).map((_, i) => {
     const d = new Date(todayStr + "T00:00:00");
     d.setDate(d.getDate() - (6 - i));
-    const dStr = d.toISOString().split("T")[0];
+    const dStr = toDateStrBR(d);
     
     // Sum incomes on this day
     const dayIncome = finances

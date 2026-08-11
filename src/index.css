@@ -322,6 +322,52 @@ html.dark {
 }
 
 /* =====================================================
+   PORTAL DO CLIENTE — MOBILE INPUT FIXES
+   Evita zoom automático no iOS Safari (requer ≥16px)
+   ===================================================== */
+.booking-portal-light input,
+.booking-portal-light textarea,
+.booking-portal-light select {
+  font-size: 16px;
+}
+
+@media (min-width: 640px) {
+  .booking-portal-light input,
+  .booking-portal-light textarea,
+  .booking-portal-light select {
+    font-size: 0.875rem;
+  }
+}
+
+/* =====================================================
+   PORTAL DO CLIENTE — TOUCH TARGETS
+   Mínimo 44x44px para botões de slot em mobile
+   ===================================================== */
+@media (max-width: 640px) {
+  .booking-portal-light .grid button {
+    min-height: 44px;
+    min-width: 44px;
+  }
+}
+
+/* =====================================================
+   PORTAL DO CLIENTE — SCROLL SUAVE
+   ===================================================== */
+.booking-portal-light form {
+  -webkit-overflow-scrolling: touch;
+}
+
+/* =====================================================
+   PORTAL DO CLIENTE — SCROLL MARGIN
+   Garante que inputs não fiquem cobertos pelo teclado virtual
+   ===================================================== */
+.booking-portal-light input:focus,
+.booking-portal-light textarea:focus,
+.booking-portal-light select:focus {
+  scroll-margin-top: 120px;
+}
+
+/* =====================================================
    COLOR UTILITIES
    ===================================================== */
 .bg-emerald-deep { background-color: #0F3B2E; }

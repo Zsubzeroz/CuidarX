@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useCallback } from "react";
 import { db, isFirebaseConfigured } from "../services/firebase";
+import { useResponsive } from "../hooks/useResponsive";
 import {
   collection,
   doc,
@@ -8,6 +9,7 @@ import {
   query,
   where,
 } from "firebase/firestore";
+import { sanitizeName, sanitizePhone, sanitizeNotes, formatPhoneBR } from "../utils/sanitize";
 import {
   Globe,
   Smartphone,
@@ -28,6 +30,8 @@ import {
 } from "lucide-react";
 // @ts-ignore
 import clinicLogo from "../assets/images/clinic_logo_1783686122531.jpg";
+// @ts-ignore
+import logoFrGreen from "../assets/images/logo-fr-green.png";
 import { getClinicWhatsAppLink, buildClientMessage } from "../services/whatsappAutoService";
 import AiReceptionistWidget from "./AiReceptionistWidget";
 import {
@@ -135,6 +139,15 @@ export default function BookingPortalView({
   const [isCopied, setIsCopied] = useState(false);
   const [googleSyncStatus, setGoogleSyncStatus] = useState<"synced" | "pending" | "error" | "">("");
 
+  const { isMobile } = useResponsive();
+
+  const [currentStep, setCurrentStep] = useState<1 | 2 | 3 | "success">(1);
+  const [selectedProcedure, setSelectedProcedure] = useState<ServiceOption | null>(null);
+  const [calendarMonth, setCalendarMonth] = useState(new Date());
+  const [slotPeriod, setSlotPeriod] = useState<"manha" | "tarde">("manha");
+  const [isLoadingSlots, setIsLoadingSlots] = useState(false);
+  const [slotsError, setSlotsError] = useState<string | null>(null);
+
   const [name, setName] = useState("");
   const [phone, setPhone] = useState("");
   const [dob, setDob] = useState("");
@@ -199,7 +212,7 @@ export default function BookingPortalView({
   }, [service, servicesList]);
 
   // Load blocked slots when date or service changes
-  const loadBlockedSlots = useCallback(async (selectedDate: string) => {
+  const loadBlockedSlots = useCallback(async (selectedDate: string): Promise<void> => {
     if (!selectedDate) {
       setBlockedSlots([]);
       return;
@@ -213,8 +226,7 @@ export default function BookingPortalView({
       return serviceDefaults[serviceName]?.duration || 45;
     };
 
-    // 1. Google Calendar — FONTE DA VERDADE: oculta qualquer horário que
-    //    colida com eventos ou bloqueios existentes na agenda oficial.
+    // 1. Google Calendar — opcional, não bloqueia
     try {
       if (isGoogleCalendarConnected()) {
         const timeMin = `${selectedDate}T00:00:00-03:00`;
@@ -236,52 +248,58 @@ export default function BookingPortalView({
       console.warn("[Portal] Falha ao consultar Google Agenda:", err);
     }
 
-    try {
-      // 2. Fetch schedule blocks for this date
-      const blocksSnap = await getDocs(
-        query(collection(db, "scheduleBlocks"), where("date", "==", selectedDate))
-      );
-      blocksSnap.forEach((d) => {
-        const data = d.data();
-        const startM = timeToMinutes(data.startTime);
-        const endM = timeToMinutes(data.endTime);
-        if (isNaN(startM) || isNaN(endM)) return;
+    // 2. Fetch schedule blocks for this date (from public mirror — no sensitive fields)
+    const blocksSnap = await getDocs(
+      query(collection(db, "publicScheduleBlocks"), where("date", "==", selectedDate))
+    );
+    blocksSnap.forEach((d) => {
+      const data = d.data();
+      const startM = timeToMinutes(data.startTime);
+      const endM = timeToMinutes(data.endTime);
+      if (isNaN(startM) || isNaN(endM)) return;
+      occupied.push({
+        startMinutes: startM,
+        endMinutes: endM,
+        reason: "Bloqueado",
+      });
+    });
+
+    // 3. Fetch appointments for this date
+    const apptsSnap = await getDocs(
+      query(collection(db, "appointments"), where("date", "==", selectedDate))
+    );
+    apptsSnap.forEach((d) => {
+      const data = d.data();
+      if (data.time) {
+        const apptDuration = apptDurationFor(data.service);
+        const startM = timeToMinutes(data.time);
         occupied.push({
           startMinutes: startM,
-          endMinutes: endM,
-          reason: data.reason || "Bloqueado",
+          endMinutes: startM + apptDuration,
+          reason: `Agendamento: ${data.patientName || data.service}`,
         });
-      });
-    } catch {
-      // ignore
-    }
-
-    try {
-      // 3. Fetch appointments for this date
-      const apptsSnap = await getDocs(
-        query(collection(db, "appointments"), where("date", "==", selectedDate))
-      );
-      apptsSnap.forEach((d) => {
-        const data = d.data();
-        if (data.time) {
-          const apptDuration = apptDurationFor(data.service);
-          const startM = timeToMinutes(data.time);
-          occupied.push({
-            startMinutes: startM,
-            endMinutes: startM + apptDuration,
-            reason: `Agendamento: ${data.patientName || data.service}`,
-          });
-        }
-      });
-    } catch {
-      // ignore
-    }
+      }
+    });
 
     setBlockedSlots(occupied);
   }, [servicesList]);
 
   useEffect(() => {
-    loadBlockedSlots(date);
+    if (!date) {
+      setBlockedSlots([]);
+      setIsLoadingSlots(false);
+      setSlotsError(null);
+      return;
+    }
+    setIsLoadingSlots(true);
+    setSlotsError(null);
+    loadBlockedSlots(date)
+      .then(() => setIsLoadingSlots(false))
+      .catch((err) => {
+        console.error("[Portal] Erro ao carregar horários:", err);
+        setSlotsError("Erro ao carregar horários. Tente novamente.");
+        setIsLoadingSlots(false);
+      });
   }, [date, loadBlockedSlots]);
 
   // Compute available slots whenever blockedSlots or selectedServiceDuration changes
@@ -336,12 +354,27 @@ export default function BookingPortalView({
       alert("Preencha todos os campos obrigatórios.");
       return;
     }
+    if (name.trim().length < 2) {
+      alert("Nome deve ter pelo menos 2 caracteres.");
+      return;
+    }
+    const phoneDigits = phone.replace(/\D/g, "");
+    if (phoneDigits.length < 10 || phoneDigits.length > 11) {
+      alert("Telefone inválido. Use DDD + número (10 ou 11 dígitos).");
+      return;
+    }
+    if (notes.length > 500) {
+      alert("Observações devem ter no máximo 500 caracteres.");
+      return;
+    }
     if (dateBlocked) {
       alert(`A clínica não realiza atendimentos aos ${blockedDayName === "domingo" ? "domingos" : "sábados"}. Por favor, selecione outro dia da semana.`);
       return;
     }
     setIsLoading(true);
 
+    const safeName = sanitizeName(name);
+    const safeNotes = sanitizeNotes(notes);
     const found = servicesList.find((s) => s.name === service);
     const price = found?.price || 150;
     const durationMin = found?.duration || selectedServiceDuration || 45;
@@ -358,7 +391,7 @@ export default function BookingPortalView({
         throw new Error("Firebase não configurado");
       }
       await setDoc(doc(db, "patients", patientId), {
-        name,
+        name: safeName,
         phone,
         dob,
         gender,
@@ -367,7 +400,7 @@ export default function BookingPortalView({
         hasCirculatoryIssues: isDiabetic,
         isSmoker: false,
         hasAllergies: "Nenhuma",
-        observations: `Paciente pré-agendado online. Notas: "${notes || "Sem notas adicionais"}"`,
+        observations: `Paciente pré-agendado online. Notas: "${safeNotes || "Sem notas adicionais"}"`,
         footIssues: [],
         evolutions: [],
         createdAt: new Date().toISOString(),
@@ -382,15 +415,15 @@ export default function BookingPortalView({
         } = await import("../services/googleCalendar");
         if (gcalConnected()) {
           const { start: dtStart, end: dtEnd } = buildEventTimeRange(date, time, durationMin);
-          const summary = `${service} - ${name}`;
+          const summary = `${service} - ${safeName}`;
           const description =
             `Agendamento Online - Portal do Cliente\n` +
-            `Paciente: ${name}\n` +
+            `Paciente: ${safeName}\n` +
             `Telefone: ${phone}\n` +
             `Serviço: ${service}\n` +
             `Data: ${formatDateBR(date)} às ${time}\n` +
             `Valor: R$ ${price}\n` +
-            (notes ? `Observações: ${notes}` : "");
+            (safeNotes ? `Observações: ${safeNotes}` : "");
           const evtId = await fsCreateGoogleEvent(summary, description, dtStart, dtEnd);
           if (evtId) {
             calendarEventId = evtId;
@@ -409,13 +442,13 @@ export default function BookingPortalView({
       // 2. Save appointment to Firestore (with calendarEventId if Google event was created)
       await setDoc(doc(db, "appointments", appointmentId), {
         patientId,
-        patientName: name,
+        patientName: safeName,
         date,
         time,
         service,
         price,
         status: "scheduled",
-        notes: notes || "Solicitado via Portal Online",
+        notes: safeNotes || "Solicitado via Portal Online",
         source: "portal",
         ...(calendarEventId ? { calendarEventId } : {}),
         ...(googleResult === "created"
@@ -424,6 +457,7 @@ export default function BookingPortalView({
       });
 
       setIsSubmitted(true);
+      setCurrentStep("success");
       setGoogleSyncStatus(googleResult === "created" ? "synced" : googleResult === "no-token" ? "pending" : "error");
     } catch (e: any) {
       console.error(e);
@@ -443,6 +477,11 @@ export default function BookingPortalView({
     setService("Podologia Geral");
     setNotes("");
     setIsSubmitted(false);
+    setCurrentStep(1);
+    setSelectedProcedure(null);
+    setCalendarMonth(new Date());
+    setSlotPeriod("manha");
+    setSlotsError(null);
   };
 
   const standaloneHTMLCode = `<!DOCTYPE html>
@@ -537,260 +576,335 @@ export default function BookingPortalView({
   if (clientMode) {
     const tomorrow = new Date();
     tomorrow.setDate(tomorrow.getDate() + 1);
-    const minDateStr = tomorrow.toISOString().split("T")[0];
-    const isToday = date === new Date().toISOString().split("T")[0];
+    const minDateStr = new Intl.DateTimeFormat("en-CA", { timeZone: "America/Sao_Paulo", year: "numeric", month: "2-digit", day: "2-digit" }).format(tomorrow);
 
-    const bookedPrice = servicesList.find((s) => s.name === service)?.price || 150;
+    const bookedPrice = selectedProcedure?.price || servicesList.find((s) => s.name === service)?.price || 150;
+    const bookedDuration = selectedProcedure?.duration || servicesList.find((s) => s.name === service)?.duration || 45;
+    const bookedName = selectedProcedure?.name || service;
+
     const confirmMessage = buildClientMessage({
       nome: name,
       data: formatDateBR(date),
       horario: time,
-      procedimento: service,
+      procedimento: bookedName,
       valor: `R$ ${bookedPrice.toFixed(2)}`,
     });
     const whatsappConfirmUrl = `${getClinicWhatsAppLink()}?text=${encodeURIComponent(confirmMessage)}`;
 
+    const canAdvanceStep1 = name.trim().length >= 3 && phone.trim().length >= 8;
+    const canAdvanceStep2 = selectedProcedure !== null;
+    const canConfirm = date && time && selectedProcedure;
+
+    const stepSubtitles: Record<number, string> = {
+      1: "Passo 1 de 3 — Seus dados",
+      2: "Passo 2 de 3 — Escolha o procedimento",
+      3: "Passo 3 de 3 — Data e horário",
+    };
+
+    const todayObj = new Date();
+    const minBookableDate = new Date(todayObj.getFullYear(), todayObj.getMonth(), todayObj.getDate() + 1);
+
+    const isDayDisabled = (year: number, month: number, day: number): boolean => {
+      const d = new Date(year, month, day);
+      return d < minBookableDate || d.getDay() === 0;
+    };
+
+    const calYear = calendarMonth.getFullYear();
+    const calMonth = calendarMonth.getMonth();
+    const calFirstDay = new Date(calYear, calMonth, 1).getDay();
+    const calDaysInMonth = new Date(calYear, calMonth + 1, 0).getDate();
+    const monthNames = ["Janeiro","Fevereiro","Março","Abril","Maio","Junho","Julho","Agosto","Setembro","Outubro","Novembro","Dezembro"];
+
+    const isDayToday = (year: number, month: number, day: number): boolean => {
+      return todayObj.getFullYear() === year && todayObj.getMonth() === month && todayObj.getDate() === day;
+    };
+
+    const isDaySelected = (year: number, month: number, day: number): boolean => {
+      if (!date) return false;
+      const [dy, dm, dd] = date.split("-").map(Number);
+      return dy === year && dm - 1 === month && dd === day;
+    };
+
+    const morningSlots = availableSlots.filter((s) => {
+      const h = parseInt(s.split(":")[0]);
+      return h >= 7 && h < 12;
+    });
+    const afternoonSlots = availableSlots.filter((s) => {
+      const h = parseInt(s.split(":")[0]);
+      return h >= 12 && h < 20;
+    });
+    const currentSlots = slotPeriod === "manha" ? morningSlots : afternoonSlots;
+
+    const summaryDateStr = date ? formatDateBR(date) : "Selecione acima";
+    const summaryTimeStr = time || "Selecione acima";
+
     return (
       <>
-      <div id="booking-portal-view" className="booking-portal-light min-h-screen bg-gradient-to-br from-emerald-50 to-white flex flex-col items-center justify-center p-4">
+      <div id="booking-portal-view" className="booking-portal-light min-h-screen bg-gradient-to-br from-emerald-50 to-white flex flex-col items-center justify-center p-3 sm:p-4">
         <div className="w-full max-w-lg">
-          <div className="text-center mb-6">
+          <div className="text-center mb-6 flex flex-col items-center justify-center">
             <img
-              src={clinicLogo}
+              src={logoFrGreen}
               alt="Dra. Fabrícia Rodrigues"
-              className="w-20 h-20 rounded-full object-cover shadow-md border-2 border-brand mx-auto mb-3"
-              referrerPolicy="no-referrer"
+              className="w-20 h-20 sm:w-24 sm:h-24 rounded-full object-cover object-center mx-auto mb-3 shadow-lg border-2 border-gold/40"
             />
-            <h1 className="text-xl font-bold text-brand tracking-tight">Dra. Fabrícia Rodrigues</h1>
-            <p className="text-xs text-emerald-700 mt-1">Agende sua consulta online</p>
+            <h1 className="text-lg sm:text-xl font-bold text-brand tracking-tight text-center">Dra. Fabrícia Rodrigues</h1>
+            <p className="text-xs text-emerald-700 mt-1 text-center">Agende sua consulta online</p>
           </div>
 
           <div className="bg-white rounded-3xl shadow-xl border border-emerald-100 overflow-hidden">
-            <div className="bg-brand p-5 text-white text-center">
+            <div className="bg-brand p-4 sm:p-5 text-white text-center">
               <h2 className="text-base font-bold">Agendamento Online</h2>
-              <p className="text-gold/80 text-xs mt-0.5">Preencha seus dados para agendar</p>
+              <p className="text-gold/80 text-xs mt-0.5">
+                {currentStep === "success" ? "Agendamento confirmado!" : stepSubtitles[currentStep as number] || ""}
+              </p>
             </div>
 
-            <div className="p-5">
-              {!isSubmitted ? (
-                <form onSubmit={handleSimulateBooking} className="space-y-4">
+            {currentStep !== "success" && (
+              <div className="flex items-center gap-2 px-4 sm:px-6 py-3 sm:py-4 bg-white border-b border-slate-100">
+                {([1, 2, 3] as const).map((step, i) => {
+                  const stepNum = currentStep as number;
+                  const stepDone = stepNum >= step + 1;
+                  const lineDone = stepNum >= step + 2;
+                  return (
+                    <React.Fragment key={step}>
+                      <div className={`flex items-center gap-1.5 ${i < 2 ? "flex-1" : ""}`}>
+                        <div className={`w-6 h-6 rounded-full flex items-center justify-center text-[11px] font-bold shrink-0 transition-colors ${
+                          stepDone ? "bg-emerald-600 text-white" : currentStep === step ? "bg-brand text-white" : "bg-slate-200 text-slate-500"
+                        }`}>
+                          {stepDone ? <Check className="w-3.5 h-3.5" /> : step}
+                        </div>
+                        <span className={`text-[11px] font-bold uppercase tracking-wider hidden sm:inline ${
+                          currentStep === step ? "text-brand" : "text-slate-400"
+                        }`}>
+                          {step === 1 ? "Dados" : step === 2 ? "Procedimento" : "Data"}
+                        </span>
+                      </div>
+                      {i < 2 && (
+                        <div className={`h-0.5 flex-1 rounded-full ${lineDone ? "bg-emerald-600" : "bg-slate-200"}`} />
+                      )}
+                    </React.Fragment>
+                  );
+                })}
+              </div>
+            )}
+
+            <div className="p-4 sm:p-5">
+              {/* STEP 1 — Dados do paciente */}
+              {currentStep === 1 && (
+                <div className="space-y-4 animate-in fade-in slide-in-from-bottom-2 duration-300">
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                     <div>
-                      <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-1.5">Nome Completo</label>
-                      <input type="text" required placeholder="Ex: Roberto Carlos" value={name} onChange={(e) => setName(e.target.value)} className="w-full text-xs p-3 border border-slate-200 rounded-xl focus:outline-none focus:ring-1 focus:ring-brand" />
+                      <label className="block text-[11px] font-extrabold text-brand uppercase tracking-wider mb-1.5">Nome Completo</label>
+                      <input type="text" required placeholder="Ex: Roberto Carlos" value={name} onChange={(e) => setName(sanitizeName(e.target.value))} className="w-full text-[16px] sm:text-sm p-3 border-2 border-slate-200 rounded-xl focus:outline-none focus:border-brand focus:ring-0 transition-colors min-h-[48px]" />
                     </div>
                     <div>
-                      <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-1.5">Celular / WhatsApp</label>
-                      <input type="tel" required placeholder="(11) 98888-7777" value={phone} onChange={(e) => setPhone(e.target.value)} className="w-full text-xs p-3 border border-slate-200 rounded-xl focus:outline-none focus:ring-1 focus:ring-brand" />
+                      <label className="block text-[11px] font-extrabold text-brand uppercase tracking-wider mb-1.5">Celular / WhatsApp</label>
+                      <input type="tel" inputMode="tel" enterKeyHint="next" required placeholder="(11) 98888-7777" value={phone} onChange={(e) => { const raw = sanitizePhone(e.target.value); setPhone(formatPhoneBR(raw)); }} className="w-full text-[16px] sm:text-sm p-3 border-2 border-slate-200 rounded-xl focus:outline-none focus:border-brand focus:ring-0 transition-colors min-h-[48px]" />
                     </div>
                   </div>
 
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                     <div>
-                      <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-1.5">Data Nascimento</label>
-                      <input
-                        type="text"
-                        inputMode="numeric"
-                        autoComplete="bday"
-                        placeholder="DD/MM/AAAA"
-                        maxLength={10}
-                        value={dobDisplay}
-                        required
-                        onChange={(e) => handleDobChange(e.target.value)}
-                        className="w-full text-xs p-3 border border-slate-200 rounded-xl focus:outline-none focus:ring-1 focus:ring-brand"
-                      />
+                      <label className="block text-[11px] font-extrabold text-brand uppercase tracking-wider mb-1.5">Data de Nascimento</label>
+                      <input type="text" inputMode="numeric" autoComplete="bday" placeholder="DD/MM/AAAA" maxLength={10} value={dobDisplay} required onChange={(e) => handleDobChange(e.target.value)} className="w-full text-[16px] sm:text-sm p-3 border-2 border-slate-200 rounded-xl focus:outline-none focus:border-brand focus:ring-0 transition-colors min-h-[48px]" />
+                      <p className="text-[11px] text-slate-400 mt-1">Formato: dia/mês/ano</p>
                     </div>
                     <div>
-                      <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-1.5">Gênero</label>
-                      <select value={gender} onChange={(e) => setGender(e.target.value)} className="w-full text-xs p-3 border border-slate-200 rounded-xl focus:outline-none focus:ring-1 focus:ring-brand bg-white">
+                      <label className="block text-[11px] font-extrabold text-brand uppercase tracking-wider mb-1.5">Gênero</label>
+                      <select value={gender} onChange={(e) => setGender(e.target.value)} className="w-full text-[16px] sm:text-sm p-3 border-2 border-slate-200 rounded-xl focus:outline-none focus:border-brand focus:ring-0 transition-colors min-h-[48px] bg-white">
                         <option value="Feminino">Feminino</option>
                         <option value="Masculino">Masculino</option>
-                        <option value="Outro">Outro</option>
+                        <option value="Prefiro não informar">Prefiro não informar</option>
                       </select>
                     </div>
                   </div>
 
-                  <div className="p-3 rounded-xl bg-rose-50 border border-rose-100/50 flex items-center justify-between">
-                    <div className="flex gap-2 items-center">
-                      <Heart className="w-4 h-4 text-rose-600 fill-rose-100" />
-                      <p className="text-xs font-bold text-rose-900">Paciente possui Diabetes?</p>
+                  <div className="bg-rose-50 border border-rose-100 rounded-xl p-4 flex items-center justify-between">
+                    <div className="flex items-center gap-3">
+                      <Heart className="w-5 h-5 text-rose-500 fill-rose-100 shrink-0" />
+                      <div>
+                        <p className="text-sm font-bold text-rose-800">Paciente possui Diabetes?</p>
+                        <p className="text-[11px] text-rose-600/80">Essa informação ajuda a preparar o atendimento com segurança.</p>
+                      </div>
                     </div>
-                    <label className="relative inline-flex items-center cursor-pointer">
+                    <label className="relative inline-flex items-center cursor-pointer shrink-0 ml-3">
                       <input type="checkbox" checked={isDiabetic} onChange={(e) => setIsDiabetic(e.target.checked)} className="sr-only peer" />
-                      <div className="w-9 h-5 bg-slate-200 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-slate-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-rose-600"></div>
+                      <div className="w-11 h-6 bg-slate-300 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-slate-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-rose-500"></div>
                     </label>
                   </div>
 
-                  <div>
-                    <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-1.5">Procedimento</label>
-                    <select value={service} onChange={(e) => setService(e.target.value)} className="w-full text-xs p-3 border border-slate-200 rounded-xl focus:outline-none focus:ring-1 focus:ring-brand bg-white">
-                      {servicesList.map((s) => (
-                        <option key={s.name} value={s.name}>
-                          {s.name} (R$ {s.price}) — {s.duration} min
-                        </option>
-                      ))}
-                    </select>
-                  </div>
-
-                  <div className="border-t border-slate-100 pt-4">
-                    <h4 className="text-xs font-bold text-slate-700 uppercase tracking-wider mb-3">Data e Horário</h4>
-                    <div className="space-y-3">
-                      <div>
-                        <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-1.5">Data Pretendida</label>
-                        <input
-                          type="date"
-                          required
-                          value={date}
-                          onChange={(e) => setDate(e.target.value)}
-                          min={minDateStr}
-                          className="w-full text-xs p-3 border border-slate-200 rounded-xl focus:outline-none focus:ring-1 focus:ring-brand"
-                        />
-                      </div>
-
-                      {dateBlocked && (
-                        <div className="bg-amber-50 border border-amber-200 rounded-xl p-3 text-xs flex items-start gap-2">
-                          <AlertCircle className="w-4 h-4 text-amber-600 shrink-0 mt-0.5" />
-                          <p className="text-amber-800 leading-relaxed">
-                            A clínica não realiza atendimentos aos {blockedDayName === "domingo" ? "domingos" : "sábados"}. Por favor, selecione outro dia da semana.
-                          </p>
-                        </div>
-                      )}
-
-                      {/* Info sobre agendamento no mesmo dia */}
-                      <div className="bg-amber-50 border border-amber-100 rounded-xl p-4 text-xs space-y-2">
-                        <p className="text-amber-900 font-semibold flex items-center gap-1.5">
-                          <Clock className="w-4 h-4 text-amber-600" /> Agendamento com 24h de antecedência
-                        </p>
-                        <p className="text-amber-700 leading-relaxed">
-                          Para agendamentos no mesmo dia, entre em contato diretamente pelo WhatsApp.
-                        </p>
-                        <a
-                          href={getClinicWhatsAppLink()}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          className="inline-flex items-center gap-1.5 bg-brand hover:bg-brand-700 text-white font-bold px-4 py-2 rounded-lg text-[11px] transition-all shadow-sm"
-                        >
-                          Fale Conosco no WhatsApp
-                        </a>
-                      </div>
-
-                      {date && (
-                        <div>
-                          <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-2">
-                            Horários Disponíveis ({availableSlots.length} vagas)
-                          </label>
-                          {availableSlots.length === 0 ? (
-                            <div className="bg-amber-50 border border-amber-100 p-4 rounded-xl text-xs text-amber-800 text-center">
-                              Nenhum horário disponível nesta data. Por favor, escolha outro dia.
-                            </div>
-                          ) : (
-                            <div className="grid grid-cols-4 sm:grid-cols-6 gap-2 max-h-48 overflow-y-auto">
-                              {availableSlots.map((slot) => (
-                                <button
-                                  key={slot}
-                                  type="button"
-                                  onClick={() => setTime(slot)}
-                                  className={`text-center py-2.5 px-2 rounded-full text-xs font-bold border transition-all cursor-pointer active:scale-95 ${
-                                    time === slot
-                                      ? "bg-brand text-white border-brand shadow-sm"
-                                      : "bg-white text-slate-700 border-slate-200 hover:border-brand hover:bg-brand/5 active:bg-brand/10"
-                                  }`}
-                                >
-                                  {slot}
-                                </button>
-                              ))}
-                            </div>
-                          )}
-                        </div>
-                      )}
-
-                      {!date && (
-                        <div className="bg-slate-50 border border-slate-100 p-4 rounded-xl text-xs text-slate-500 text-center">
-                          Selecione uma data para ver os horários disponíveis.
-                        </div>
-                      )}
-                    </div>
-                  </div>
-
-                  <div>
-                    <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-1.5">Observações (Opcional)</label>
-                    <input type="text" placeholder="Ex: Sentindo queimação na planta do pé." value={notes} onChange={(e) => setNotes(e.target.value)} className="w-full text-xs p-3 border border-slate-200 rounded-xl focus:outline-none focus:ring-1 focus:ring-brand" />
-                  </div>
-
-                  <button
-                    type="submit"
-                    disabled={isLoading || !time}
-                    className="w-full bg-brand hover:bg-brand-700 text-white font-bold py-3.5 rounded-xl shadow-sm hover:shadow transition-all text-xs flex items-center justify-center gap-2 cursor-pointer disabled:opacity-50"
-                  >
-                    <Activity className={`w-4 h-4 ${isLoading ? "animate-spin" : ""}`} />
-                    {isLoading ? "Agendando..." : "Confirmar Agendamento"}
+                  <button type="button" onClick={() => { if (!canAdvanceStep1) { alert("Preencha nome (mínimo 3 caracteres) e celular (mínimo 8 caracteres) para continuar."); return; } setCurrentStep(2); }} className="w-full bg-brand hover:bg-brand-700 text-white font-bold py-3.5 rounded-xl shadow-sm hover:shadow transition-all text-sm flex items-center justify-center gap-2 cursor-pointer min-h-[50px]">
+                    Continuar <span className="text-lg leading-none">→</span>
                   </button>
-                </form>
-              ) : (
-                <div className="p-6">
-                  <div className="text-center">
-                    <div className="w-16 h-16 bg-emerald-100 text-emerald-600 rounded-full flex items-center justify-center mx-auto shadow-inner">
-                      <CheckCircle className="w-10 h-10 stroke-[2.5]" />
-                    </div>
-                    <h4 className="mt-4 text-lg font-bold text-brand">Agendamento Realizado com Sucesso!</h4>
-                    <p className="text-xs text-slate-500 mt-1">
-                      Seu horário foi reservado na agenda da Dra. Fabrícia.
-                    </p>
-                  </div>
+                </div>
+              )}
 
-                  <div className="mt-6 bg-emerald-50/70 border border-emerald-100 rounded-2xl overflow-hidden">
-                    <div className="flex items-center gap-2 px-4 py-3 bg-brand/5 border-b border-emerald-100/70">
-                      <Calendar className="w-4 h-4 text-brand" />
-                      <p className="text-[11px] font-bold text-brand uppercase tracking-wider">Resumo da Consulta</p>
-                    </div>
-                    <div className="p-4 space-y-3">
-                      <div className="flex items-center justify-between gap-4">
-                        <span className="text-[11px] text-slate-500 font-semibold">Data</span>
-                        <span className="text-xs font-bold text-slate-800">{formatDateBR(date)}</span>
+              {/* STEP 2 — Procedimento */}
+              {currentStep === 2 && (
+                <div className="space-y-3 animate-in fade-in slide-in-from-bottom-2 duration-300">
+                  {servicesList.map((proc) => {
+                    const isSelected = selectedProcedure?.name === proc.name || (!selectedProcedure && service === proc.name);
+                    return (
+                      <div key={proc.name} onClick={() => { setSelectedProcedure(proc); setService(proc.name); }} className={`border-2 rounded-xl p-4 cursor-pointer transition-all relative ${isSelected ? "border-brand bg-emerald-50/50 shadow-sm" : "border-slate-200 hover:border-gold/50 bg-white"}`}>
+                        <div className={`absolute top-3.5 right-3.5 w-5 h-5 rounded-full border-2 flex items-center justify-center transition-colors ${isSelected ? "bg-brand border-brand" : "border-slate-300 bg-white"}`}>
+                          {isSelected && <Check className="w-3 h-3 text-white" />}
+                        </div>
+                        <h3 className="font-serif font-semibold text-brand text-[15px] pr-8 mb-1">{proc.name}</h3>
+                        {proc.description && <p className="text-[13px] text-slate-500 mb-3 pr-6">{proc.description}</p>}
+                        <div className="flex items-center justify-between">
+                          <span className="text-[13px] text-slate-500 font-semibold flex items-center gap-1.5">
+                            <Clock className="w-3.5 h-3.5" /> {proc.duration} min
+                          </span>
+                          <div className="text-right">
+                            <span className="text-[10px] text-slate-400 block">a partir de</span>
+                            <span className="text-lg font-extrabold text-brand font-serif">R$ {proc.price}</span>
+                          </div>
+                        </div>
                       </div>
-                      <div className="flex items-center justify-between gap-4">
-                        <span className="text-[11px] text-slate-500 font-semibold">Horário</span>
-                        <span className="text-xs font-bold text-slate-800">{time}</span>
-                      </div>
-                      <div className="flex items-center justify-between gap-4">
-                        <span className="text-[11px] text-slate-500 font-semibold">Procedimento</span>
-                        <span className="text-xs font-bold text-slate-800 text-right">{service}</span>
-                      </div>
-                      <div className="flex items-center justify-between gap-4 pt-2 border-t border-emerald-100">
-                        <span className="text-[11px] text-slate-500 font-semibold">Valor Estimado</span>
-                        <span className="text-xs font-bold text-brand">R$ {bookedPrice.toFixed(2)}</span>
-                      </div>
-                    </div>
-                  </div>
+                    );
+                  })}
 
-                  <div className="mt-3 bg-white border border-emerald-100 rounded-2xl p-4 flex items-start gap-3">
-                    <div className="p-2 bg-emerald-50 rounded-lg shrink-0">
-                      <MapPin className="w-4 h-4 text-brand" />
-                    </div>
+                  <div className="flex gap-3 pt-2">
+                    <button type="button" onClick={() => setCurrentStep(1)} className="flex-none px-5 py-3 rounded-xl border-2 border-slate-200 text-brand font-bold text-sm hover:border-brand transition-colors cursor-pointer min-h-[50px]">
+                      ← Voltar
+                    </button>
+                    <button type="button" onClick={() => setCurrentStep(3)} disabled={!canAdvanceStep2} className="flex-1 bg-brand hover:bg-brand-700 text-white font-bold py-3 rounded-xl shadow-sm hover:shadow transition-all text-sm flex items-center justify-center gap-2 cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed min-h-[50px]">
+                      Continuar <span className="text-lg leading-none">→</span>
+                    </button>
+                  </div>
+                </div>
+              )}
+
+              {/* STEP 3 — Data e Horário */}
+              {currentStep === 3 && (
+                <div className="space-y-4 animate-in fade-in slide-in-from-bottom-2 duration-300">
+                  <div className="bg-amber-50 border border-amber-200 rounded-xl p-3.5 text-[13px] flex gap-3">
+                    <Clock className="w-4 h-4 text-amber-600 shrink-0 mt-0.5" />
                     <div>
-                      <p className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">Endereço da Clínica</p>
-                      <p className="text-xs font-semibold text-slate-800 mt-1 leading-relaxed">
-                        Rua Papa João Paulo II, 256
-                        <br />
-                        Artur Nogueira/SP
-                      </p>
+                      <p className="font-bold text-amber-800 mb-0.5">Agendamento com 24h de antecedência</p>
+                      <p className="text-amber-700">Para agendamentos no mesmo dia, entre em contato diretamente pelo WhatsApp.</p>
                     </div>
                   </div>
 
-                  <a
-                    href={whatsappConfirmUrl}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="mt-5 w-full flex items-center justify-center gap-2 bg-[#25D366] hover:bg-[#1EBE5B] text-white font-bold py-3 rounded-xl shadow-md hover:shadow-lg transition-all text-xs"
-                  >
-                    <span className="text-sm leading-none">💬</span> Enviar Comprovante para o WhatsApp da Clínica
-                  </a>
-                  <p className="text-[10px] text-slate-400 text-center mt-2">
-                    Toque no botão para abrir o WhatsApp com o comprovante do seu agendamento.
-                  </p>
+                  <div>
+                    <div className="flex items-center justify-between mb-3">
+                      <p className="font-serif font-semibold text-brand text-[17px]">{monthNames[calMonth]} {calYear}</p>
+                      <div className="flex gap-1.5">
+                        <button type="button" onClick={() => setCalendarMonth(new Date(calYear, calMonth - 1, 1))} className="w-8 h-8 rounded-lg border-2 border-slate-200 bg-white flex items-center justify-center text-brand font-bold hover:border-brand transition-colors cursor-pointer text-sm">‹</button>
+                        <button type="button" onClick={() => setCalendarMonth(new Date(calYear, calMonth + 1, 1))} className="w-8 h-8 rounded-lg border-2 border-slate-200 bg-white flex items-center justify-center text-brand font-bold hover:border-brand transition-colors cursor-pointer text-sm">›</button>
+                      </div>
+                    </div>
+                    <div className="grid grid-cols-7 text-center text-[11px] font-extrabold text-slate-400 uppercase mb-1.5">
+                      <div>D</div><div>S</div><div>T</div><div>Q</div><div>Q</div><div>S</div><div>S</div>
+                    </div>
+                    <div className="grid grid-cols-7 gap-1">
+                      {Array.from({ length: calFirstDay }).map((_, i) => <div key={`blank-${i}`} />)}
+                      {Array.from({ length: calDaysInMonth }).map((_, i) => {
+                        const day = i + 1;
+                        const disabled = isDayDisabled(calYear, calMonth, day);
+                        const todayMark = isDayToday(calYear, calMonth, day);
+                        const selected = isDaySelected(calYear, calMonth, day);
+                        const dateStr = `${calYear}-${String(calMonth + 1).padStart(2, "0")}-${String(day).padStart(2, "0")}`;
+                        return (
+                          <button key={day} type="button" disabled={disabled} onClick={() => { setDate(dateStr); setTime(""); }} className={`aspect-square rounded-lg text-[13px] font-semibold flex items-center justify-center relative transition-all ${
+                            disabled ? "text-slate-300 bg-slate-50 cursor-not-allowed" : selected ? "bg-brand text-white shadow-sm" : "bg-slate-50 text-slate-700 hover:border-brand hover:border-2 cursor-pointer"
+                          }`}>
+                            {day}
+                            {todayMark && !disabled && <span className="absolute bottom-1 w-1 h-1 rounded-full bg-gold" />}
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </div>
 
-                  <button onClick={resetForm} className="mt-4 w-full bg-white hover:bg-slate-50 text-brand border border-emerald-200 font-bold py-2.5 rounded-xl text-xs transition-all cursor-pointer">
-                    Novo Agendamento
+                  <div>
+                    <div className="flex gap-2 mb-3">
+                      <button type="button" onClick={() => setSlotPeriod("manha")} className={`flex-1 py-2.5 rounded-xl border-2 text-[13px] font-bold transition-all cursor-pointer ${slotPeriod === "manha" ? "bg-brand border-brand text-white" : "border-slate-200 bg-white text-slate-500 hover:border-brand"}`}>
+                        ☀️ Manhã
+                      </button>
+                      <button type="button" onClick={() => setSlotPeriod("tarde")} className={`flex-1 py-2.5 rounded-xl border-2 text-[13px] font-bold transition-all cursor-pointer ${slotPeriod === "tarde" ? "bg-brand border-brand text-white" : "border-slate-200 bg-white text-slate-500 hover:border-brand"}`}>
+                        🌤️ Tarde
+                      </button>
+                    </div>
+
+                    {!date && (
+                      <div className="text-center py-6 bg-slate-50 rounded-xl text-[13px] text-slate-400">
+                        Selecione uma data no calendário para ver os horários.
+                      </div>
+                    )}
+
+                    {date && isLoadingSlots && (
+                      <div className="grid grid-cols-3 sm:grid-cols-4 gap-2">
+                        {Array.from({ length: 8 }).map((_, i) => (
+                          <div key={i} className="h-11 rounded-lg bg-slate-100 animate-pulse" />
+                        ))}
+                      </div>
+                    )}
+
+                    {date && slotsError && (
+                      <div className="bg-rose-50 border border-rose-200 rounded-xl p-4 text-[13px] text-rose-700 text-center">
+                        {slotsError}
+                      </div>
+                    )}
+
+                    {date && !isLoadingSlots && !slotsError && currentSlots.length === 0 && (
+                      <div className="text-center py-6 bg-slate-50 rounded-xl text-[13px] text-slate-500">
+                        Nenhum horário disponível neste período. Tente {slotPeriod === "manha" ? "a tarde" : "a manhã"}.
+                      </div>
+                    )}
+
+                    {date && !isLoadingSlots && !slotsError && currentSlots.length > 0 && (
+                      <div className="grid grid-cols-3 sm:grid-cols-4 gap-2">
+                        {currentSlots.map((slot) => (
+                          <button key={slot} type="button" onClick={() => setTime(slot)} className={`min-h-[44px] py-2 rounded-lg border-2 text-[13px] font-bold transition-all cursor-pointer active:scale-95 ${
+                            time === slot ? "bg-brand border-brand text-white shadow-sm" : "bg-white border-slate-200 text-slate-700 hover:border-brand"
+                          }`}>
+                            {slot}
+                          </button>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+
+                  <div>
+                    <label className="block text-[11px] font-extrabold text-brand uppercase tracking-wider mb-1.5">Observações (opcional)</label>
+                    <textarea placeholder="Ex: Sentindo queimação na planta do pé." value={notes} onChange={(e) => setNotes(sanitizeNotes(e.target.value))} onFocus={(e) => e.target.scrollIntoView({ behavior: "smooth", block: "center" })} rows={3} maxLength={500} className="w-full text-[16px] sm:text-sm p-3 border-2 border-slate-200 rounded-xl focus:outline-none focus:border-brand focus:ring-0 transition-colors resize-y min-h-[84px]" />
+                  </div>
+
+                  {canConfirm && (
+                    <div className="bg-gradient-to-br from-emerald-50 to-amber-50 border-2 border-brand/30 rounded-xl p-4 space-y-2">
+                      <p className="font-serif font-semibold text-brand text-[13px] uppercase tracking-wider">Resumo do agendamento</p>
+                      <div className="flex justify-between text-[14px]"><span className="text-slate-500">Procedimento</span><span className="font-semibold text-slate-800 text-right">{bookedName}</span></div>
+                      <div className="flex justify-between text-[14px]"><span className="text-slate-500">Duração</span><span className="font-semibold">{bookedDuration} min</span></div>
+                      <div className="flex justify-between text-[14px]"><span className="text-slate-500">Data e horário</span><span className="font-semibold">{summaryDateStr} às {summaryTimeStr}</span></div>
+                      <div className="flex justify-between text-[15px] font-bold text-brand pt-2 border-t border-brand/20"><span>Valor</span><span className="font-serif text-lg">R$ {bookedPrice.toFixed(2)}</span></div>
+                    </div>
+                  )}
+
+                  <div className="flex gap-3">
+                    <button type="button" onClick={() => setCurrentStep(2)} className="flex-none px-5 py-3 rounded-xl border-2 border-slate-200 text-brand font-bold text-sm hover:border-brand transition-colors cursor-pointer min-h-[50px]">
+                      ← Voltar
+                    </button>
+                    <button type="button" onClick={handleSimulateBooking} disabled={isLoading || !canConfirm} className="flex-1 bg-brand hover:bg-brand-700 text-white font-bold py-3 rounded-xl shadow-sm hover:shadow transition-all text-sm flex items-center justify-center gap-2 cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed min-h-[50px]">
+                      {isLoading ? <><Activity className="w-4 h-4 animate-spin" /> Agendando...</> : <>✓ Confirmar agendamento</>}
+                    </button>
+                  </div>
+                </div>
+              )}
+
+              {/* SUCCESS */}
+              {currentStep === "success" && (
+                <div className="text-center py-8 animate-in fade-in zoom-in-95 duration-300">
+                  <div className="w-16 h-16 rounded-full bg-emerald-600 text-white flex items-center justify-center mx-auto mb-4 shadow-inner">
+                    <CheckCircle className="w-9 h-9 stroke-[2.5]" />
+                  </div>
+                  <h2 className="font-serif font-semibold text-brand text-xl mb-2">Agendamento confirmado!</h2>
+                  <p className="text-[14px] text-slate-500 mb-6 max-w-xs mx-auto leading-relaxed">
+                    {bookedName} agendado para {summaryDateStr} às {summaryTimeStr}. Você receberá a confirmação pelo WhatsApp em instantes.
+                  </p>
+                  <button type="button" onClick={() => { resetForm(); setCurrentStep(1); setSelectedProcedure(null); setCalendarMonth(new Date()); setSlotPeriod("manha"); }} className="bg-brand hover:bg-brand-700 text-white font-bold py-3 px-8 rounded-xl shadow-sm hover:shadow transition-all text-sm cursor-pointer min-h-[50px] mx-auto">
+                    Fazer novo agendamento
                   </button>
                 </div>
               )}
@@ -1008,14 +1122,14 @@ https://podologa-fabricia.web.app/cliente`}
                     <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-1.5">Nome Completo</label>
                     <div className="relative">
                       <User className="absolute left-3.5 top-3.5 w-4 h-4 text-slate-400" />
-                      <input type="text" required placeholder="Ex: Roberto Carlos" value={name} onChange={(e) => setName(e.target.value)} className="w-full text-xs pl-10 pr-4 py-3 border border-slate-200 rounded-xl focus:outline-none focus:ring-1 focus:ring-gold" />
+                      <input type="text" required placeholder="Ex: Roberto Carlos" value={name} onChange={(e) => setName(sanitizeName(e.target.value))} className="w-full text-xs pl-10 pr-4 py-3 border border-slate-200 rounded-xl focus:outline-none focus:ring-1 focus:ring-gold" />
                     </div>
                   </div>
                   <div>
                     <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-1.5">Celular / WhatsApp</label>
                     <div className="relative">
                       <Smartphone className="absolute left-3.5 top-3.5 w-4 h-4 text-slate-400" />
-                      <input type="tel" required placeholder="(11) 98888-7777" value={phone} onChange={(e) => setPhone(e.target.value)} className="w-full text-xs pl-10 pr-4 py-3 border border-slate-200 rounded-xl focus:outline-none focus:ring-1 focus:ring-gold" />
+                      <input type="tel" required placeholder="(11) 98888-7777" value={phone} onChange={(e) => { const raw = sanitizePhone(e.target.value); setPhone(formatPhoneBR(raw)); }} className="w-full text-xs pl-10 pr-4 py-3 border border-slate-200 rounded-xl focus:outline-none focus:ring-1 focus:ring-gold" />
                     </div>
                   </div>
                 </div>
@@ -1086,7 +1200,7 @@ https://podologa-fabricia.web.app/cliente`}
                           required
                           value={date}
                           onChange={(e) => setDate(e.target.value)}
-                          min={new Date().toISOString().split("T")[0]}
+                          min={new Intl.DateTimeFormat("en-CA", { timeZone: "America/Sao_Paulo", year: "numeric", month: "2-digit", day: "2-digit" }).format(new Date())}
                           className="w-full text-xs pl-10 pr-4 py-3 border border-slate-200 rounded-xl focus:outline-none focus:ring-1 focus:ring-gold"
                         />
                       </div>
@@ -1144,7 +1258,7 @@ https://podologa-fabricia.web.app/cliente`}
 
                 <div>
                   <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-1.5">Sintomas ou Notas Extras (Opcional)</label>
-                  <input type="text" placeholder="Ex: Sentindo queimação na planta do pé." value={notes} onChange={(e) => setNotes(e.target.value)} className="w-full text-xs p-3 border border-slate-200 rounded-xl focus:outline-none focus:ring-1 focus:ring-gold" />
+                    <input type="text" placeholder="Ex: Sentindo queimação na planta do pé." value={notes} onChange={(e) => setNotes(sanitizeNotes(e.target.value))} maxLength={500} className="w-full text-xs p-3 border border-slate-200 rounded-xl focus:outline-none focus:ring-1 focus:ring-gold" />
                 </div>
 
                 <button

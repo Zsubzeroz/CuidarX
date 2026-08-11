@@ -166,7 +166,7 @@ export default function AiReceptionistWidget() {
     <div className="relative">
       {/* Floating chat panel */}
       {isOpen && (
-        <div className="fixed bottom-24 right-6 z-[9999] w-[360px] max-w-[calc(100vw-3rem)] h-[480px] max-h-[70vh] bg-white rounded-2xl border border-slate-200 shadow-2xl flex flex-col overflow-hidden chat-enter">
+        <div className="fixed bottom-24 right-4 sm:right-6 z-[9999] w-[calc(100vw-2rem)] sm:w-[360px] max-h-[60vh] sm:max-h-[70vh] sm:h-[480px] bg-white rounded-2xl border border-slate-200 shadow-2xl flex flex-col overflow-hidden chat-enter" style={{ paddingBottom: 'env(safe-area-inset-bottom)' }}>
           {/* Header */}
           <div className="bg-gradient-to-r from-[#0F3B2E] to-[#0A2B21] px-4 py-3 flex items-center justify-between text-white">
             <div className="flex items-center gap-2.5">
@@ -276,7 +276,8 @@ export default function AiReceptionistWidget() {
       <button
         onClick={() => setIsOpen((o) => !o)}
         aria-label={isOpen ? "Fechar atendente virtual" : "Abrir atendente virtual"}
-        className="fixed bottom-6 right-6 z-[9999] w-14 h-14 rounded-full bg-[#0F3B2E] hover:bg-[#1B523E] border border-[#C8A45A]/50 text-white shadow-[0_4px_20px_rgba(15,59,46,0.35)] flex items-center justify-center transition-all hover:scale-105 active:scale-95 cursor-pointer"
+        className="fixed bottom-6 right-4 sm:right-6 z-[9999] w-12 h-12 sm:w-14 sm:h-14 rounded-full bg-[#0F3B2E] hover:bg-[#1B523E] border border-[#C8A45A]/50 text-white shadow-[0_4px_20px_rgba(15,59,46,0.35)] flex items-center justify-center transition-all hover:scale-105 active:scale-95 cursor-pointer"
+        style={{ paddingBottom: 'env(safe-area-inset-bottom)' }}
       >
         <span className="flex items-center justify-center w-full h-full">
           {isOpen ? <X className="w-6 h-6" /> : <MessageCircle className="w-6 h-6" />}

@@ -8,6 +8,7 @@ import {
   disconnectGoogleCalendar,
   fetchGoogleCalendarEvents,
   createGoogleCalendarEvent,
+  updateGoogleCalendarEvent,
   deleteGoogleCalendarEvent,
   hasPersistedToken,
   extractTokenFromUrl,
@@ -17,6 +18,9 @@ import {
   buildEventTimeRange,
   isBlockEventSummary,
   parseBlockReason,
+  getEventCategory,
+  EVENT_CATEGORY_CONFIG,
+  getEventLocalDate,
   type GoogleCalendarEvent,
 } from "./services/googleCalendar";
 import {
@@ -25,6 +29,8 @@ import {
   createScheduleBlock as fsCreateScheduleBlock,
   updateScheduleBlock as fsUpdateScheduleBlock,
   deleteScheduleBlock as fsDeleteScheduleBlock,
+  syncPublicScheduleBlocks,
+  logSyncError,
 } from "./services/firestoreService";
 import type { ScheduleBlock } from "./types";
 import {
@@ -564,16 +570,63 @@ export default function App() {
     }
   };
 
+  const handleUpdateGoogleEvent = async (
+    eventId: string,
+    summary: string,
+    description: string,
+    startTime: string,
+    endTime: string
+  ): Promise<boolean> => {
+    try {
+      return await updateGoogleCalendarEvent(eventId, summary, description, startTime, endTime);
+    } catch (err: any) {
+      console.error("Error updating Google Calendar event:", err);
+      return false;
+    }
+  };
+
   // Save Google Calendar events to Firestore 'appointments' collection
   // so they appear everywhere (web admin, mobile, etc.). Events whose summary
   // starts with "Bloqueio:" are treated as schedule blocks and synced to the
   // 'scheduleBlocks' collection instead — making blocks fully bidirectional.
+  // Personal/recurring events (Pilates, Almoço, Estágio UBS, etc.) are also
+  // treated as blocks so they correctly block portal slots with real duration.
+  const PERSONAL_EVENT_PATTERNS = [
+    /almoco/i, /almoço/i, /hamburger/i,
+    /estagio/i, /estágio/i, /ubs/i,
+    /pilates/i,
+    /reuniao/i, /reunião/i, /igreja/i, /oracao/i, /oração/i,
+    /mamae/i, /mamãe/i,
+    /feriado/i, /dia dos pais/i, /assumption/i,
+    /birthday/i, /aniversario/i, /aniversário/i,
+  ];
+
+  const isPersonalEvent = (summary: string | null | undefined): boolean => {
+    if (!summary) return false;
+    return PERSONAL_EVENT_PATTERNS.some((p) => p.test(summary));
+  };
+
   const syncGoogleEventsToFirestore = async (events: GoogleCalendarEvent[]) => {
     const currentAppointments = appointmentsRef.current;
     const currentBlocks = scheduleBlocksRef.current;
 
-    const blockEvents = events.filter((ge) => isBlockEventSummary(ge.summary));
-    const nonBlockEvents = events.filter((ge) => !isBlockEventSummary(ge.summary));
+    // Classify events: colorId is primary, regex fallback for legacy events without colorId
+    const classifyEvent = (ge: GoogleCalendarEvent) => {
+      const colorCategory = getEventCategory(ge.colorId);
+      if (colorCategory !== "patient") return colorCategory;
+      if (isBlockEventSummary(ge.summary)) return "block";
+      if (isPersonalEvent(ge.summary)) return "personal";
+      return "patient";
+    };
+
+    const blockEvents = events.filter((ge) => {
+      const cat = classifyEvent(ge);
+      return EVENT_CATEGORY_CONFIG[cat as keyof typeof EVENT_CATEGORY_CONFIG]?.blocksPortal ?? false;
+    });
+    const nonBlockEvents = events.filter((ge) => {
+      const cat = classifyEvent(ge);
+      return !(EVENT_CATEGORY_CONFIG[cat as keyof typeof EVENT_CATEGORY_CONFIG]?.blocksPortal ?? false);
+    });
 
     // --- A) Regular (non-block) events -> appointments ---
     const existingCalendarEventIds = new Set(
@@ -585,7 +638,7 @@ export default function App() {
     for (const ge of nonBlockEvents) {
       if (existingCalendarEventIds.has(ge.id)) continue;
 
-      const dateStr = ge.start?.slice(0, 10) || "";
+      const dateStr = getEventLocalDate(ge.start);
       const timeStr = ge.start && ge.start.length > 10 ? ge.start.slice(11, 16) : "00:00";
 
       if (!dateStr) continue;
@@ -603,6 +656,7 @@ export default function App() {
           notes: ge.description || "",
           calendarEventId: ge.id,
           source: "google",
+          colorId: ge.colorId || undefined,
         });
       } catch (err) {
         console.error("Error saving Google event to Firestore:", err);
@@ -633,7 +687,7 @@ export default function App() {
     );
 
     for (const ge of blockEvents) {
-      const dateStr = ge.start?.slice(0, 10) || "";
+      const dateStr = getEventLocalDate(ge.start);
       const timeStr = ge.start && ge.start.length > 10 ? ge.start.slice(11, 16) : "00:00";
       const endTimeStr = ge.end && ge.end.length > 10 ? ge.end.slice(11, 16) : "23:59";
       if (!dateStr) continue;
@@ -674,6 +728,7 @@ export default function App() {
           createdAt: new Date().toISOString(),
           calendarEventId: ge.id,
           source: "google",
+          colorId: ge.colorId || undefined,
         });
       } catch (err) {
         console.error("Error saving Google block to Firestore:", err);
@@ -695,6 +750,10 @@ export default function App() {
         }
       }
     }
+
+    syncPublicScheduleBlocks().catch((e) =>
+      logSyncError("syncGoogleCalendar", e)
+    );
   };
 
   // Keep a ref to latest appointments for async sync operations
@@ -856,6 +915,7 @@ export default function App() {
         onDisconnectGoogle={handleDisconnectGoogle}
         onSyncGoogleEvents={handleSyncGoogleEvents}
         onCreateGoogleEvent={handleCreateGoogleEvent}
+        onUpdateGoogleEvent={handleUpdateGoogleEvent}
                   onDeleteGoogleEvent={handleDeleteGoogleEvent}
                   googlePermissionError={googlePermissionError}
         expedienteStart={clinicSettings.expedienteStart}

@@ -91,6 +91,7 @@ export interface Appointment {
   quantity?: number; // Nº de sessões / pacote contratado
   calendarEventId?: string; // Google Calendar event ID for sync
   source?: "manual" | "google" | "portal"; // Origin: manual (app), google (imported), or portal (public booking)
+  colorId?: string; // Google Calendar color ID for category classification
 }
 
 export interface FinanceRecord {
@@ -120,6 +121,7 @@ export interface ScheduleBlock {
   createdAt: string;  // ISO string
   calendarEventId?: string; // Google Calendar event ID for sync
   source?: "manual" | "google"; // Origin: manual (app) or google (imported from Google Calendar)
+  colorId?: string; // Google Calendar color ID for category classification
   recurrence?: {
     frequency: "none" | "diaria" | "semanal" | "dias_uteis" | "personalizada";
     daysOfWeek: number[]; // 0=Dom, 1=Seg, ..., 6=Sáb

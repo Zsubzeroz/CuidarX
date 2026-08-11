@@ -39,7 +39,7 @@ export default function FinanceView({ finances, onAddFinanceRecord, onDeleteFina
   const [type, setType] = useState<"income" | "expense">("income");
   const [category, setCategory] = useState("Serviço");
   const [amount, setAmount] = useState("");
-  const [date, setDate] = useState(new Date().toISOString().split("T")[0]);
+  const [date, setDate] = useState(new Intl.DateTimeFormat("en-CA", { timeZone: "America/Sao_Paulo", year: "numeric", month: "2-digit", day: "2-digit" }).format(new Date()));
   const [description, setDescription] = useState("");
   const [searchQuery, setSearchQuery] = useState("");
   const [filterCategory, setFilterCategory] = useState("all");
@@ -115,12 +115,19 @@ export default function FinanceView({ finances, onAddFinanceRecord, onDeleteFina
   const COLORS = ["#0f766e", "#0d9488", "#14b8a6", "#2dd4bf", "#99f6e4", "#ccfbf1", "#115e59"];
 
   // Bar Chart Data: Incomes & Expenses by day for the last 15 days
-  const todayStr = new Date().toISOString().split("T")[0];
+  const toDateStrBR = (d: Date): string => {
+    const parts = new Intl.DateTimeFormat("en-CA", { timeZone: "America/Sao_Paulo", year: "numeric", month: "2-digit", day: "2-digit" }).formatToParts(d);
+    const y = parts.find(p => p.type === "year")?.value || "0";
+    const m = parts.find(p => p.type === "month")?.value || "0";
+    const dd = parts.find(p => p.type === "day")?.value || "0";
+    return `${y}-${m}-${dd}`;
+  };
+  const todayStr = toDateStrBR(new Date());
   const last15Days = Array.from({ length: 15 })
     .map((_, i) => {
-      const d = new Date(todayStr + "T00:00:00");
+      const d = new Date(todayStr + "T12:00:00-03:00");
       d.setDate(d.getDate() - (14 - i));
-      const dStr = d.toISOString().split("T")[0];
+      const dStr = toDateStrBR(d);
 
       const inc = finances
         .filter((f) => f.date === dStr && f.type === "income")

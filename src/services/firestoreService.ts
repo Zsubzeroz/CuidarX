@@ -8,6 +8,8 @@ import {
   query,
   Timestamp,
   getDoc,
+  getDocs,
+  writeBatch,
 } from "firebase/firestore";
 import { db, auth, isFirebaseConfigured } from "./firebase";
 import type { Patient, Appointment, FinanceRecord, ClinicService, ScheduleBlock } from "../types";
@@ -197,6 +199,83 @@ export async function deleteScheduleBlock(id: string): Promise<void> {
   if (!isFirebaseConfigured || !db) return;
   if (!auth?.currentUser) throw new Error("Faça login para excluir blocos de agenda");
   await deleteDoc(doc(db, "scheduleBlocks", id));
+}
+
+// ============================================================
+// PUBLIC SCHEDULE BLOCKS (mirror for portal — safe fields only)
+// ============================================================
+
+export function logSyncError(context: string, error: unknown): void {
+  const msg = error instanceof Error ? error.message : String(error);
+  console.error(`[syncPublicScheduleBlocks] ${context}:`, msg);
+  if (!isFirebaseConfigured || !db) return;
+  const logRef = doc(collection(db, "systemLogs"));
+  setDoc(logRef, {
+    type: "sync_error",
+    context,
+    message: msg,
+    timestamp: new Date().toISOString(),
+    userId: auth?.currentUser?.uid || "unknown",
+  }).catch(() => {});
+}
+
+export async function syncPublicScheduleBlocks(): Promise<{ written: number; deleted: number }> {
+  if (!isFirebaseConfigured || !db) throw new Error("Firebase não configurado");
+  if (!auth?.currentUser) throw new Error("Faça login para sincronizar");
+
+  const sourceSnap = await getDocs(collection(db, "scheduleBlocks"));
+  const mirrorSnap = await getDocs(collection(db, "publicScheduleBlocks"));
+
+  const sourceIds = new Set<string>();
+  const batches: Promise<void>[] = [];
+
+  // Batch 1: upsert current scheduleBlocks → publicScheduleBlocks
+  let batch = writeBatch(db);
+  let batchCount = 0;
+  let written = 0;
+
+  for (const srcDoc of sourceSnap.docs) {
+    const data = srcDoc.data();
+    const { date, startTime, endTime } = data;
+    sourceIds.add(srcDoc.id);
+
+    if (!date || !startTime || !endTime) continue;
+
+    const mirrorRef = doc(db, "publicScheduleBlocks", srcDoc.id);
+    batch.set(mirrorRef, { date, startTime, endTime });
+    batchCount++;
+    written++;
+
+    if (batchCount >= 500) {
+      batches.push(batch.commit());
+      batch = writeBatch(db);
+      batchCount = 0;
+    }
+  }
+
+  // Batch 2: delete stale mirrors
+  let deleted = 0;
+  for (const mirrorDoc of mirrorSnap.docs) {
+    if (!sourceIds.has(mirrorDoc.id)) {
+      batch.delete(mirrorDoc.ref);
+      batchCount++;
+      deleted++;
+
+      if (batchCount >= 500) {
+        batches.push(batch.commit());
+        batch = writeBatch(db);
+        batchCount = 0;
+      }
+    }
+  }
+
+  if (batchCount > 0) {
+    batches.push(batch.commit());
+  }
+
+  await Promise.all(batches);
+  console.log(`[syncPublicScheduleBlocks] ${written} written, ${deleted} deleted`);
+  return { written, deleted };
 }
 
 // ============================================================

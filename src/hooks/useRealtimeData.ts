@@ -19,6 +19,8 @@ import {
   createScheduleBlock as fsCreateScheduleBlock,
   updateScheduleBlock as fsUpdateScheduleBlock,
   deleteScheduleBlock as fsDeleteScheduleBlock,
+  syncPublicScheduleBlocks,
+  logSyncError,
 } from "../services/firestoreService";
 import type { Patient, Appointment, FinanceRecord, ClinicService, ScheduleBlock } from "../types";
 import { auth } from "../services/firebase";
@@ -150,6 +152,19 @@ export function useRealtimeData(enabled = true) {
     for (const b of webAdminBlocks) merged.set(b.id, b);
     setScheduleBlocks(Array.from(merged.values()));
   }, [nativeBlocks, webAdminBlocks]);
+
+  // Auto-sync publicScheduleBlocks once on admin login
+  const hasSyncedRef = useRef(false);
+  useEffect(() => {
+    if (hasSyncedRef.current) return;
+    if (!firebaseUid) return;
+    if (nativeBlocks.length === 0) return;
+    hasSyncedRef.current = true;
+    console.warn("[useRealtimeData] Auto-syncing publicScheduleBlocks on admin login...");
+    syncPublicScheduleBlocks()
+      .then((r) => console.warn(`[useRealtimeData] Auto-sync OK: ${r.written} written, ${r.deleted} deleted`))
+      .catch((e) => logSyncError("autoSyncOnLogin", e));
+  }, [firebaseUid, nativeBlocks.length]);
 
   // ---- PATIENT HANDLERS ----
   const handleAddPatient = useCallback(async (newPatientData: Omit<Patient, "id" | "createdAt" | "footIssues" | "evolutions">): Promise<string> => {
@@ -382,6 +397,9 @@ export function useRealtimeData(enabled = true) {
       await fsCreateScheduleBlock(block);
       setSyncStatus("synced");
       setSyncError(null);
+      syncPublicScheduleBlocks().catch((e) =>
+        logSyncError("handleAddScheduleBlock", e)
+      );
     } catch (e: any) {
       console.error(e);
       setSyncStatus("error");
@@ -397,6 +415,9 @@ export function useRealtimeData(enabled = true) {
       await fsUpdateScheduleBlock(block);
       setSyncStatus("synced");
       setSyncError(null);
+      syncPublicScheduleBlocks().catch((e) =>
+        logSyncError("handleUpdateScheduleBlock", e)
+      );
     } catch (e: any) {
       console.error(e);
       setSyncStatus("error");
@@ -411,6 +432,9 @@ export function useRealtimeData(enabled = true) {
       await fsDeleteScheduleBlock(id);
       setSyncStatus("synced");
       setSyncError(null);
+      syncPublicScheduleBlocks().catch((e) =>
+        logSyncError("handleDeleteScheduleBlock", e)
+      );
     } catch (e: any) {
       console.error(e);
       setSyncStatus("error");

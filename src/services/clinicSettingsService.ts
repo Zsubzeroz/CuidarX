@@ -7,7 +7,7 @@ export interface ClinicSettings {
 }
 
 export const DEFAULT_CLINIC_SETTINGS: ClinicSettings = {
-  expedienteStart: "08:00",
+  expedienteStart: "07:00",
   expedienteEnd: "20:00",
 };
 

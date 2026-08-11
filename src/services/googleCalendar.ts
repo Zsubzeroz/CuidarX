@@ -316,6 +316,36 @@ export interface GoogleCalendarEvent {
 
 const SP_TZ_OFFSET = "-03:00";
 
+export function getEventLocalDate(isoString: string): string {
+  if (!isoString) return "";
+  try {
+    if (/^\d{4}-\d{2}-\d{2}$/.test(isoString)) {
+      return isoString;
+    }
+    const d = new Date(isoString);
+    if (isNaN(d.getTime())) return isoString.slice(0, 10);
+    const formatter = new Intl.DateTimeFormat("en-US", {
+      timeZone: "America/Sao_Paulo",
+      year: "numeric",
+      month: "2-digit",
+      day: "2-digit",
+    });
+    const parts = formatter.formatToParts(d);
+    let year = "", month = "", day = "";
+    for (const part of parts) {
+      if (part.type === "year") year = part.value;
+      if (part.type === "month") month = part.value;
+      if (part.type === "day") day = part.value;
+    }
+    if (year && month && day) {
+      return `${year}-${month}-${day}`;
+    }
+    return isoString.slice(0, 10);
+  } catch {
+    return isoString.slice(0, 10);
+  }
+}
+
 export function buildEventTimeRange(
   date: string,
   time: string,
@@ -434,6 +464,28 @@ export async function fetchGoogleCalendarEvents(
 
 export const BLOCK_EVENT_PREFIX = "Bloqueio:";
 export const BLOCK_COLOR_ID = "11"; // tomato/red — used to visually identify blocks in Google Calendar
+
+// ── Event Category by Google Calendar colorId ──
+export type EventCategory = "block" | "patient" | "personal" | "task" | "vacation";
+
+export const EVENT_CATEGORY_CONFIG: Record<
+  EventCategory,
+  { colorId: string | null; label: string; blocksPortal: boolean }
+> = {
+  block:    { colorId: "11", label: "Bloqueio",  blocksPortal: true },
+  personal: { colorId: "3",  label: "Família",    blocksPortal: true },
+  vacation: { colorId: "1",  label: "Férias",     blocksPortal: true },
+  task:     { colorId: "4",  label: "Tarefa",     blocksPortal: false },
+  patient:  { colorId: null, label: "Paciente",   blocksPortal: false },
+};
+
+export function getEventCategory(colorId?: string | null): EventCategory {
+  if (!colorId) return "patient";
+  for (const [cat, cfg] of Object.entries(EVENT_CATEGORY_CONFIG)) {
+    if (cfg.colorId === colorId) return cat as EventCategory;
+  }
+  return "patient";
+}
 
 export function isBlockEventSummary(summary: string | null | undefined): boolean {
   if (!summary) return false;
