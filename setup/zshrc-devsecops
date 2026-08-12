@@ -1,0 +1,323 @@
+# =============================================================================
+# ZSHRC - DEVSECOPS AMBIENTE (9Router + OpenCode)
+# =============================================================================
+# Copie este trecho para ~/.zshrc ou substitua todo o seu .zshrc
+# Requer: zsh, oh-my-zsh, starship, nvm, go, rust, pipx, docker
+# =============================================================================
+
+# ============================================
+# OH-MY-ZSH BASE
+# ============================================
+export ZSH="$HOME/.oh-my-zsh"
+
+ZSH_THEME="robbyrussell"  # Fallback se starship falhar
+
+plugins=(
+  git
+  zsh-autosuggestions
+  zsh-syntax-highlighting
+  zsh-completions
+  docker
+  docker-compose
+  golang
+  rust
+  cargo
+  python
+  pip
+  poetry
+  npm
+  node
+  fzf
+  z
+  sudo
+  command-not-found
+  history
+  copypath
+  copyfile
+)
+
+source $ZSH/oh-my-zsh.sh
+
+# ============================================
+# STARSHIP PROMPT
+# ============================================
+eval "$(starship init zsh)"
+
+# ============================================
+# ALIASES - OPENCODE & 9ROUTER
+# ============================================
+alias oficina="oficina"  # Já configurado pelo user
+alias oc="opencode"
+alias oc-up="opencode serve &"
+alias oc-status="opencode status 2>/dev/null || echo 'Verifique se o 9Router está rodando'"
+
+# ============================================
+# ALIASES - SEGURANÇA (SAST/SCA/Secrets)
+# ============================================
+alias sec-scan="semgrep --config=auto . && trivy fs --severity HIGH,CRITICAL . && gitleaks detect --verbose"
+alias sec-semgrep="semgrep --config=auto --error ."
+alias sec-trivy="trivy fs --severity MEDIUM,HIGH,CRITICAL ."
+alias sec-trivy-docker="trivy config --severity MEDIUM,HIGH,CRITICAL Dockerfile"
+alias sec-gitleaks="gitleaks detect --verbose --redact"
+alias sec-bandit="bandit -r . -f json -ll"
+alias sec-full="sec-scan && bandit -r src/ -ll && echo '✅ Scan completo'"
+alias sec-deps="pip-audit && npm audit --audit-level=high 2>/dev/null; echo '---'; trivy sbom $(syft . -o spdx-json) 2>/dev/null || trivy fs ."
+
+# ============================================
+# ALIASES - DOCKER
+# ============================================
+alias dk="docker"
+alias dkp="docker ps --format 'table {{.Names}}\t{{.Status}}\t{{.Ports}}'"
+alias dkc="docker compose"
+alias dkb="docker build --no-cache"
+alias dkrm="docker system prune -af && docker volume prune -f"
+alias dkl="docker logs -f --tail=100"
+alias dk-cleanup="docker system prune -af --volumes"
+alias trivy-img="trivy image --severity HIGH,CRITICAL"
+
+# ============================================
+# ALIASES - PRODUTIVIDADE CLI
+# ============================================
+# Modern replacements (exigem: cargo install bat fd-find eza ripgrep zoxide)
+alias ls="eza --icons --group-directories-first -a"
+alias ll="eza --icons --group-directories-first -la --git"
+alias lt="eza --icons --tree --level=3 --git-ignore"
+alias cat="bat --style=auto --theme=auto"
+alias find="fd"
+alias grep="rg"
+alias cd="z"
+alias top="btop"
+
+# ============================================
+# ALIASES - GIT
+# ============================================
+alias g="git"
+alias gs="git status --short"
+alias ga="git add"
+alias gc="git commit -m"
+alias gco="git checkout"
+alias gb="git branch -v"
+alias gl="git log --oneline --graph -15"
+alias gp="git push"
+alias gpf="git push --force-with-lease"
+alias gd="git diff --stat"
+alias gds="git diff --staged"
+alias gstash="git stash push -m"
+alias gpop="git stash pop"
+alias gpull="git pull --rebase origin $(git branch --show-current)"
+
+# ============================================
+# ALIASES - PYTHON / DEV
+# ============================================
+alias py="python3"
+alias pip="pip3"
+alias venv="python3 -m venv .venv && source .venv/bin/activate"
+alias activate="source .venv/bin/activate"
+alias run="python manage.py runserver 2>/dev/null || python3 main.py 2>/dev/null || python3 app.py"
+alias test="python3 -m pytest -v --tb=short"
+alias lint="ruff check . && ruff format --check ."
+alias fmt="ruff format . && ruff check --fix ."
+alias typecheck="mypy . --ignore-missing-imports"
+
+# ============================================
+# ALIASES - GO / RUST
+# ============================================
+alias gorun="go run ."
+alias gobuild="go build -o bin/ ./..."
+alias gotest="go test -v -race ./..."
+alias gomod="go mod tidy && go mod vendor"
+alias crun="cargo run"
+alias cbuild="cargo build --release"
+alias ctest="cargo test"
+alias cfmt="cargo fmt --all"
+alias clippy="cargo clippy --all-targets --all-features"
+
+# ============================================
+# ALIASES - UTILITÁRIOS
+# ============================================
+alias ports="ss -tlnp"
+alias myip="curl -s ifconfig.me"
+alias localip="ip -4 addr show | grep -oP '(?<=inet\s)\d+(\.\d+){3}' | grep -v 127.0.0.1 | head -1"
+alias weather="curl -s wttr.in/?format=3"
+alias hex="xxd | less"
+alias b64enc="base64 | pbcopy"
+alias b64dec="base64 -d | pbcopy"
+alias path='echo $PATH | tr ":" "\n" | nl'
+alias update="sudo apt update && sudo apt upgrade -y && pipx upgrade-all && cargo install --list | grep -q . && cargo install $(cargo install --list | grep -v : | tr -d ' ' | head -20) 2>/dev/null; echo '✅ Atualização completa'"
+
+# ============================================
+# ALIASES - PROJETO ESPECÍFICO (PODOLOGIA)
+# ============================================
+alias podologia="cd ~/Dev/podologia-fabrícia && oficina"
+alias pf-dev="cd ~/Dev/podologia-fabrícia && npm run dev 2>/dev/null || yarn dev"
+alias pf-build="cd ~/Dev/podologia-fabrícia && npm run build 2>/dev/null || yarn build"
+
+# ============================================
+# FUNÇÕES ÚTEIS
+# ============================================
+
+# Criar projeto seguro rápido
+newproject() {
+  local name=$1
+  local lang=${2:-python}
+  mkdir -p "$name" && cd "$name"
+  git init
+  case $lang in
+    python)
+      python3 -m venv .venv
+      touch .env .env.example README.md pyproject.toml .gitignore
+      cat > .gitignore << 'EOF'
+.venv/
+__pycache__/
+*.pyc
+.env
+.env.local
+*.egg-info/
+dist/
+build/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+EOF
+      echo "PROJECT_NAME=$name" > .env.example
+      echo "✅ Projeto Python criado: $name"
+      ;;
+    go)
+      go mod init "github.com/$name"
+      touch main.go .gitignore
+      echo "✅ Projeto Go criado: $name"
+      ;;
+    rust)
+      cargo init "$name" 2>/dev/null || (cargo init && cd -)
+      echo "✅ Projeto Rust criado: $name"
+      ;;
+    node|ts)
+      npm init -y
+      touch .env .env.example
+      echo "✅ Projeto Node criado: $name"
+      ;;
+  esac
+}
+
+# Scan rápido de segurança
+quick-scan() {
+  local target=${1:-.}
+  echo "🔍 Iniciando scan rápido em: $target"
+  echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+  echo "📋 [1/4] Semgrep (SAST)..."
+  semgrep --config=auto --error "$target" 2>/dev/null
+  echo ""
+  echo "🔑 [2/4] Gitleaks (Secrets)..."
+  gitleaks detect --path "$target" --verbose --redact 2>/dev/null
+  echo ""
+  echo "📦 [3/4] Trivy (Vulnerabilidades)..."
+  trivy fs --severity HIGH,CRITICAL "$target" 2>/dev/null
+  echo ""
+  echo "🐍 [4/4] Bandit (Python SAST)..."
+  bandit -r "$target" -ll --format json 2>/dev/null | jq -r '.results[] | "  ⚠️  \(.filename):\(.line_number) - \(.issue_text)"' 2>/dev/null
+  echo ""
+  echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+  echo "✅ Scan completo!"
+}
+
+# Docker scan
+dk-scan() {
+  local image=$1
+  if [ -z "$image" ]; then
+    echo "Uso: dk-scan <image:tag>"
+    return 1
+  fi
+  echo "🔍 Scanning image: $image"
+  trivy image --severity MEDIUM,HIGH,CRITICAL "$image"
+}
+
+# Git commit seguro (com pre-commit)
+gcs() {
+  local msg=$1
+  if [ -z "$msg" ]; then
+    echo "Uso: gcs 'message'"
+    return 1
+  fi
+  git add -A
+  pre-commit run --all-files && git commit -m "$msg" || echo "❌ Pre-commit falhou"
+}
+
+# Backup dotfiles rápido
+backup-dotfiles() {
+  local dir="$HOME/dotfiles-backup/$(date +%Y%m%d_%H%M%S)"
+  mkdir -p "$dir"
+  cp ~/.zshrc "$dir/"
+  cp ~/.gitconfig "$dir/"
+  cp ~/.config/opencode/opencode.json "$dir/"
+  cp ~/.config/starship.toml "$dir/" 2>/dev/null
+  cp ~/.pre-commit-config.yaml "$dir/" 2>/dev/null
+  echo "✅ Dotfiles salvos em: $dir"
+}
+
+# ============================================
+# VARIÁVEIS DE AMBIENTE
+# ============================================
+export EDITOR="nvim"
+export VISUAL="nvim"
+export PAGER="less"
+export LESS="-R"
+
+# NVM (Node Version Manager)
+export NVM_DIR="$HOME/.nvm"
+[ -s "$NVM_DIR/nvm.sh" ] && \. "$NVM_DIR/nvm.sh"
+[ -s "$NVM_DIR/bash_completion" ] && \. "$NVM_DIR/bash_completion"
+
+# Go
+export GOPATH="$HOME/go"
+export PATH="$GOPATH/bin:$PATH"
+
+# Rust / Cargo
+export CARGO_HOME="$HOME/.cargo"
+export PATH="$CARGO_HOME/bin:$PATH"
+
+# Python / Pipx
+export PATH="$HOME/.local/bin:$PATH"
+
+# Ollama
+export OLLAMA_HOST="127.0.0.1:11434"
+
+# Docker
+export DOCKER_BUILDKIT=1
+export COMPOSE_DOCKER_CLI_BUILD=1
+
+# ============================================
+# API KEYS (carregadas do .env.local se existir)
+# ============================================
+[ -f "$HOME/.env.local" ] && export $(grep -v '^#' "$HOME/.env.local" | xargs)
+
+# Exemplo: crie ~/.env.local com:
+# GROQ_API_KEY=gsk_...
+# GEMINI_API_KEY=AIza...
+# OPENROUTER_API_KEY=sk-or-...
+
+# ============================================
+# PLUGIN: zsh-autosuggestions (compilado)
+# ============================================
+[ -f ~/.oh-my-zsh/custom/plugins/zsh-autosuggestions/zsh-autosuggestions.zsh ] && \
+  source ~/.oh-my-zsh/custom/plugins/zsh-autosuggestions/zsh-autosuggestions.zsh
+
+# ============================================
+# PLUGIN: zsh-syntax-highlighting (compilado)
+# ============================================
+[ -f ~/.oh-my-zsh/custom/plugins/zsh-syntax-highlighting/zsh-syntax-highlighting.zsh ] && \
+  source ~/.oh-my-zsh/custom/plugins/zsh-syntax-highlighting/zsh-syntax-highlighting.zsh
+
+# ============================================
+# INICIALIZAÇÃO FINAL
+# ============================================
+# Carrega completions adicionais
+fpath+=${ZSH_CUSTOM:-${ZSH:-~/.oh-my-zsh}/custom}/plugins/zsh-completions/src
+
+# Ativa compinit (descomente se não estiver no oh-my-zsh)
+# autoload -Uz compinit && compinit
+
+# Mensagem de boas-vindas (só no primeiro terminal)
+if [ -z "$_GREETED" ]; then
+  export _GREETED=1
+  echo "🚀 Ambiente DevSecOps carregado | $(date '+%H:%M')"
+fi

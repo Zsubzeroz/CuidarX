@@ -1,0 +1,235 @@
+# .pre-commit-config.yaml
+# Ambiente: DevSecOps + 9Router + OpenCode
+# Stack: Python, JS/TS, Go, Rust + Docker
+repos:
+  # ============================================
+  # QUALIDADE BÁSICA
+  # ============================================
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v5.0.0
+    hooks:
+      - id: trailing-whitespace
+        args: ['--markdown-linebreak-ext=md']
+      - id: end-of-file-fixer
+      - id: check-yaml
+        args: ['--allow-multiple-documents']
+      - id: check-json
+        args: ['--pretty']
+      - id: check-toml
+      - id: check-xml
+      - id: check-merge-conflict
+      - id: check-added-large-files
+        args: ['--maxkb=500']
+      - id: detect-private-key
+      - id: no-commit-to-branch
+        args: ['--branch', 'main', '--branch', 'master']
+      - id: check-case-conflict
+      - id: mixed-line-ending
+        args: ['--fix=lf']
+      - id: check-executables-have-shebangs
+      - id: check-shebang-scripts-are-executable
+
+  # ============================================
+  # SEGURANÇA - SECRETS (CRÍTICO)
+  # ============================================
+  - repo: https://github.com/gitleaks/gitleaks
+    rev: v8.24.0
+    hooks:
+      - id: gitleaks
+        args: ['--redact', '--verbose']
+
+  - repo: https://github.com/Yelp/detect-secrets
+    rev: v1.5.0
+    hooks:
+      - id: detect-secrets
+        args: ['--baseline', '.secrets.baseline', '--list-all-plugins']
+        additional_dependencies: ['detect-secrets[all-plugins]']
+
+  # ============================================
+  # SEGURANÇA - SAST (Análise Estática)
+  # ============================================
+  - repo: https://github.com/returntocorp/semgrep
+    rev: v1.95.0
+    hooks:
+      - id: semgrep
+        args: [
+          '--config=auto',
+          '--error',
+          '--timeout=60',
+          '--max-target-bytes=1000000'
+        ]
+        exclude: (?x)(
+          .*\.min\.js$|
+          .*node_modules.*|
+          .*vendor.*|
+          .*\.lock$|
+          .*__pycache__.*
+        )
+        stages: [pre-commit]
+
+  # ============================================
+  # SEGURANÇA - PYTHON (Bandit + Safety)
+  # ============================================
+  - repo: https://github.com/PyCQA/bandit
+    rev: 1.8.3
+    hooks:
+      - id: bandit
+        args: [
+          '-r',
+          '--severity-level',
+          'medium',
+          '-f',
+          'json',
+          '-o',
+          'bandit-report.json'
+        ]
+        files: \.py$
+        exclude: (?x)(
+          .*test.*|
+          .*tests.*|
+          .*_test\.py$
+        )
+        additional_dependencies: ['bandit[toml]']
+
+  - repo: local
+    hooks:
+      - id: safety-check
+        name: safety-check-dependencies
+        entry: pipx run safety scan --output json
+        language: system
+        files: (requirements\.txt|setup\.py|setup\.cfg|pyproject\.toml)$
+        pass_filenames: false
+
+  # ============================================
+  # SEGURANÇA - DOCKER / IaC
+  # ============================================
+  - repo: https://github.com/aquasecurity/trivy
+    rev: 0.59.1
+    hooks:
+      - id: trivy-config
+        name: trivy-config-misconfiguration
+        args: ['--severity', 'MEDIUM,HIGH,CRITICAL', '--exit-code', '1']
+        types: [file]
+        files: (Dockerfile|\.dockerfile|docker-compose.*\.ya?ml|\.dockerignore)$
+        pass_filenames: false
+        entry: trivy config --quiet
+
+  - repo: local
+    hooks:
+      - id: trivy-image-scan
+        name: trivy-image-scan
+        entry: trivy image --severity HIGH,CRITICAL --exit-code 1
+        language: system
+        files: (Dockerfile|\.dockerfile)$
+        pass_filenames: false
+
+  # ============================================
+  # SEGURANÇA - GIT SECRETS (Hardcoded secrets)
+  # ============================================
+  - repo: https://github.com/awslabs/git-secrets
+    rev: 0.20.2
+    hooks:
+      - id: git-secrets
+        args: [
+          '--pre_commit',
+          '--allowed_filename', '\.env\.example',
+          '--allowed_filename', '\.env\.local\.example',
+          '--pattern', '(AKIA[0-9A-Z]{16})',
+          '--pattern', '(ghp_[A-Za-z0-9]{36})',
+          '--pattern', '(glpat-[A-Za-z0-9\-]{20,})',
+          '--pattern', '-----BEGIN (RSA |EC )?PRIVATE KEY-----'
+        ]
+        pass_filenames: false
+
+  # ============================================
+  # QUALIDADE - FORMATTING
+  # ============================================
+  # Black para Python
+  - repo: https://github.com/psf/black
+    rev: 25.1.0
+    hooks:
+      - id: black
+        args: ['--line-length=100', '--target-version=py312']
+        language_version: python3
+
+  # Ruff para Python (linting + isort)
+  - repo: https://github.com/astral-sh/ruff-pre-commit
+    rev: v0.9.10
+    hooks:
+      - id: ruff
+        args: ['--fix', '--show-fixes']
+        types_or: [python, pyi]
+      - id: ruff-format
+
+  # Prettier para JS/TS/JSON/YAML/MD
+  - repo: https://github.com/pre-commit/mirrors-prettier
+    rev: v4.0.0-alpha.8
+    hooks:
+      - id: prettier
+        types_or: [javascript, typescript, jsx, tsx, json, yaml, markdown, css, scss, html]
+
+  # ESLint para JS/TS
+  - repo: https://github.com/pre-commit/mirrors-eslint
+    rev: v9.22.0
+    hooks:
+      - id: eslint
+        files: \.(js|ts|jsx|tsx)$
+        types: [file]
+        additional_dependencies: [
+          'eslint@9.22.0',
+          '@typescript-eslint/eslint-plugin',
+          '@typescript-eslint/parser',
+          'eslint-config-prettier'
+        ]
+        args: ['--fix', '--max-warnings=0']
+
+  # ============================================
+  # QUALIDADE - PYTHON TYPE CHECKING
+  # ============================================
+  - repo: local
+    hooks:
+      - id: mypy-check
+        name: mypy-type-check
+        entry: pipx run mypy --ignore-missing-imports --no-error-summary
+        language: system
+        types: [python]
+        args: ['--strict']
+
+  # ============================================
+  # QUALIDADE - COMMIT MESSAGES (Conventional)
+  # ============================================
+  - repo: https://github.com/commitizen-tools/commitizen
+    rev: v4.4.1
+    hooks:
+      - id: commitizen
+        stages: [commit-msg]
+
+  # ============================================
+  # QUALIDADE - JSON SCHEMA VALIDATION
+  # ============================================
+  - repo: https://github.com/python-jsonschema/check-jsonschema
+    rev: 0.31.3
+    hooks:
+      - id: check-jsonschema
+        name: validate-github-workflows
+        args: ['--builtin-schema', 'vendor.github-workflows']
+        files: \.github/workflows/.*\.(yml|yaml)$
+      - id: check-jsonschema
+        name: validate-dependabot
+        args: ['--builtin-schema', 'vendor.dependabot']
+        files: \.github/dependabot\.yml$
+      - id: check-jsonschema
+        name: validate-renovate
+        args: ['--builtin-schema', 'https://docs.renovatebot.com/renovate-schema.json']
+        files: renovate\.json$
+
+  # ============================================
+  # QUALIDADE - TODO/FIXME TRACKING
+  # ============================================
+  - repo: local
+    hooks:
+      - id: check-todos
+        name: check-todo-fixme-hack
+        entry: bash -c 'grep -rn "TODO\|FIXME\|HACK\|XXX\|BUG" --include="*.py" --include="*.ts" --include="*.js" --include="*.go" --include="*.rs" . && echo "⚠️  TODOs found. Run: grep -rn TODO --include=\"*.{py,ts,js,go,rs}\" ." && exit 1 || exit 0'
+        language: system
+        pass_filenames: false
