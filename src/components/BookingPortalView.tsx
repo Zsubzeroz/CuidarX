@@ -642,16 +642,18 @@ export default function BookingPortalView({
       <>
       <div id="booking-portal-view" className="booking-portal-light min-h-screen bg-gradient-to-br from-emerald-50 to-white flex flex-col items-center justify-center p-3 sm:p-4">
         <div className="w-full max-w-lg">
-          <div className="flex flex-col items-center justify-center w-full text-center mb-3">
-            <img
-              src={logoFrGreen}
-              alt="Dra. Fabrícia Rodrigues"
-              className="w-20 h-20 sm:w-24 sm:h-24 rounded-full object-cover shadow-sm mx-auto block border-2 border-[#C9A227]/30"
-            />
-            <h1 className="text-xl sm:text-2xl font-bold text-slate-800 mt-2 tracking-tight">
+          <div className="w-full flex flex-col items-center justify-center text-center pt-6 pb-2 px-0 mx-0">
+            <div className="relative flex justify-center items-center w-full mb-3">
+              <img
+                src={logoFrGreen}
+                alt="Dra. Fabrícia Rodrigues"
+                className="w-20 h-20 sm:w-24 sm:h-24 rounded-full object-cover shadow-sm mx-auto block border-2 border-[#C9A227]/30 transform translate-x-1"
+              />
+            </div>
+            <h1 className="text-xl sm:text-2xl font-bold text-slate-800 tracking-tight w-full text-center">
               Dra. Fabrícia Rodrigues
             </h1>
-            <p className="text-xs text-emerald-700 font-medium">
+            <p className="text-xs text-emerald-700 font-medium w-full text-center mt-1">
               Agende sua consulta online
             </p>
           </div>
