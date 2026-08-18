@@ -1,0 +1,14 @@
+node_modules
+dist
+.git
+.github
+venv
+__pycache__
+*.pyc
+.firebase
+.idea
+.cursor
+android
+*.log
+.DS_Store
+opencode.json
