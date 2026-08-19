@@ -7,6 +7,7 @@ import {
   BLOCK_COLOR_ID,
   getEventLocalDate,
 } from "../services/googleCalendar";
+import { normalizeReason } from "../utils/normalizeReason";
 import {
   Calendar,
   Clock,
@@ -558,7 +559,7 @@ const DayColumn: React.FC<DayColumnProps> = ({
         !b.calendarEventId &&
         formatTimeStr(ge.start) === b.startTime &&
         formatTimeStr(ge.end) === b.endTime &&
-        (ge.summary || "").toLowerCase().includes((b.reason || "").toLowerCase())
+        normalizeReason(ge.summary).includes(normalizeReason(b.reason))
     );
     if (matchingBlock) return false;
     return true;
@@ -786,7 +787,7 @@ const MobileMonthCalendar: React.FC<MobileMonthCalendarProps> = ({
         if (seenCalIds.has(b.calendarEventId)) return false;
         seenCalIds.add(b.calendarEventId);
       }
-      const key = `${(b.reason || "").trim().toLowerCase()}`;
+      const key = normalizeReason(b.reason);
       if (seenReasons.has(key)) return false;
       seenReasons.add(key);
       return true;
@@ -799,7 +800,7 @@ const MobileMonthCalendar: React.FC<MobileMonthCalendarProps> = ({
       if (blockCalIds.has(ge.id)) return false;
       return !dayBlks.some(
         (b) => !b.calendarEventId &&
-          (ge.summary || "").toLowerCase().includes((b.reason || "").toLowerCase())
+          normalizeReason(ge.summary).includes(normalizeReason(b.reason))
       );
     });
     return { hasAppt, hasGoogle, hasBlock };
@@ -824,7 +825,7 @@ const MobileMonthCalendar: React.FC<MobileMonthCalendarProps> = ({
       if (seenCalIds.has(b.calendarEventId)) return false;
       seenCalIds.add(b.calendarEventId);
     }
-    const key = `${selectedDate}-${(b.reason || "").trim().toLowerCase()}`;
+    const key = `${selectedDate}-${normalizeReason(b.reason)}`;
     if (seenKeys.has(key)) return false;
     seenKeys.add(key);
     return true;
@@ -839,7 +840,7 @@ const MobileMonthCalendar: React.FC<MobileMonthCalendarProps> = ({
     const matchingBlock = dayBlocks.find(
       (b) =>
         !b.calendarEventId &&
-        (ge.summary || "").toLowerCase().includes((b.reason || "").toLowerCase())
+        normalizeReason(ge.summary).includes(normalizeReason(b.reason))
     );
     if (matchingBlock) return false;
     return true;

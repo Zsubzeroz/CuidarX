@@ -24,6 +24,7 @@ import {
   getEventLocalDate,
   type GoogleCalendarEvent,
 } from "./services/googleCalendar";
+import { normalizeReason } from "./utils/normalizeReason";
 import {
   createAppointment as fsCreateAppointment,
   deleteAppointment as fsDeleteAppointment,
@@ -691,12 +692,12 @@ export default function App() {
     const currentAppointments = appointmentsRef.current;
     const currentBlocks = scheduleBlocksRef.current;
 
-    // Classify events: colorId is primary, regex fallback for legacy events without colorId
+    // Classify events: personal patterns always block, regardless of colorId
     const classifyEvent = (ge: GoogleCalendarEvent) => {
+      if (isPersonalEvent(ge.summary)) return "personal";
       const colorCategory = getEventCategory(ge.colorId);
       if (colorCategory !== "patient") return colorCategory;
       if (isBlockEventSummary(ge.summary)) return "block";
-      if (isPersonalEvent(ge.summary)) return "personal";
       return "patient";
     };
 
@@ -776,7 +777,7 @@ export default function App() {
       const reason = parseBlockReason(ge.summary);
       const existing = currentBlocks.find((b) => b.calendarEventId === ge.id)
         || currentBlocks.find((b) =>
-          !b.calendarEventId && b.date === dateStr && b.reason === reason);
+          !b.calendarEventId && b.date === dateStr && normalizeReason(b.reason) === normalizeReason(reason));
 
       if (existing) {
         // Link calendarEventId if found via reason+date fallback

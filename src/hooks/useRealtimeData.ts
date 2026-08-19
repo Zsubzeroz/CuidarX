@@ -25,6 +25,7 @@ import {
 import type { Patient, Appointment, FinanceRecord, ClinicService, ScheduleBlock } from "../types";
 import { auth } from "../services/firebase";
 import { onAuthStateChange } from "../services/googleAuth";
+import { normalizeReason } from "../utils/normalizeReason";
 
 export function useRealtimeData(enabled = true) {
   const [patients, setPatients] = useState<Patient[]>([]);
@@ -151,7 +152,7 @@ export function useRealtimeData(enabled = true) {
     const merged = new Map<string, ScheduleBlock>();
     const seenSemantic = new Set<string>();
     for (const b of [...nativeBlocks, ...webAdminBlocks]) {
-      const reason = (b.reason || "").trim().toLowerCase();
+      const reason = normalizeReason(b.reason);
       const isRecurring = !!(b.recurrence && b.recurrence.frequency !== "none");
       // Recurring blocks: dedup by startTime-reason (date is just creation date)
       // Non-recurring blocks: dedup by date-startTime-reason
