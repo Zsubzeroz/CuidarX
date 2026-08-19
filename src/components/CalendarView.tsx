@@ -724,6 +724,25 @@ function getMonthDays(year: number, month: number): (string | null)[] {
   return cells;
 }
 
+// Expande bloqueios recorrentes para uma data específica
+const expandBlocksForDate = (blocks: ScheduleBlock[], date: string): ScheduleBlock[] => {
+  const dateObj = new Date(date + "T12:00:00-03:00");
+  const dayOfWeek = dateObj.getDay();
+
+  return blocks.filter((b) => {
+    if (b.date === date) return true;
+    if (b.recurrence && b.recurrence.frequency !== "none") {
+      const { frequency, daysOfWeek } = b.recurrence;
+      if (frequency === "diaria") return true;
+      if (frequency === "dias_uteis") return dayOfWeek >= 1 && dayOfWeek <= 5;
+      if ((frequency === "semanal" || frequency === "personalizada") && daysOfWeek?.length > 0) {
+        return daysOfWeek.includes(dayOfWeek);
+      }
+    }
+    return false;
+  });
+};
+
 const MobileMonthCalendar: React.FC<MobileMonthCalendarProps> = ({
   selectedDate, todayStr, onSelectDate,
   appointments, googleEvents, scheduleBlocks, patients,
@@ -759,8 +778,30 @@ const MobileMonthCalendar: React.FC<MobileMonthCalendarProps> = ({
 
   const hasEvents = (dateStr: string): { hasAppt: boolean; hasGoogle: boolean; hasBlock: boolean } => {
     const hasAppt = appointments.some((a) => a.date === dateStr && a.status !== "canceled");
-    const hasGoogle = googleEvents.some((ge) => getEventLocalDate(ge.start) === dateStr);
-    const hasBlock = scheduleBlocks.some((b) => b.date === dateStr);
+    const dayBlksRaw = expandBlocksForDate(scheduleBlocks, dateStr);
+    const seenCalIds = new Set<string>();
+    const seenReasons = new Set<string>();
+    const dayBlks = dayBlksRaw.filter((b) => {
+      if (b.calendarEventId) {
+        if (seenCalIds.has(b.calendarEventId)) return false;
+        seenCalIds.add(b.calendarEventId);
+      }
+      const key = `${(b.reason || "").trim().toLowerCase()}`;
+      if (seenReasons.has(key)) return false;
+      seenReasons.add(key);
+      return true;
+    });
+    const blockCalIds = new Set<string>();
+    dayBlks.forEach((b) => { if (b.calendarEventId) blockCalIds.add(b.calendarEventId); });
+    const hasBlock = dayBlks.length > 0;
+    const hasGoogle = googleEvents.some((ge) => {
+      if (getEventLocalDate(ge.start) !== dateStr) return false;
+      if (blockCalIds.has(ge.id)) return false;
+      return !dayBlks.some(
+        (b) => !b.calendarEventId &&
+          (ge.summary || "").toLowerCase().includes((b.reason || "").toLowerCase())
+      );
+    });
     return { hasAppt, hasGoogle, hasBlock };
   };
 
@@ -773,7 +814,36 @@ const MobileMonthCalendar: React.FC<MobileMonthCalendarProps> = ({
     .filter((ge) => getEventLocalDate(ge.start) === selectedDate)
     .sort((a, b) => (a.start || "").localeCompare(b.start || ""));
 
-  const dayBlocks = scheduleBlocks.filter((b) => b.date === selectedDate);
+  const dayBlocksRaw = expandBlocksForDate(scheduleBlocks, selectedDate);
+
+  // Defensive dedup: remove duplicate blocks (same calendarEventId or same date+reason)
+  const seenCalIds = new Set<string>();
+  const seenKeys = new Set<string>();
+  const dayBlocks = dayBlocksRaw.filter((b) => {
+    if (b.calendarEventId) {
+      if (seenCalIds.has(b.calendarEventId)) return false;
+      seenCalIds.add(b.calendarEventId);
+    }
+    const key = `${selectedDate}-${(b.reason || "").trim().toLowerCase()}`;
+    if (seenKeys.has(key)) return false;
+    seenKeys.add(key);
+    return true;
+  });
+
+  // Dedup: remove Google events that already exist as Firestore scheduleBlocks or appointments
+  const localCalendarEventIds = new Set<string>();
+  dayBlocks.forEach((b) => { if (b.calendarEventId) localCalendarEventIds.add(b.calendarEventId); });
+  dayAppointments.forEach((a) => { if (a.calendarEventId) localCalendarEventIds.add(a.calendarEventId); });
+  const dedupedGoogleEvents = dayGoogleEvents.filter((ge) => {
+    if (localCalendarEventIds.has(ge.id)) return false;
+    const matchingBlock = dayBlocks.find(
+      (b) =>
+        !b.calendarEventId &&
+        (ge.summary || "").toLowerCase().includes((b.reason || "").toLowerCase())
+    );
+    if (matchingBlock) return false;
+    return true;
+  });
 
   const selectedDateFormatted = (() => {
     const d = new Date(selectedDate + "T12:00:00");
@@ -880,7 +950,7 @@ const MobileMonthCalendar: React.FC<MobileMonthCalendarProps> = ({
           </div>
         ))}
 
-        {dayGoogleEvents.map((ge) => (
+        {dedupedGoogleEvents.map((ge) => (
           <div key={ge.id} className="flex items-center gap-2.5 p-2.5 rounded-xl bg-amber-50 border border-amber-100">
             <div className="w-1 self-stretch rounded-full bg-gold shrink-0" />
             <div className="flex-1 min-w-0">
@@ -1189,13 +1259,13 @@ export default function CalendarView({
     if (editingAppt) return;
     const hours = editingAppt
       ? dayHours
-      : dayHours.filter((h) => !getBlockForHour(h) && !getGoogleEventForHour(h));
+      : dayHours.filter((h) => !getFormBlockForHour(h, getServiceDuration()) && !getGoogleEventForHour(h));
     const first = hours[0];
     if (first && !hours.includes(time)) {
       setTime(first);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [selectedDate, googleEvents, scheduleBlocks]);
+  }, [selectedDate, formDate, googleEvents, scheduleBlocks, service]);
 
   // Local safety timeout for Google connect spinner (3s max)
   const [localConnecting, setLocalConnecting] = useState(false);
@@ -1662,29 +1732,8 @@ export default function CalendarView({
     }
   };
 
-  // Expande bloqueios recorrentes para a data selecionada
-  const expandBlocksForDate = (blocks: ScheduleBlock[], date: string): ScheduleBlock[] => {
-    const dateObj = new Date(date + "T12:00:00-03:00");
-    const dayOfWeek = dateObj.getDay();
-
-    return blocks.filter((b) => {
-      // Match direto por data (bloqueio pontual ou recorrente com data base)
-      if (b.date === date) return true;
-
-      // Bloqueio recorrente: verificar se o dia da semana bate
-      if (b.recurrence && b.recurrence.frequency !== "none") {
-        const { frequency, daysOfWeek } = b.recurrence;
-        if (frequency === "diaria") return true;
-        if (frequency === "dias_uteis") return dayOfWeek >= 1 && dayOfWeek <= 5;
-        if ((frequency === "semanal" || frequency === "personalizada") && daysOfWeek?.length > 0) {
-          return daysOfWeek.includes(dayOfWeek);
-        }
-      }
-      return false;
-    });
-  };
-
   const dayBlocks = expandBlocksForDate(scheduleBlocks, selectedDate);
+  const formDayBlocks = expandBlocksForDate(scheduleBlocks, formDate);
 
   const getBlockForHour = (hour: string) => {
     const [sh, sm] = hour.split(":").map(Number);
@@ -1695,6 +1744,19 @@ export default function CalendarView({
       const bStart = bh * 60 + bm;
       const bEnd = eh * 60 + em;
       return slotMin >= bStart && slotMin < bEnd;
+    });
+  };
+
+  const getFormBlockForHour = (hour: string, durationMin: number = 30) => {
+    const [sh, sm] = hour.split(":").map(Number);
+    const slotStart = sh * 60 + sm;
+    const slotEnd = slotStart + durationMin;
+    return formDayBlocks.find((b) => {
+      const [bh, bm] = b.startTime.split(":").map(Number);
+      const [eh, em] = b.endTime.split(":").map(Number);
+      const bStart = bh * 60 + bm;
+      const bEnd = eh * 60 + em;
+      return slotStart < bEnd && slotEnd > bStart;
     });
   };
 
@@ -1759,7 +1821,7 @@ export default function CalendarView({
   };
 
   const getTomorrowDateStr = () => {
-    const d = new Date(selectedDate + "T12:00:00-03:00");
+    const d = new Date(getTodayBR() + "T12:00:00-03:00");
     d.setDate(d.getDate() + 1);
     return toDateStrBR(d);
   };
@@ -1794,7 +1856,7 @@ export default function CalendarView({
     const [sh, sm] = hour.split(":").map(Number);
     const slotStart = sh * 60 + sm;
     const slotEnd = slotStart + 30;
-    const dayGoogleEvents = googleEvents.filter((ge) => getEventLocalDate(ge.start) === selectedDate);
+    const dayGoogleEvents = googleEvents.filter((ge) => getEventLocalDate(ge.start) === formDate);
     // Bloqueio RÍGIDO: o evento ocupa QUALQUER slot com sobreposição real de intervalo
     // (ex.: "Estágio 07:00–12:00" bloqueia 07:00, 07:30, ..., 11:30 — não apenas o início).
     return dayGoogleEvents.find((ge) => {
@@ -1859,7 +1921,7 @@ export default function CalendarView({
   // Ao editar, mantém todos para preservar o horário atual do agendamento.
   const availableHours = editingAppt
     ? dayHours
-    : dayHours.filter((h) => !getBlockForHour(h) && !getGoogleEventForHour(h));
+    : dayHours.filter((h) => !getFormBlockForHour(h, getServiceDuration()) && !getGoogleEventForHour(h));
   const formDayHours = availableHours.length >= 1 ? availableHours : dayHours;
 
   const ScheduleFormElement = (
@@ -3025,7 +3087,7 @@ export default function CalendarView({
 
           {/* Google Calendar events outside grid hours */}
           {(() => {
-            const dayGoogleEvents = googleEvents.filter((ge) => getEventLocalDate(ge.start) === selectedDate);
+    const dayGoogleEvents = googleEvents.filter((ge) => getEventLocalDate(ge.start) === formDate);
             const matchedGoogleIds = new Set<string>();
             dayGoogleEvents.forEach((ge) => {
               const geTime = formatGoogleTime(ge.start);

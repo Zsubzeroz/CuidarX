@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useRef } from "react";
 import { useRealtimeData } from "./hooks/useRealtimeData";
 import { useResponsive } from "./hooks/useResponsive";
+import { handleAuthCallbackRedirect } from "./services/tokenRelayService";
 import {
   isGoogleCalendarConfigured,
   isGoogleCalendarConnected,
@@ -48,6 +49,7 @@ import {
   loginWithFirebasePopup,
   loginWithFirebaseRedirect,
   handleFirebaseRedirectResult,
+  redirectToGoogleCalendarAuth,
   getCurrentUser,
   trySilentLogin,
   logout,
@@ -107,6 +109,15 @@ export default function App() {
 
   // Splash Screen — exibe na inicialização, desaparece após 2.5s
   const [showSplash, setShowSplash] = useState(true);
+  // Auth callback redirect: when OAuth redirects to our SPA with session_id + token
+  useEffect(() => {
+    handleAuthCallbackRedirect().then((handled) => {
+      if (handled) {
+        console.log("[App] Auth callback handled — token written to Firestore");
+      }
+    });
+  }, []);
+
   useEffect(() => {
     const timer = setTimeout(() => setShowSplash(false), 2500);
     return () => clearTimeout(timer);
@@ -285,6 +296,20 @@ export default function App() {
           setIsGoogleConnected(true);
         }
         setAuthChecking(false);
+        
+        // On Android: if no Calendar token, open OAuth in system browser
+        if (isNativePlatform() && !hasPersistedToken()) {
+          console.warn("[App] No Calendar token on Android — opening system browser for OAuth");
+          connectGoogleCalendar().then((token) => {
+            console.warn("[App] Calendar token obtained via system browser");
+            const today = new Date().toISOString().split("T")[0];
+            handleSyncGoogleEvents(today);
+          }).catch((err) => {
+            console.warn("[App] System browser OAuth failed:", err);
+          });
+          return;
+        }
+        
         const today = new Date().toISOString().split("T")[0];
         handleSyncGoogleEvents(today);
       } else if (!authResolved) {
@@ -304,6 +329,20 @@ export default function App() {
         setAuthChecking(false);
       }
     });
+
+    // Check for Firebase Auth redirect result (Google OAuth redirect on Android)
+    handleFirebaseRedirectResult().then((user) => {
+      if (!mounted) return;
+      if (user) {
+        console.warn("[App] Firebase redirect result: user returned from Google OAuth");
+        setAdminUser(user);
+        if (hasPersistedToken()) {
+          setIsGoogleConnected(true);
+          const today = new Date().toISOString().split("T")[0];
+          setTimeout(() => handleSyncGoogleEvents(today), 400);
+        }
+      }
+    }).catch(() => {});
 
     // Hard safety: if Firebase Auth never resolves, treat as "no session"
     const authSafetyTimer = setTimeout(() => {
@@ -363,11 +402,13 @@ export default function App() {
       const today = new Date().toISOString().split("T")[0];
       setTimeout(() => handleSyncGoogleEvents(today), 300);
     } catch (err: any) {
-      if (err.message === "REDIRECT_PENDING") {
-        console.log("[App] Redirect fallback in progress — token will be captured on return");
-        return;
+      if (err.message === "CONNECT_TIMEOUT") {
+        setAuthError("A janela do Google não respondeu. Tente novamente.");
+      } else if (err.message === "Popup bloqueado") {
+        setAuthError("Permita pop-ups para este site e tente novamente.");
+      } else {
+        console.error("Google Calendar connection failed:", err);
       }
-      console.error("Google Calendar connection failed:", err);
     } finally {
       setIsConnectingGoogle(false);
     }
@@ -408,10 +449,10 @@ export default function App() {
       if (typeof err?.message === "string" && err.message.startsWith("UNAUTHORIZED")) {
         const attemptedEmail = err.message.split(":")[1] || "desconhecido";
         setAuthError(`Acesso negado para: ${attemptedEmail}`);
-      } else if (err?.message === "REDIRECT_PENDING") {
-        return;
       } else if (err?.message === "Popup bloqueado") {
         setAuthError("Permita pop-ups para este site e tente novamente.");
+      } else if (err?.message === "CONNECT_TIMEOUT") {
+        setAuthError("A janela do Google não respondeu. Tente novamente.");
       } else {
         setAuthError("Não foi possível conectar com o Google. Tente novamente.");
       }
@@ -439,9 +480,28 @@ export default function App() {
       try {
         const user = await loginWithEmailPassword(loginEmail, loginPassword);
         setAdminUser(user);
-        setIsGoogleConnected(true);
-        const today = new Date().toISOString().split("T")[0];
-        setTimeout(() => handleSyncGoogleEvents(today), 400);
+        
+        // Verificar se há token Google Calendar persistido
+        if (hasPersistedToken()) {
+          console.warn("[App] Token Google Calendar persistido encontrado, sincronizando eventos...");
+          setIsGoogleConnected(true);
+          const today = new Date().toISOString().split("T")[0];
+          setTimeout(() => handleSyncGoogleEvents(today), 400);
+        } else {
+          console.warn("[App] Sem token Google Calendar, abrindo navegador do sistema...");
+          // GIS e signInWithRedirect não funcionam no WebView do Capacitor
+          // Abrir OAuth no navegador do sistema e relay via Firestore
+          try {
+            const token = await connectGoogleCalendar();
+            console.warn("[App] Calendar token obtido via navegador do sistema!");
+            setIsGoogleConnected(true);
+            const today = new Date().toISOString().split("T")[0];
+            setTimeout(() => handleSyncGoogleEvents(today), 400);
+          } catch (err: any) {
+            console.warn("[App] OAuth via navegador do sistema falhou:", err);
+            // Continua mesmo sem Calendar
+          }
+        }
       } catch (err: any) {
         if (typeof err?.message === "string" && err.message.startsWith("UNAUTHORIZED")) {
           setAuthError("Acesso negado. Use o email autorizado da clínica.");
@@ -467,8 +527,6 @@ export default function App() {
       if (typeof err?.message === "string" && err.message.startsWith("UNAUTHORIZED")) {
         const attemptedEmail = err.message.split(":")[1] || "desconhecido";
         setAuthError(`Acesso negado para ${attemptedEmail}. Use o e-mail autorizado da clínica.`);
-      } else if (err?.message === "REDIRECT_PENDING") {
-        return;
       } else if (err?.message === "Popup bloqueado") {
         setAuthError("Permita pop-ups para este site e tente novamente.");
       } else if (err?.message === "CONNECT_TIMEOUT") {
@@ -535,8 +593,31 @@ export default function App() {
         console.warn("[App] Permission denied — wrong account?");
         setGooglePermissionError(true);
         setGoogleEvents([]);
+        setIsGoogleConnected(false);
       } else if (err.message === "TOKEN_EXPIRED") {
-        console.warn("[App] Token expired — keeping existing events, will retry on next sync");
+        console.warn("[App] Token expired — attempting silent refresh...");
+        const refreshed = await silentConnectGoogle();
+        if (refreshed) {
+          console.warn("[App] Token refreshed, retrying sync...");
+          const today = new Date().toISOString().split("T")[0];
+          try {
+            const retryStart = new Date(date + "T12:00:00-03:00");
+            const retryYear = retryStart.getFullYear();
+            const retryMonth = retryStart.getMonth();
+            const retryStartDate = new Date(retryYear, retryMonth, 1, 0, 0, 0).toISOString();
+            const retryEndDate = new Date(retryYear, retryMonth + 1, 0, 23, 59, 59).toISOString();
+            const retryEvents = await fetchGoogleCalendarEvents(retryStartDate, retryEndDate);
+            setGoogleEvents(retryEvents);
+            if (retryEvents.length > 0) {
+              await syncGoogleEventsToFirestore(retryEvents);
+            }
+          } catch {
+            console.warn("[App] Retry after refresh also failed");
+          }
+        } else {
+          console.warn("[App] Silent refresh failed — token expired, user must reconnect");
+          setIsGoogleConnected(false);
+        }
       } else {
         console.error("[App] Error fetching Google Calendar events:", err);
       }
@@ -656,7 +737,7 @@ export default function App() {
           notes: ge.description || "",
           calendarEventId: ge.id,
           source: "google",
-          colorId: ge.colorId || undefined,
+          ...(ge.colorId ? { colorId: ge.colorId } : {}),
         });
       } catch (err) {
         console.error("Error saving Google event to Firestore:", err);
@@ -693,9 +774,19 @@ export default function App() {
       if (!dateStr) continue;
 
       const reason = parseBlockReason(ge.summary);
-      const existing = currentBlocks.find((b) => b.calendarEventId === ge.id);
+      const existing = currentBlocks.find((b) => b.calendarEventId === ge.id)
+        || currentBlocks.find((b) =>
+          !b.calendarEventId && b.date === dateStr && b.reason === reason);
 
       if (existing) {
+        // Link calendarEventId if found via reason+date fallback
+        if (!existing.calendarEventId) {
+          try {
+            await fsUpdateScheduleBlock({ ...existing, calendarEventId: ge.id });
+          } catch (err) {
+            console.error("Error linking calendarEventId:", err);
+          }
+        }
         // Update the local copy when the event changed in Google Calendar
         if (
           existing.date !== dateStr ||
@@ -728,7 +819,7 @@ export default function App() {
           createdAt: new Date().toISOString(),
           calendarEventId: ge.id,
           source: "google",
-          colorId: ge.colorId || undefined,
+          ...(ge.colorId ? { colorId: ge.colorId } : {}),
         });
       } catch (err) {
         console.error("Error saving Google block to Firestore:", err);

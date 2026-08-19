@@ -39,36 +39,37 @@ export function useRealtimeData(enabled = true) {
   const [syncError, setSyncError] = useState<string | null>(null);
   const cleanupRef = useRef<(() => void) | null>(null);
   const [firebaseUid, setFirebaseUid] = useState<string | null>(null);
+  const firebaseUidRef = useRef<string | null>(null);
   const listenersStartedRef = useRef(false);
 
   // Track Firebase Auth state internally.
-  // When auth state changes (null → user after login), listeners restart.
+  // Use ref to avoid restarting listeners when uid changes.
   useEffect(() => {
     return onAuthStateChange((user) => {
       const uid = user?.uid ?? null;
       console.warn(`[useRealtimeData] onAuthStateChanged: uid=${uid}`);
+      firebaseUidRef.current = uid;
       setFirebaseUid(uid);
     });
   }, []);
 
-  // Start/restart listeners when:
-  // 1. enabled becomes true (Auth confirmed session state)
-  // 2. firebaseUid changes (user logged in or logged out → restart with correct permissions)
+  // Start/restart listeners when enabled becomes true.
+  // Use firebaseUidRef to avoid unnecessary restarts.
   useEffect(() => {
     if (!enabled) {
       console.warn("[useRealtimeData] not enabled, skipping listeners");
       return;
     }
 
-    const hasUser = !!firebaseUid || !!auth?.currentUser;
-    console.warn(`[useRealtimeData] starting listeners (enabled=${enabled}, firebaseUid=${firebaseUid}, auth.currentUser=${!!auth?.currentUser})`);
+    const hasUser = !!firebaseUidRef.current || !!auth?.currentUser;
+    console.warn(`[useRealtimeData] starting listeners (enabled=${enabled}, hasUser=${hasUser})`);
 
     cleanupRef.current?.();
     startListeners(hasUser);
 
     return () => { cleanupRef.current?.(); };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [enabled, firebaseUid]);
+  }, [enabled]);
 
   // Cleanup listeners on unmount
   useEffect(() => {
@@ -95,13 +96,13 @@ export function useRealtimeData(enabled = true) {
       }
     };
 
-    // Safety timeout: force-load after 3s even if some listeners haven't responded
+    // Safety timeout: force-load after 8s even if some listeners haven't responded
     const safetyTimer = setTimeout(() => {
       if (loadedCount < totalCollections) {
         console.warn(`[useRealtimeData] Safety timeout: only ${loadedCount}/${totalCollections} collections loaded, forcing UI ready`);
         setIsLoading(false);
       }
-    }, 3000);
+    }, 8000);
 
     const unsubPatients = listenPatients(
       (data) => { console.warn(`[useRealtimeData] patients OK: ${data.length}`); setPatients(data); setSyncStatus("synced"); setSyncError(null); checkLoaded(); },
@@ -148,8 +149,20 @@ export function useRealtimeData(enabled = true) {
   // Merge native scheduleBlocks + web admin blockedDays into unified scheduleBlocks
   useEffect(() => {
     const merged = new Map<string, ScheduleBlock>();
-    for (const b of nativeBlocks) merged.set(b.id, b);
-    for (const b of webAdminBlocks) merged.set(b.id, b);
+    const seenSemantic = new Set<string>();
+    for (const b of [...nativeBlocks, ...webAdminBlocks]) {
+      const reason = (b.reason || "").trim().toLowerCase();
+      const isRecurring = !!(b.recurrence && b.recurrence.frequency !== "none");
+      // Recurring blocks: dedup by startTime-reason (date is just creation date)
+      // Non-recurring blocks: dedup by date-startTime-reason
+      const key = isRecurring
+        ? `${b.startTime}-${reason}`
+        : `${b.date}-${b.startTime}-${reason}`;
+      if (seenSemantic.has(key)) continue;
+      seenSemantic.add(key);
+      if (merged.has(b.id)) continue;
+      merged.set(b.id, b);
+    }
     setScheduleBlocks(Array.from(merged.values()));
   }, [nativeBlocks, webAdminBlocks]);
 

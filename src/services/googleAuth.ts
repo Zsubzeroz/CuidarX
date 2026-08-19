@@ -117,6 +117,14 @@ export function loginWithFirebaseRedirect(): void {
   signInWithRedirect(auth, googleProvider);
 }
 
+export async function redirectToGoogleCalendarAuth(): Promise<void> {
+  const provider = new GoogleAuthProvider();
+  provider.addScope("https://www.googleapis.com/auth/calendar");
+  provider.addScope("https://www.googleapis.com/auth/calendar.events");
+  provider.addScope("https://www.googleapis.com/auth/calendar.readonly");
+  await signInWithRedirect(auth, provider);
+}
+
 export async function handleFirebaseRedirectResult(): Promise<AdminUser | null> {
   try {
     const result = await getRedirectResult(auth);
@@ -125,6 +133,10 @@ export async function handleFirebaseRedirectResult(): Promise<AdminUser | null> 
     if (!user?.email || !isAuthorizedEmail(user.email)) {
       await firebaseSignOut(auth);
       throw new Error("UNAUTHORIZED:" + (user?.email || "unknown"));
+    }
+    const credential = GoogleAuthProvider.credentialFromResult(result);
+    if (credential?.accessToken) {
+      persistGoogleToken(credential.accessToken);
     }
     const adminUser = firebaseUserToAdminUser(user);
     saveAdminUser(adminUser);

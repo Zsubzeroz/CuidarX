@@ -152,14 +152,19 @@ export async function silentConnectGoogle(): Promise<boolean> {
   if (!CLIENT_ID) { console.warn("[GoogleCalendar] silentConnectGoogle: no CLIENT_ID"); return false; }
   if (accessToken) { console.warn("[GoogleCalendar] silentConnectGoogle: already have token"); return true; }
 
-  // GIS (Google Identity Services) popup-based auth does not work in Android WebView.
-  // On native platforms, the user must connect via Firebase Auth (email/password) and
-  // Google Calendar access must be handled separately (e.g. server-side or OAuth redirect).
+  // On native platforms, first try to restore a persisted token quickly
   if (isNativePlatform()) {
-    console.warn("[GoogleCalendar] silentConnectGoogle: native platform, GIS not available — returning false");
-    return false;
+    if (hasPersistedToken()) {
+      const stored = localStorage.getItem(TOKEN_STORAGE_KEY);
+      if (stored) {
+        accessToken = stored;
+        console.warn("[GoogleCalendar] silentConnectGoogle: restored persisted token");
+        return true;
+      }
+    }
   }
 
+  // Try GIS silent connect on ALL platforms (popup works in Capacitor WebView via Chrome)
   try {
     console.warn("[GoogleCalendar] silentConnectGoogle: loading GIS...");
     await loadGIScript();
@@ -215,23 +220,16 @@ export async function connectGoogleCalendar(): Promise<string> {
   setConnecting(true);
 
   try {
+    // On native: open OAuth in system browser, relay token via Firestore
+    if (isNativePlatform()) {
+      const token = await connectGoogleCalendarNative();
+      setConnecting(false);
+      return token;
+    }
+
+    // Web: use GIS popup
     await loadGIScript();
     const client = await getTokenClient();
-
-    // No Android (Capacitor), popup não funciona — redireciona direto
-    if (isNativePlatform()) {
-      const authUrl =
-        `https://accounts.google.com/o/oauth2/v2/auth` +
-        `?client_id=${encodeURIComponent(CLIENT_ID)}` +
-        `&redirect_uri=${encodeURIComponent(window.location.href)}` +
-        `&response_type=token` +
-        `&scope=${encodeURIComponent(SCOPES)}` +
-        `&prompt=consent` +
-        `&include_granted_scopes=true`;
-      window.location.href = authUrl;
-      // A app vai recarregar e extractTokenFromUrl() vai extrair o token
-      throw new Error("REDIRECT_PENDING");
-    }
 
     const token = await Promise.race([
       requestToken(client),
@@ -249,6 +247,41 @@ export async function connectGoogleCalendar(): Promise<string> {
   }
 }
 
+async function connectGoogleCalendarNative(): Promise<string> {
+  const { generateSessionId, pollTokenFromFirestore } = await import("./tokenRelayService");
+  const { Browser } = await import("@capacitor/browser");
+  const { App } = await import("@capacitor/app");
+
+  const sessionId = generateSessionId();
+  const redirectUri = "https://podologa-fabricia.web.app";
+
+  const authUrl =
+    `https://accounts.google.com/o/oauth2/v2/auth` +
+    `?client_id=${encodeURIComponent(CLIENT_ID)}` +
+    `&redirect_uri=${encodeURIComponent(redirectUri)}` +
+    `&response_type=token` +
+    `&scope=${encodeURIComponent(SCOPES)}` +
+    `&prompt=consent` +
+    `&include_granted_scopes=true` +
+    `&state=${encodeURIComponent(sessionId)}`;
+
+  console.warn("[GoogleCalendar] Opening system browser for OAuth...");
+  await Browser.open({ url: authUrl });
+
+  // Poll Firestore for the token (written by SPA at redirect_uri)
+  console.warn("[GoogleCalendar] Polling Firestore for token...");
+  const token = await pollTokenFromFirestore(sessionId, 120000);
+
+  await Browser.close().catch(() => {});
+
+  if (!token) {
+    throw new Error("CONNECT_TIMEOUT");
+  }
+
+  saveToken(token);
+  return token;
+}
+
 function requestToken(client: any): Promise<string> {
   return new Promise((resolve, reject) => {
     client.callback = (response: any) => {
@@ -264,12 +297,7 @@ function requestToken(client: any): Promise<string> {
     };
 
     try {
-      // No Android (Capacitor), popup não funciona — usa redirect
-      if (isNativePlatform()) {
-        client.requestAccessToken({ prompt: "consent", ux_mode: "redirect", redirect_uri: window.location.origin });
-      } else {
-        client.requestAccessToken({ prompt: "consent" });
-      }
+      client.requestAccessToken({ prompt: "consent" });
     } catch (e) {
       reject(new Error("Popup bloqueado"));
     }
@@ -299,6 +327,10 @@ export function disconnectGoogleCalendar(): void {
     localStorage.removeItem(TOKEN_STORAGE_KEY);
     localStorage.removeItem(TOKEN_EXPIRY_KEY);
   } catch {}
+}
+
+export async function renewTokenOnNative(): Promise<boolean> {
+  return silentConnectGoogle();
 }
 
 export interface GoogleCalendarEvent {
