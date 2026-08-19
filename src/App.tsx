@@ -677,7 +677,6 @@ export default function App() {
     /almoco/i, /almoço/i, /hamburger/i,
     /estagio/i, /estágio/i, /ubs/i,
     /pilates/i,
-    /reuniao/i, /reunião/i, /igreja/i, /oracao/i, /oração/i,
     /mamae/i, /mamãe/i,
     /feriado/i, /dia dos pais/i, /assumption/i,
     /birthday/i, /aniversario/i, /aniversário/i,

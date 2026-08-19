@@ -242,7 +242,7 @@ const getEventColors = (
     }
     if (type === "google") {
       const summary = ((evt as any).summary || "").toLowerCase();
-      const isRoutine = /estágio|estagio|almoco|almoço|pilates|reunião|reuniao|bloqueio|feriado|férias|ferias|médico|medico/i.test(summary);
+      const isRoutine = /estágio|estagio|almoco|almoço|pilates|bloqueio|feriado|férias|ferias|médico|medico/i.test(summary);
       if (isRoutine) {
         return { bg: "bg-rose-100", border: "border-l-4 border-rose-600", text: "text-rose-900" };
       }
