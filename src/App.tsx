@@ -842,6 +842,20 @@ export default function App() {
       }
     }
 
+    // Remove Google-sourced blocks whose reason no longer maps to a block category
+    // (e.g. reunião/igreja/oração were moved from personal to non-block)
+    const REMOVED_BLOCK_REASONS = [/reunião/i, /reunião/i, /igreja/i, /oração/i, /oracao/i];
+    for (const block of currentBlocks) {
+      if (block.source === "google" && REMOVED_BLOCK_REASONS.some((p) => p.test(block.reason || ""))) {
+        try {
+          await fsDeleteScheduleBlock(block.id);
+          console.log(`[App] Removed stale block "${block.reason}" (no longer a block category)`);
+        } catch (err) {
+          console.error("Error removing stale reason-based block:", err);
+        }
+      }
+    }
+
     syncPublicScheduleBlocks().catch((e) =>
       logSyncError("syncGoogleCalendar", e)
     );
