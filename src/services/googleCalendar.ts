@@ -498,17 +498,18 @@ export const BLOCK_EVENT_PREFIX = "Bloqueio:";
 export const BLOCK_COLOR_ID = "11"; // tomato/red — used to visually identify blocks in Google Calendar
 
 // ── Event Category by Google Calendar colorId ──
-export type EventCategory = "block" | "patient" | "personal" | "task" | "vacation";
+export type EventCategory = "block" | "patient" | "personal" | "task" | "vacation" | "commitment";
 
 export const EVENT_CATEGORY_CONFIG: Record<
   EventCategory,
-  { colorId: string | null; label: string; blocksPortal: boolean }
+  { colorId: string | null; label: string; blocksPortal: boolean; syncToAppointments: boolean }
 > = {
-  block:    { colorId: "11", label: "Bloqueio",  blocksPortal: true },
-  personal: { colorId: "3",  label: "Família",    blocksPortal: true },
-  vacation: { colorId: "1",  label: "Férias",     blocksPortal: true },
-  task:     { colorId: "4",  label: "Tarefa",     blocksPortal: false },
-  patient:  { colorId: null, label: "Paciente",   blocksPortal: false },
+  block:      { colorId: "11", label: "Bloqueio",  blocksPortal: true,  syncToAppointments: false },
+  personal:   { colorId: "3",  label: "Família",    blocksPortal: true,  syncToAppointments: false },
+  vacation:   { colorId: "1",  label: "Férias",     blocksPortal: true,  syncToAppointments: false },
+  task:       { colorId: "4",  label: "Tarefa",     blocksPortal: false, syncToAppointments: true },
+  commitment: { colorId: null, label: "Compromisso", blocksPortal: false, syncToAppointments: false },
+  patient:    { colorId: null, label: "Paciente",   blocksPortal: false, syncToAppointments: true },
 };
 
 export function getEventCategory(colorId?: string | null): EventCategory {

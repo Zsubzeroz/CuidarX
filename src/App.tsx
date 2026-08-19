@@ -682,9 +682,20 @@ export default function App() {
     /birthday/i, /aniversario/i, /aniversário/i,
   ];
 
+  const COMMITMENT_PATTERNS = [
+    /reunião/i, /reunião/i, /reuniao/i,
+    /igreja/i, /oração/i, /oracao/i,
+    /estudo/i,
+  ];
+
   const isPersonalEvent = (summary: string | null | undefined): boolean => {
     if (!summary) return false;
     return PERSONAL_EVENT_PATTERNS.some((p) => p.test(summary));
+  };
+
+  const isCommitmentEvent = (summary: string | null | undefined): boolean => {
+    if (!summary) return false;
+    return COMMITMENT_PATTERNS.some((p) => p.test(summary));
   };
 
   const syncGoogleEventsToFirestore = async (events: GoogleCalendarEvent[]) => {
@@ -694,6 +705,7 @@ export default function App() {
     // Classify events: personal patterns always block, regardless of colorId
     const classifyEvent = (ge: GoogleCalendarEvent) => {
       if (isPersonalEvent(ge.summary)) return "personal";
+      if (isCommitmentEvent(ge.summary)) return "commitment";
       const colorCategory = getEventCategory(ge.colorId);
       if (colorCategory !== "patient") return colorCategory;
       if (isBlockEventSummary(ge.summary)) return "block";
@@ -718,6 +730,9 @@ export default function App() {
 
     for (const ge of nonBlockEvents) {
       if (existingCalendarEventIds.has(ge.id)) continue;
+      const cat = classifyEvent(ge);
+      const cfg = EVENT_CATEGORY_CONFIG[cat as keyof typeof EVENT_CATEGORY_CONFIG];
+      if (cfg && !cfg.syncToAppointments) continue;
 
       const dateStr = getEventLocalDate(ge.start);
       const timeStr = ge.start && ge.start.length > 10 ? ge.start.slice(11, 16) : "00:00";
@@ -756,6 +771,20 @@ export default function App() {
           await fsDeleteAppointment(appt.id);
         } catch (err) {
           console.error("Error removing stale Google appointment:", err);
+        }
+      }
+    }
+
+    // Remove Google-sourced appointments for events that are now "commitment" (not synced)
+    for (const appt of currentAppointments) {
+      if (appt.source === "google" && appt.calendarEventId) {
+        const matchingEvent = events.find((ge) => ge.id === appt.calendarEventId);
+        if (matchingEvent && classifyEvent(matchingEvent) === "commitment") {
+          try {
+            await fsDeleteAppointment(appt.id);
+          } catch (err) {
+            console.error("Error removing commitment appointment:", err);
+          }
         }
       }
     }
