@@ -3,6 +3,7 @@ import { collection, query, where, getDocs, limit } from "firebase/firestore";
 import { db, isFirebaseConfigured } from "../services/firebase";
 import { sanitizePhone, formatPhoneBR, isValidPhoneBR } from "../utils/sanitize";
 import { generateICSFile } from "../utils/generateICS";
+import { generateGoogleCalendarLink } from "../utils/generateGoogleCalendarLink";
 import type { Appointment } from "../types";
 
 const CLINIC_ADDRESS = "Rua Exemplo, 123 — Centro, Cidade/UF";
@@ -266,23 +267,41 @@ export default function ConsultarAgendamento() {
                       </div>
                     </div>
 
-                    <button
-                      onClick={() =>
-                        generateICSFile({
+                    <div className="mt-3 flex gap-2">
+                      <a
+                        href={generateGoogleCalendarLink({
                           date: item.appointment.date,
                           time: item.appointment.time,
                           procedure: item.appointment.service,
-                          patientName: item.patientName,
                           location: CLINIC_ADDRESS,
-                        })
-                      }
-                      className="mt-3 w-full bg-[#C8A45A] hover:bg-[#A8833C] text-white font-bold py-2.5 rounded-xl text-xs shadow-sm hover:shadow transition-all cursor-pointer min-h-[42px] flex items-center justify-center gap-1.5"
-                    >
-                      <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                        <path strokeLinecap="round" strokeLinejoin="round" d="M6.75 3v2.25M17.25 3v2.25M3 18.75V7.5a2.25 2.25 0 012.25-2.25h13.5A2.25 2.25 0 0121 7.5v11.25m-18 0A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75m-18 0v-7.5A2.25 2.25 0 015.25 9h13.5A2.25 2.25 0 0121 11.25v7.5" />
-                      </svg>
-                      Adicionar à agenda
-                    </button>
+                        })}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="flex-1 bg-[#C8A45A] hover:bg-[#A8833C] text-white font-bold py-2.5 rounded-xl text-xs shadow-sm hover:shadow transition-all cursor-pointer min-h-[42px] flex items-center justify-center gap-1.5"
+                      >
+                        <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                          <path strokeLinecap="round" strokeLinejoin="round" d="M6.75 3v2.25M17.25 3v2.25M3 18.75V7.5a2.25 2.25 0 012.25-2.25h13.5A2.25 2.25 0 0121 7.5v11.25m-18 0A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75m-18 0v-7.5A2.25 2.25 0 015.25 9h13.5A2.25 2.25 0 0121 11.25v7.5" />
+                        </svg>
+                        Google Agenda
+                      </a>
+                      <button
+                        onClick={() =>
+                          generateICSFile({
+                            date: item.appointment.date,
+                            time: item.appointment.time,
+                            procedure: item.appointment.service,
+                            patientName: item.patientName,
+                            location: CLINIC_ADDRESS,
+                          })
+                        }
+                        className="flex-1 bg-white border-2 border-slate-200 text-slate-700 hover:bg-slate-50 font-bold py-2.5 rounded-xl text-xs shadow-sm hover:shadow transition-all cursor-pointer min-h-[42px] flex items-center justify-center gap-1.5"
+                      >
+                        <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                          <path strokeLinecap="round" strokeLinejoin="round" d="M3 16.5v2.25A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75V16.5M16.5 12L12 16.5m0 0L7.5 12m4.5 4.5V3" />
+                        </svg>
+                        Baixar .ics
+                      </button>
+                    </div>
                   </div>
                 ))}
               </div>
@@ -300,7 +319,7 @@ export default function ConsultarAgendamento() {
       </a>
 
       <p className="text-[10px] text-slate-400 text-center mt-6">
-        © 2026 Clínica Dra. Fabrícia Rodrigues. Todos os direitos reservados.
+        © 2026 Clínica Dra. Fabrícia Rodrigues. Todos os direitos reservados. • Desenvolvido por Luan Estifer Rodrigues Pereira (Software Engineer).
       </p>
     </div>
   );

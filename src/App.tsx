@@ -106,13 +106,14 @@ import {
 } from "lucide-react";
 
 export default function App() {
-  // Detect /cliente route — render full-screen public booking portal, no admin chrome
-  const isClienteRoute = typeof window !== "undefined" && window.location.pathname === "/cliente";
+  // Detect /cliente routes — render public pages with no admin chrome, no auth, no Google Calendar
+  const isClienteRoute = typeof window !== "undefined" && window.location.pathname.startsWith("/cliente");
 
   // Splash Screen — exibe na inicialização, desaparece após 2.5s
   const [showSplash, setShowSplash] = useState(true);
   // Auth callback redirect: when OAuth redirects to our SPA with session_id + token
   useEffect(() => {
+    if (isClienteRoute) return;
     handleAuthCallbackRedirect().then((handled) => {
       if (handled) {
         console.log("[App] Auth callback handled — token written to Firestore");
@@ -248,11 +249,13 @@ export default function App() {
 
   // Register connecting callback
   useEffect(() => {
+    if (isClienteRoute) return;
     onConnectingGoogleChange(setIsConnectingGoogle);
   }, []);
 
   // Register onTokenAcquired for fallback redirect flow
   useEffect(() => {
+    if (isClienteRoute) return;
     onTokenAcquired((token) => {
       console.log("[App] Token acquired (fallback redirect), syncing...");
       setIsGoogleConnected(true);

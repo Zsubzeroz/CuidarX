@@ -9,7 +9,7 @@ import {
   query,
   where,
 } from "firebase/firestore";
-import { sanitizeName, sanitizePhone, sanitizeNotes, formatPhoneBR } from "../utils/sanitize";
+import { sanitizeName, sanitizeNameRaw, sanitizePhone, sanitizeNotes, sanitizeNotesRaw, formatPhoneBR } from "../utils/sanitize";
 import {
   Globe,
   Smartphone,
@@ -226,9 +226,9 @@ export default function BookingPortalView({
       return serviceDefaults[serviceName]?.duration || 45;
     };
 
-    // 1. Google Calendar — opcional, não bloqueia
+    // 1. Google Calendar — opcional, não bloqueia (skip in clientMode — no admin token)
     try {
-      if (isGoogleCalendarConnected()) {
+      if (!clientMode && isGoogleCalendarConnected()) {
         const timeMin = `${selectedDate}T00:00:00-03:00`;
         const timeMax = `${selectedDate}T23:59:59-03:00`;
         const events = await fetchGoogleCalendarEvents(timeMin, timeMax);
@@ -414,7 +414,7 @@ export default function BookingPortalView({
           isGoogleCalendarConnected: gcalConnected,
           buildEventTimeRange,
         } = await import("../services/googleCalendar");
-        if (gcalConnected()) {
+        if (!clientMode && gcalConnected()) {
           const { start: dtStart, end: dtEnd } = buildEventTimeRange(date, time, durationMin);
           const summary = `${service} - ${safeName}`;
           const description =
@@ -703,7 +703,7 @@ export default function BookingPortalView({
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                     <div>
                       <label className="block text-[11px] font-extrabold text-brand uppercase tracking-wider mb-1.5">Nome Completo</label>
-                      <input type="text" required placeholder="Ex: Roberto Carlos" value={name} onChange={(e) => setName(sanitizeName(e.target.value))} className="w-full text-[16px] sm:text-sm p-3 border-2 border-slate-200 rounded-xl focus:outline-none focus:border-brand focus:ring-0 transition-colors min-h-[48px]" />
+                      <input type="text" required placeholder="Ex: Roberto Carlos" value={name} onChange={(e) => setName(sanitizeNameRaw(e.target.value))} className="w-full text-[16px] sm:text-sm p-3 border-2 border-slate-200 rounded-xl focus:outline-none focus:border-brand focus:ring-0 transition-colors min-h-[48px]" />
                     </div>
                     <div>
                       <label className="block text-[11px] font-extrabold text-brand uppercase tracking-wider mb-1.5">Celular / WhatsApp</label>
@@ -876,7 +876,7 @@ export default function BookingPortalView({
 
                   <div>
                     <label className="block text-[11px] font-extrabold text-brand uppercase tracking-wider mb-1.5">Observações (opcional)</label>
-                    <textarea placeholder="Ex: Sentindo queimação na planta do pé." value={notes} onChange={(e) => setNotes(sanitizeNotes(e.target.value))} onFocus={(e) => e.target.scrollIntoView({ behavior: "smooth", block: "center" })} rows={3} maxLength={500} className="w-full text-[16px] sm:text-sm p-3 border-2 border-slate-200 rounded-xl focus:outline-none focus:border-brand focus:ring-0 transition-colors resize-y min-h-[84px]" />
+                    <textarea placeholder="Ex: Sentindo queimação na planta do pé." value={notes} onChange={(e) => setNotes(sanitizeNotesRaw(e.target.value))} onFocus={(e) => e.target.scrollIntoView({ behavior: "smooth", block: "center" })} rows={3} maxLength={500} className="w-full text-[16px] sm:text-sm p-3 border-2 border-slate-200 rounded-xl focus:outline-none focus:border-brand focus:ring-0 transition-colors resize-y min-h-[84px]" />
                   </div>
 
                   {canConfirm && (
@@ -1136,7 +1136,7 @@ https://podologa-fabricia.web.app/cliente`}
                     <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-1.5">Nome Completo</label>
                     <div className="relative">
                       <User className="absolute left-3.5 top-3.5 w-4 h-4 text-slate-400" />
-                      <input type="text" required placeholder="Ex: Roberto Carlos" value={name} onChange={(e) => setName(sanitizeName(e.target.value))} className="w-full text-xs pl-10 pr-4 py-3 border border-slate-200 rounded-xl focus:outline-none focus:ring-1 focus:ring-gold" />
+                      <input type="text" required placeholder="Ex: Roberto Carlos" value={name} onChange={(e) => setName(sanitizeNameRaw(e.target.value))} className="w-full text-xs pl-10 pr-4 py-3 border border-slate-200 rounded-xl focus:outline-none focus:ring-1 focus:ring-gold" />
                     </div>
                   </div>
                   <div>
@@ -1272,7 +1272,7 @@ https://podologa-fabricia.web.app/cliente`}
 
                 <div>
                   <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-1.5">Sintomas ou Notas Extras (Opcional)</label>
-                    <input type="text" placeholder="Ex: Sentindo queimação na planta do pé." value={notes} onChange={(e) => setNotes(sanitizeNotes(e.target.value))} maxLength={500} className="w-full text-xs p-3 border border-slate-200 rounded-xl focus:outline-none focus:ring-1 focus:ring-gold" />
+                    <input type="text" placeholder="Ex: Sentindo queimação na planta do pé." value={notes} onChange={(e) => setNotes(sanitizeNotesRaw(e.target.value))} maxLength={500} className="w-full text-xs p-3 border border-slate-200 rounded-xl focus:outline-none focus:ring-1 focus:ring-gold" />
                 </div>
 
                 <button

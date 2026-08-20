@@ -16,8 +16,21 @@ export function sanitizeInput(raw: string): string {
     .trim();
 }
 
+function sanitizeInputRaw(raw: string): string {
+  return raw
+    .replace(NULL_BYTE_RE, "")
+    .replace(HTML_TAG_RE, "")
+    .replace(MULTIPLE_SPACES_RE, " ");
+}
+
 export function sanitizeName(raw: string): string {
   return sanitizeInput(raw)
+    .replace(NAME_ALLOWED_RE, "")
+    .slice(0, MAX_NAME);
+}
+
+export function sanitizeNameRaw(raw: string): string {
+  return sanitizeInputRaw(raw)
     .replace(NAME_ALLOWED_RE, "")
     .slice(0, MAX_NAME);
 }
@@ -42,6 +55,12 @@ export function isValidPhoneBR(digits: string): boolean {
 
 export function sanitizeNotes(raw: string): string {
   return sanitizeInput(raw)
+    .replace(NOTES_ALLOWED_RE, "")
+    .slice(0, MAX_NOTES);
+}
+
+export function sanitizeNotesRaw(raw: string): string {
+  return sanitizeInputRaw(raw)
     .replace(NOTES_ALLOWED_RE, "")
     .slice(0, MAX_NOTES);
 }

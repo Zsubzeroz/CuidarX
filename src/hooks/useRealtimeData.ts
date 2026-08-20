@@ -44,15 +44,16 @@ export function useRealtimeData(enabled = true) {
   const listenersStartedRef = useRef(false);
 
   // Track Firebase Auth state internally.
-  // Use ref to avoid restarting listeners when uid changes.
+  // Skip on public routes (enabled=false) to avoid unnecessary auth activity.
   useEffect(() => {
+    if (!enabled) return;
     return onAuthStateChange((user) => {
       const uid = user?.uid ?? null;
       console.warn(`[useRealtimeData] onAuthStateChanged: uid=${uid}`);
       firebaseUidRef.current = uid;
       setFirebaseUid(uid);
     });
-  }, []);
+  }, [enabled]);
 
   // Start/restart listeners when enabled becomes true.
   // Use firebaseUidRef to avoid unnecessary restarts.
