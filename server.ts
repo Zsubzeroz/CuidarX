@@ -382,129 +382,159 @@ let db = loadClinicData();
 
 // REST API Endpoints
 app.get("/api/data", verifyFirebaseToken, async (req: Request, res: Response) => {
-  if (isFirebaseEnabled) {
-    const firestoreData = await fetchFromFirestore();
-    if (firestoreData) {
-      db = firestoreData;
-      saveClinicData(db);
+  try {
+    if (isFirebaseEnabled) {
+      const firestoreData = await fetchFromFirestore();
+      if (firestoreData) {
+        db = firestoreData;
+        saveClinicData(db);
+      }
+    } else {
+      db = loadClinicData();
     }
-  } else {
-    db = loadClinicData();
+    res.json(db);
+  } catch (error) {
+    console.error("Erro em GET /api/data:", error);
+    res.status(500).json({ error: "Erro interno do servidor" });
   }
-  res.json(db);
 });
 
 app.post("/api/appointments", verifyFirebaseToken, async (req: Request, res: Response) => {
-  const appt: Appointment = req.body;
-  db = loadClinicData();
-  
-  const existingIdx = db.appointments.findIndex((a: Appointment) => a.id === appt.id);
-  if (existingIdx !== -1) {
-    db.appointments[existingIdx] = appt;
-  } else {
-    appt.id = `app-${Date.now()}`;
-    db.appointments.push(appt);
-  }
-  
-  // If completed, automatically add to finances if not already added
-  let financeRecordToSave: FinanceRecord | null = null;
-  if (appt.status === "completed") {
-    const finExists = db.finances.some((f: FinanceRecord) => f.description.includes(appt.id));
-    if (!finExists) {
-      const finId = `fin-${Date.now()}`;
-      financeRecordToSave = {
-        id: finId,
-        date: appt.date,
-        type: "income",
-        category: "Serviço",
-        amount: appt.price,
-        description: `Serviço de ${appt.service} - ${appt.patientName} (Ref: ${appt.id})`
-      };
-      db.finances.push(financeRecordToSave);
+  try {
+    const appt: Appointment = req.body;
+    db = loadClinicData();
+    
+    const existingIdx = db.appointments.findIndex((a: Appointment) => a.id === appt.id);
+    if (existingIdx !== -1) {
+      db.appointments[existingIdx] = appt;
+    } else {
+      appt.id = `app-${Date.now()}`;
+      db.appointments.push(appt);
     }
-  }
-  
-  saveClinicData(db);
-
-  if (isFirebaseEnabled) {
-    await saveToFirestore("appointments", appt.id, appt);
-    if (financeRecordToSave) {
-      await saveToFirestore("finances", financeRecordToSave.id, financeRecordToSave);
+    
+    // If completed, automatically add to finances if not already added
+    let financeRecordToSave: FinanceRecord | null = null;
+    if (appt.status === "completed") {
+      const finExists = db.finances.some((f: FinanceRecord) => f.description.includes(appt.id));
+      if (!finExists) {
+        const finId = `fin-${Date.now()}`;
+        financeRecordToSave = {
+          id: finId,
+          date: appt.date,
+          type: "income",
+          category: "Serviço",
+          amount: appt.price,
+          description: `Serviço de ${appt.service} - ${appt.patientName} (Ref: ${appt.id})`
+        };
+        db.finances.push(financeRecordToSave);
+      }
     }
-  }
+    
+    saveClinicData(db);
 
-  res.json(appt);
+    if (isFirebaseEnabled) {
+      await saveToFirestore("appointments", appt.id, appt);
+      if (financeRecordToSave) {
+        await saveToFirestore("finances", financeRecordToSave.id, financeRecordToSave);
+      }
+    }
+
+    res.json(appt);
+  } catch (error) {
+    console.error("Erro em POST /api/appointments:", error);
+    res.status(500).json({ error: "Erro interno do servidor" });
+  }
 });
 
 app.delete("/api/appointments/:id", verifyFirebaseToken, async (req: Request, res: Response) => {
-  const { id } = req.params;
-  db = loadClinicData();
-  db.appointments = db.appointments.filter((a: Appointment) => a.id !== id);
-  saveClinicData(db);
+  try {
+    const { id } = req.params;
+    db = loadClinicData();
+    db.appointments = db.appointments.filter((a: Appointment) => a.id !== id);
+    saveClinicData(db);
 
-  if (isFirebaseEnabled) {
-    await deleteFromFirestore("appointments", id);
+    if (isFirebaseEnabled) {
+      await deleteFromFirestore("appointments", id);
+    }
+
+    res.json({ success: true });
+  } catch (error) {
+    console.error("Erro em DELETE /api/appointments:", error);
+    res.status(500).json({ error: "Erro interno do servidor" });
   }
-
-  res.json({ success: true });
 });
 
 app.post("/api/finances", verifyFirebaseToken, async (req: Request, res: Response) => {
-  const record: FinanceRecord = req.body;
-  db = loadClinicData();
-  
-  record.id = `fin-${Date.now()}`;
-  db.finances.push(record);
-  
-  saveClinicData(db);
+  try {
+    const record: FinanceRecord = req.body;
+    db = loadClinicData();
+    
+    record.id = `fin-${Date.now()}`;
+    db.finances.push(record);
+    
+    saveClinicData(db);
 
-  if (isFirebaseEnabled) {
-    await saveToFirestore("finances", record.id, record);
+    if (isFirebaseEnabled) {
+      await saveToFirestore("finances", record.id, record);
+    }
+
+    res.json(record);
+  } catch (error) {
+    console.error("Erro em POST /api/finances:", error);
+    res.status(500).json({ error: "Erro interno do servidor" });
   }
-
-  res.json(record);
 });
 
 app.post("/api/services", verifyFirebaseToken, async (req: Request, res: Response) => {
-  const service: ClinicService = req.body;
-  db = loadClinicData();
-  
-  if (!db.services) {
-    db.services = [];
-  }
-  
-  const existingIdx = db.services.findIndex((s: ClinicService) => s.id === service.id);
-  if (existingIdx !== -1) {
-    db.services[existingIdx] = service;
-  } else {
-    service.id = `srv-${Date.now()}`;
-    db.services.push(service);
-  }
-  
-  saveClinicData(db);
+  try {
+    const service: ClinicService = req.body;
+    db = loadClinicData();
+    
+    if (!db.services) {
+      db.services = [];
+    }
+    
+    const existingIdx = db.services.findIndex((s: ClinicService) => s.id === service.id);
+    if (existingIdx !== -1) {
+      db.services[existingIdx] = service;
+    } else {
+      service.id = `srv-${Date.now()}`;
+      db.services.push(service);
+    }
+    
+    saveClinicData(db);
 
-  if (isFirebaseEnabled) {
-    await saveToFirestore("services", service.id, service);
-  }
+    if (isFirebaseEnabled) {
+      await saveToFirestore("services", service.id, service);
+    }
 
-  res.json(service);
+    res.json(service);
+  } catch (error) {
+    console.error("Erro em POST /api/services:", error);
+    res.status(500).json({ error: "Erro interno do servidor" });
+  }
 });
 
 app.delete("/api/services/:id", verifyFirebaseToken, async (req: Request, res: Response) => {
-  const { id } = req.params;
-  db = loadClinicData();
-  
-  if (db.services) {
-    db.services = db.services.filter((s: ClinicService) => s.id !== id);
-  }
-  
-  saveClinicData(db);
+  try {
+    const { id } = req.params;
+    db = loadClinicData();
+    
+    if (db.services) {
+      db.services = db.services.filter((s: ClinicService) => s.id !== id);
+    }
+    
+    saveClinicData(db);
 
-  if (isFirebaseEnabled) {
-    await deleteFromFirestore("services", id);
-  }
+    if (isFirebaseEnabled) {
+      await deleteFromFirestore("services", id);
+    }
 
-  res.json({ success: true });
+    res.json({ success: true });
+  } catch (error) {
+    console.error("Erro em DELETE /api/services:", error);
+    res.status(500).json({ error: "Erro interno do servidor" });
+  }
 });
 
 // Server-side Gemini Clinical AI Assistant Endpoint
