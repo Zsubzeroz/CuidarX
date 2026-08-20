@@ -187,6 +187,7 @@ export function useRealtimeData(enabled = true) {
     const patient: Patient = {
       ...newPatientData,
       id: `pat-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
+      phoneNormalized: newPatientData.phone?.replace(/\D/g, "") || "",
       footIssues: [],
       evolutions: [],
       createdAt: new Date().toISOString(),

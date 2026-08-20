@@ -393,6 +393,7 @@ export default function BookingPortalView({
       await setDoc(doc(db, "patients", patientId), {
         name: safeName,
         phone,
+        phoneNormalized: phone.replace(/\D/g, ""),
         dob,
         gender,
         isDiabetic,
@@ -917,7 +918,14 @@ export default function BookingPortalView({
             </div>
           </div>
 
-          <p className="text-[10px] text-slate-400 text-center mt-6">
+          <a
+            href="/cliente/consultar"
+            className="block text-center text-[13px] text-brand/60 hover:text-brand transition-colors mt-5 mb-1"
+          >
+            Já agendou e esqueceu a data? <span className="underline underline-offset-2">Consultar meu agendamento</span>
+          </a>
+
+          <p className="text-[10px] text-slate-400 text-center mt-2">
             © 2026 Clínica Dra. Fabrícia Rodrigues. Todos os direitos reservados. • Desenvolvido por Luan Estifer Rodrigues Pereira (Software Engineer).
           </p>
         </div>

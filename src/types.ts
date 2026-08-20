@@ -2,6 +2,7 @@ export interface Patient {
   id: string;
   name: string;
   phone: string;
+  phoneNormalized?: string; // digits only, for querying by phone
   dob: string; // YYYY-MM-DD
   gender: string;
   cpf?: string;

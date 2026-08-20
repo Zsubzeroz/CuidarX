@@ -75,6 +75,7 @@ import ServicesView from "./components/ServicesView";
 import InventoryView from "./components/InventoryView";
 import SplashScreen from "./components/SplashScreen";
 import ErrorBoundary from "./components/ErrorBoundary";
+import ConsultarAgendamento from "./components/ConsultarAgendamento";
 // @ts-ignore
 import clinicLogo from "./assets/images/clinic_logo_1783686122531.jpg";
 import {
@@ -951,6 +952,10 @@ export default function App() {
   ];
 
   // Public client portal — render BookingPortalView full-screen, no admin chrome
+  const isConsultarRoute = typeof window !== "undefined" && window.location.pathname === "/cliente/consultar";
+  if (isConsultarRoute) {
+    return <ConsultarAgendamento />;
+  }
   if (isClienteRoute) {
     return (
       <BookingPortalView
