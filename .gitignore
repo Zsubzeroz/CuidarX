@@ -5,6 +5,14 @@ coverage/
 .DS_Store
 *.log
 *.apk
+
+# Signing keystore
+keystore/
+*.keystore
+*.jks
+android/keystore.properties
+android/local.properties
+
 .env*
 !.env.example
 clinic_data.json
