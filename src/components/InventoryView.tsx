@@ -1,6 +1,6 @@
 import React, { useState } from "react";
 import { useRealtimeInventory } from "../hooks/useRealtimeInventory";
-import type { InventoryProduct, ProductLot, SurgicalInstrument, ProductCategory, ProductUsage } from "../types";
+import type { InventoryProduct, ProductLot, SurgicalInstrument, ProcedureKit, ProductCategory, ProductUsage } from "../types";
 import {
   Package,
   Plus,
@@ -58,6 +58,12 @@ const emptyInstrument = {
   isActive: true,
 };
 
+const emptyKit = {
+  name: "",
+  description: "",
+  items: [] as { productId: string; productName: string; quantityNeeded: number }[],
+};
+
 const categoryLabels: Record<string, string> = {
   material: "Material",
   quimico: "Químico",
@@ -74,6 +80,7 @@ export default function InventoryView() {
     handleAddProduct, handleUpdateProduct, handleDeleteProduct,
     handleAddLot, handleUpdateLot, handleDeleteLot,
     handleAddInstrument, handleUpdateInstrument, handleDeleteInstrument,
+    handleAddKit, handleUpdateKit, handleDeleteKit,
     handleDispenseKit,
   } = useRealtimeInventory();
 
@@ -82,12 +89,13 @@ export default function InventoryView() {
   const [expandedProduct, setExpandedProduct] = useState<string | null>(null);
 
   const [showForm, setShowForm] = useState(false);
-  const [formType, setFormType] = useState<"product" | "lot" | "instrument">("product");
+  const [formType, setFormType] = useState<"product" | "lot" | "instrument" | "kit">("product");
   const [editingId, setEditingId] = useState<string | null>(null);
 
   const [productForm, setProductForm] = useState(emptyProduct);
   const [lotForm, setLotForm] = useState(emptyLot);
   const [instrumentForm, setInstrumentForm] = useState(emptyInstrument);
+  const [kitForm, setKitForm] = useState(emptyKit);
 
   const tabs: { id: Tab; label: string; icon: React.ElementType; count: number }[] = [
     { id: "produtos", label: "Produtos", icon: Package, count: products.length },
@@ -175,6 +183,20 @@ export default function InventoryView() {
       lastUsedAt: i.lastUsedAt,
       isActive: i.isActive,
     });
+    setShowForm(true);
+  };
+
+  const openAddKit = () => {
+    setFormType("kit");
+    setEditingId(null);
+    setKitForm(emptyKit);
+    setShowForm(true);
+  };
+
+  const openEditKit = (kit: ProcedureKit) => {
+    setFormType("kit");
+    setEditingId(kit.id);
+    setKitForm({ name: kit.name, description: kit.description || "", items: kit.items });
     setShowForm(true);
   };
 
@@ -270,9 +292,38 @@ export default function InventoryView() {
     }
   };
 
+  const handleSaveKit = async () => {
+    if (!kitForm.name.trim()) { alert("Nome do kit é obrigatório"); return; }
+    if (kitForm.items.length === 0) { alert("Adicione pelo menos um item ao kit"); return; }
+    try {
+      if (editingId) {
+        const original = kits.find((k) => k.id === editingId);
+        if (original) {
+          await handleUpdateKit({
+            ...original,
+            name: kitForm.name,
+            description: kitForm.description || undefined,
+            items: kitForm.items,
+          });
+        }
+      } else {
+        await handleAddKit({
+          name: kitForm.name,
+          description: kitForm.description || undefined,
+          items: kitForm.items,
+        });
+      }
+      closeForm();
+    } catch (err: any) {
+      console.error("Erro ao salvar kit:", err);
+      alert(`Erro ao salvar kit: ${err?.message || "Verifique o console para detalhes."}`);
+    }
+  };
+
   const handleSave = async () => {
     if (formType === "product") await handleSaveProduct();
     else if (formType === "lot") await handleSaveLot();
+    else if (formType === "kit") await handleSaveKit();
     else await handleSaveInstrument();
   };
 
@@ -359,6 +410,11 @@ export default function InventoryView() {
         {activeTab === "instrumentos" && (
           <button onClick={openAddInstrument} className="flex items-center gap-1.5 bg-[#1B4332] hover:bg-[#245E47] text-white px-4 py-2.5 rounded-xl text-[11px] font-bold transition-all cursor-pointer whitespace-nowrap">
             <Plus className="w-3.5 h-3.5" /> Instrumento
+          </button>
+        )}
+        {activeTab === "kits" && (
+          <button onClick={openAddKit} className="flex items-center gap-1.5 bg-[#1B4332] hover:bg-[#245E47] text-white px-4 py-2.5 rounded-xl text-[11px] font-bold transition-all cursor-pointer whitespace-nowrap">
+            <Plus className="w-3.5 h-3.5" /> Kit
           </button>
         )}
       </div>
@@ -532,6 +588,9 @@ export default function InventoryView() {
               <div className="bg-white border border-slate-100 rounded-2xl p-8 text-center">
                 <Archive className="w-10 h-10 text-slate-200 mx-auto mb-3" />
                 <p className="text-xs font-bold text-slate-400">Nenhum kit configurado</p>
+                <button onClick={openAddKit} className="mt-3 text-[10px] font-bold text-[#1B4332] bg-[#1B4332]/10 hover:bg-[#1B4332]/20 px-3 py-1.5 rounded-lg transition-colors cursor-pointer">
+                  <Plus className="w-3 h-3 inline mr-1" /> Criar primeiro kit
+                </button>
               </div>
             ) : (
               kits.map((kit) => (
@@ -543,7 +602,11 @@ export default function InventoryView() {
                     <p className="text-xs font-bold text-slate-800 truncate">{kit.name}</p>
                     <p className="text-[10px] text-slate-400 mt-0.5">{kit.items.length} itens no kit</p>
                   </div>
-                  <button onClick={() => handleDispenseKit(kit.id)} className="text-[9px] font-bold text-white bg-[#1B4332] hover:bg-[#245E47] px-3 py-1.5 rounded-lg transition-colors cursor-pointer">Dispensar</button>
+                  <div className="flex items-center gap-1">
+                    <button onClick={() => openEditKit(kit)} className="p-1.5 rounded-lg hover:bg-blue-50 text-blue-500 cursor-pointer"><Pencil className="w-3 h-3" /></button>
+                    <button onClick={() => { if (confirm(`Excluir kit "${kit.name}"?`)) handleDeleteKit(kit.id); }} className="p-1.5 rounded-lg hover:bg-rose-50 text-rose-500 cursor-pointer"><Trash2 className="w-3 h-3" /></button>
+                    <button onClick={() => handleDispenseKit(kit.id)} className="text-[9px] font-bold text-white bg-[#1B4332] hover:bg-[#245E47] px-3 py-1.5 rounded-lg transition-colors cursor-pointer">Dispensar</button>
+                  </div>
                 </div>
               ))
             )}
@@ -581,7 +644,7 @@ export default function InventoryView() {
           <div className="bg-white rounded-t-2xl sm:rounded-2xl w-full max-w-lg max-h-[90vh] overflow-y-auto p-5 shadow-2xl" onClick={(e) => e.stopPropagation()}>
             <div className="flex items-center justify-between mb-4">
               <h3 className="text-sm font-bold text-slate-800">
-                {editingId ? "Editar" : "Novo"} {formType === "product" ? "Produto" : formType === "lot" ? "Lote" : "Instrumento"}
+                {editingId ? "Editar" : "Novo"} {formType === "product" ? "Produto" : formType === "lot" ? "Lote" : formType === "kit" ? "Kit" : "Instrumento"}
               </h3>
               <button onClick={closeForm} className="p-1.5 rounded-lg hover:bg-slate-100 text-slate-400 cursor-pointer"><X className="w-4 h-4" /></button>
             </div>
@@ -724,6 +787,77 @@ export default function InventoryView() {
                   <div>
                     <label className="text-[10px] font-bold text-slate-500 uppercase">Ciclo</label>
                     <input type="number" min="0" value={instrumentForm.cycleNumber ?? ""} onChange={(e) => setInstrumentForm({ ...instrumentForm, cycleNumber: e.target.value ? Number(e.target.value) : undefined })} className="w-full mt-1 px-3 py-2 border border-slate-200 rounded-lg text-xs focus:outline-none focus:ring-1 focus:ring-[#C9A227]" />
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {/* Kit Form */}
+            {formType === "kit" && (
+              <div className="space-y-3">
+                <div>
+                  <label className="text-[10px] font-bold text-slate-500 uppercase">Nome *</label>
+                  <input type="text" value={kitForm.name} onChange={(e) => setKitForm({ ...kitForm, name: e.target.value })} className="w-full mt-1 px-3 py-2 border border-slate-200 rounded-lg text-xs focus:outline-none focus:ring-1 focus:ring-[#C9A227]" placeholder="Ex: Kit Podopatia Preventiva" />
+                </div>
+                <div>
+                  <label className="text-[10px] font-bold text-slate-500 uppercase">Descrição</label>
+                  <input type="text" value={kitForm.description} onChange={(e) => setKitForm({ ...kitForm, description: e.target.value })} className="w-full mt-1 px-3 py-2 border border-slate-200 rounded-lg text-xs focus:outline-none focus:ring-1 focus:ring-[#C9A227]" placeholder="Opcional" />
+                </div>
+                <div>
+                  <label className="text-[10px] font-bold text-slate-500 uppercase">Itens do Kit *</label>
+                  <div className="mt-1 space-y-2">
+                    {kitForm.items.map((item, idx) => (
+                      <div key={idx} className="flex items-center gap-2 bg-slate-50 rounded-lg p-2">
+                        <span className="text-[10px] font-bold text-slate-500 w-4 text-center">{idx + 1}</span>
+                        <span className="flex-1 text-xs text-slate-700 truncate">{item.productName}</span>
+                        <span className="text-[10px] text-slate-400">x{item.quantityNeeded}</span>
+                        <button type="button" onClick={() => setKitForm({ ...kitForm, items: kitForm.items.filter((_, i) => i !== idx) })} className="p-1 rounded hover:bg-rose-100 text-rose-400 cursor-pointer">
+                          <X className="w-3 h-3" />
+                        </button>
+                      </div>
+                    ))}
+                    <div className="flex items-center gap-2">
+                      <select
+                        id="kit-product-select"
+                        defaultValue=""
+                        className="flex-1 px-3 py-2 border border-slate-200 rounded-lg text-xs focus:outline-none focus:ring-1 focus:ring-[#C9A227]"
+                      >
+                        <option value="">Selecione um produto...</option>
+                        {products.filter((p) => p.currentStock > 0).map((p) => (
+                          <option key={p.id} value={p.id}>{p.name} (est: {p.currentStock})</option>
+                        ))}
+                      </select>
+                      <input
+                        type="number"
+                        min="1"
+                        defaultValue="1"
+                        id="kit-qty-input"
+                        className="w-16 px-2 py-2 border border-slate-200 rounded-lg text-xs focus:outline-none focus:ring-1 focus:ring-[#C9A227] text-center"
+                        placeholder="Qtd"
+                      />
+                      <button
+                        type="button"
+                        onClick={() => {
+                          const sel = document.getElementById("kit-product-select") as HTMLSelectElement;
+                          const qtyInput = document.getElementById("kit-qty-input") as HTMLInputElement;
+                          const productId = sel.value;
+                          const qty = parseInt(qtyInput.value, 10);
+                          if (!productId) { alert("Selecione um produto"); return; }
+                          if (!qty || qty < 1) { alert("Quantidade inválida"); return; }
+                          const product = products.find((p) => p.id === productId);
+                          if (!product) return;
+                          setKitForm({
+                            ...kitForm,
+                            items: [...kitForm.items, { productId, productName: product.name, quantityNeeded: qty }],
+                          });
+                          sel.value = "";
+                          qtyInput.value = "1";
+                        }}
+                        className="p-2 bg-[#1B4332] hover:bg-[#245E47] text-white rounded-lg cursor-pointer"
+                      >
+                        <Plus className="w-3.5 h-3.5" />
+                      </button>
+                    </div>
                   </div>
                 </div>
               </div>
