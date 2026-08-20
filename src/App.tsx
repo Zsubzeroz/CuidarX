@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useRef } from "react";
 import { useRealtimeData } from "./hooks/useRealtimeData";
 import { useResponsive } from "./hooks/useResponsive";
 import { handleAuthCallbackRedirect } from "./services/tokenRelayService";
@@ -34,7 +34,6 @@ import {
   syncPublicScheduleBlocks,
   logSyncError,
 } from "./services/firestoreService";
-import type { ScheduleBlock } from "./types";
 import {
   getConfig as getWhatsAppConfig,
   saveConfig as saveWhatsAppConfig,
@@ -47,12 +46,8 @@ import { auth } from "./services/firebase";
 import {
   loginWithGoogle,
   loginWithEmailPassword,
-  loginWithFirebasePopup,
-  loginWithFirebaseRedirect,
   handleFirebaseRedirectResult,
-  redirectToGoogleCalendarAuth,
   getCurrentUser,
-  trySilentLogin,
   logout,
   onAuthStateChange,
   isNativePlatform,
@@ -83,15 +78,11 @@ import {
   Calendar,
   Users,
   DollarSign,
-  Cpu,
-  Heart,
   Globe,
   ClipboardList,
-  ChevronDown,
   Menu,
   X,
   Phone,
-  LayoutDashboard,
   Settings,
   MessageCircle,
   Bell,
@@ -114,11 +105,9 @@ export default function App() {
   // Auth callback redirect: when OAuth redirects to our SPA with session_id + token
   useEffect(() => {
     if (isClienteRoute) return;
-    handleAuthCallbackRedirect().then((handled) => {
-      if (handled) {
-        console.log("[App] Auth callback handled — token written to Firestore");
-      }
-    });
+    handleAuthCallbackRedirect()
+      .then(() => {})
+      .catch(() => {});
   }, []);
 
   useEffect(() => {
@@ -257,7 +246,6 @@ export default function App() {
   useEffect(() => {
     if (isClienteRoute) return;
     onTokenAcquired((token) => {
-      console.log("[App] Token acquired (fallback redirect), syncing...");
       setIsGoogleConnected(true);
       const today = new Date().toISOString().split("T")[0];
       handleSyncGoogleEvents(today);
@@ -269,7 +257,6 @@ export default function App() {
     if (isClienteRoute) return;
     const extracted = extractTokenFromUrl();
     if (extracted) {
-      console.log("[App] Token from redirect URL, connecting...");
       setIsGoogleConnected(true);
       const today = new Date().toISOString().split("T")[0];
       handleSyncGoogleEvents(today);
@@ -287,7 +274,6 @@ export default function App() {
 
     const unsub = onAuthStateChange((user) => {
       if (!mounted) return;
-      console.warn(`[App] onAuthStateChanged: user=${user?.email || "null"}`);
 
       if (user) {
         // Firebase Auth confirmed — safe to use Firestore writes
@@ -304,13 +290,10 @@ export default function App() {
         
         // On Android: if no Calendar token, open OAuth in system browser
         if (isNativePlatform() && !hasPersistedToken()) {
-          console.warn("[App] No Calendar token on Android — opening system browser for OAuth");
           connectGoogleCalendar().then((token) => {
-            console.warn("[App] Calendar token obtained via system browser");
             const today = new Date().toISOString().split("T")[0];
             handleSyncGoogleEvents(today);
           }).catch((err) => {
-            console.warn("[App] System browser OAuth failed:", err);
           });
           return;
         }
@@ -328,7 +311,6 @@ export default function App() {
 
         const persisted = getCurrentUser();
         if (persisted) {
-          console.warn("[App] Firebase Auth session expired — forcing logout");
           localStorage.removeItem("google_admin_auth");
         }
         setAuthChecking(false);
@@ -339,7 +321,6 @@ export default function App() {
     handleFirebaseRedirectResult().then((user) => {
       if (!mounted) return;
       if (user) {
-        console.warn("[App] Firebase redirect result: user returned from Google OAuth");
         setAdminUser(user);
         if (hasPersistedToken()) {
           setIsGoogleConnected(true);
@@ -365,11 +346,6 @@ export default function App() {
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
-
-  // Log Firestore data for diagnostics
-  useEffect(() => {
-    console.log(`[App] Firestore data loaded - patients: ${patients.length}, appointments: ${appointments.length}, services: ${services.length}`);
-  }, [patients, appointments, services]);
 
   // Auto-sync on mount: try silent token refresh, then sync
   useEffect(() => {
@@ -488,22 +464,18 @@ export default function App() {
         
         // Verificar se há token Google Calendar persistido
         if (hasPersistedToken()) {
-          console.warn("[App] Token Google Calendar persistido encontrado, sincronizando eventos...");
           setIsGoogleConnected(true);
           const today = new Date().toISOString().split("T")[0];
           setTimeout(() => handleSyncGoogleEvents(today), 400);
         } else {
-          console.warn("[App] Sem token Google Calendar, abrindo navegador do sistema...");
           // GIS e signInWithRedirect não funcionam no WebView do Capacitor
           // Abrir OAuth no navegador do sistema e relay via Firestore
           try {
             const token = await connectGoogleCalendar();
-            console.warn("[App] Calendar token obtido via navegador do sistema!");
             setIsGoogleConnected(true);
             const today = new Date().toISOString().split("T")[0];
             setTimeout(() => handleSyncGoogleEvents(today), 400);
           } catch (err: any) {
-            console.warn("[App] OAuth via navegador do sistema falhou:", err);
             // Continua mesmo sem Calendar
           }
         }
@@ -555,14 +527,11 @@ export default function App() {
   };
 
   const handleSyncGoogleEvents = async (date: string) => {
-    console.warn(`[App] handleSyncGoogleEvents START: date=${date}, isGoogleConnected=${isGoogleConnected}`);
     if (!isGoogleConnected) {
-      console.warn("[App] handleSyncGoogleEvents: not connected, returning early");
       return;
     }
     // Prevent concurrent sync calls
     if (isSyncingGoogleRef.current) {
-      console.warn("[App] handleSyncGoogleEvents: already syncing, skipping");
       return;
     }
     isSyncingGoogleRef.current = true;
@@ -571,39 +540,30 @@ export default function App() {
     try {
       // Try silent refresh if we don't have a token yet
       if (!isGoogleCalendarConnected()) {
-        console.warn("[App] handleSyncGoogleEvents: no token, calling silentConnectGoogle...");
         const silentResult = await silentConnectGoogle();
-        console.warn(`[App] handleSyncGoogleEvents: silentConnectGoogle returned ${silentResult}`);
       } else {
-        console.warn("[App] handleSyncGoogleEvents: token exists, skipping silentConnect");
       }
 
-      console.warn("[App] handleSyncGoogleEvents: fetching calendar events...");
       const d = new Date(date + "T12:00:00-03:00");
       const year = d.getFullYear();
       const month = d.getMonth();
       const start = new Date(year, month, 1, 0, 0, 0).toISOString();
       const end = new Date(year, month + 1, 0, 23, 59, 59).toISOString();
       const events = await fetchGoogleCalendarEvents(start, end);
-      console.warn(`[App] handleSyncGoogleEvents: fetched ${events.length} events`);
       setGoogleEvents(events);
 
       // Only sync to Firestore if we got events (avoids clearing stored events when token is missing)
       if (events.length > 0) {
         await syncGoogleEventsToFirestore(events);
-        console.warn(`[App] Synced ${events.length} Google Calendar events to Firestore`);
       }
     } catch (err: any) {
       if (err.message === "PERMISSION_ERROR") {
-        console.warn("[App] Permission denied — wrong account?");
         setGooglePermissionError(true);
         setGoogleEvents([]);
         setIsGoogleConnected(false);
       } else if (err.message === "TOKEN_EXPIRED") {
-        console.warn("[App] Token expired — attempting silent refresh...");
         const refreshed = await silentConnectGoogle();
         if (refreshed) {
-          console.warn("[App] Token refreshed, retrying sync...");
           const today = new Date().toISOString().split("T")[0];
           try {
             const retryStart = new Date(date + "T12:00:00-03:00");
@@ -617,17 +577,14 @@ export default function App() {
               await syncGoogleEventsToFirestore(retryEvents);
             }
           } catch {
-            console.warn("[App] Retry after refresh also failed");
           }
         } else {
-          console.warn("[App] Silent refresh failed — token expired, user must reconnect");
           setIsGoogleConnected(false);
         }
       } else {
         console.error("[App] Error fetching Google Calendar events:", err);
       }
     } finally {
-      console.warn("[App] handleSyncGoogleEvents FINALLY: setting isSyncingGoogle=false");
       isSyncingGoogleRef.current = false;
       setIsSyncingGoogle(false);
     }
@@ -687,7 +644,7 @@ export default function App() {
   ];
 
   const COMMITMENT_PATTERNS = [
-    /reunião/i, /reunião/i, /reuniao/i,
+    /reunião/i, /reuniao/i,
     /igreja/i, /oração/i, /oracao/i,
     /estudo/i,
   ];
@@ -877,12 +834,11 @@ export default function App() {
 
     // Remove blocks whose reason no longer maps to a block category
     // (e.g. reunião/igreja/oração were moved from personal to non-block)
-    const REMOVED_BLOCK_REASONS = [/reunião/i, /reunião/i, /igreja/i, /oração/i, /oracao/i];
+    const REMOVED_BLOCK_REASONS = [/reunião/i, /igreja/i, /oração/i, /oracao/i];
     for (const block of currentBlocks) {
       if (REMOVED_BLOCK_REASONS.some((p) => p.test(block.reason || ""))) {
         try {
           await fsDeleteScheduleBlock(block.id);
-          console.log(`[App] Removed stale block "${block.reason}" (${block.id})`);
         } catch (err) {
           console.error("Error removing stale reason-based block:", err);
         }
@@ -915,32 +871,34 @@ export default function App() {
       return;
     }
 
-    appointments.forEach(async (appt) => {
-      if (syncedApptIds.current.has(appt.id)) return;
-      syncedApptIds.current.add(appt.id);
+    (async () => {
+      for (const appt of appointments) {
+        if (syncedApptIds.current.has(appt.id)) continue;
+        syncedApptIds.current.add(appt.id);
 
-      if (appt.calendarEventId) return;
+        if (appt.calendarEventId) continue;
 
-      const apptService = services.find((s) => s.name === appt.service);
-      const durationMin = apptService?.duration && apptService.duration > 0
-        ? apptService.duration
-        : appt.price > 150 ? 60 : 45;
-      const { start: dtStart, end: dtEnd } = buildEventTimeRange(appt.date, appt.time, durationMin);
+        const apptService = services.find((s) => s.name === appt.service);
+        const durationMin = apptService?.duration && apptService.duration > 0
+          ? apptService.duration
+          : appt.price > 150 ? 60 : 45;
+        const { start: dtStart, end: dtEnd } = buildEventTimeRange(appt.date, appt.time, durationMin);
 
-      try {
-        const eventId = await handleCreateGoogleEvent(
-          `${appt.service} - ${appt.patientName}`,
-          appt.notes || `Agendamento via Portal Online - ${appt.patientName}`,
-          dtStart,
-          dtEnd
-        );
-        if (eventId) {
-          await handleUpdateAppointment({ ...appt, calendarEventId: eventId });
+        try {
+          const eventId = await handleCreateGoogleEvent(
+            `${appt.service} - ${appt.patientName}`,
+            appt.notes || `Agendamento via Portal Online - ${appt.patientName}`,
+            dtStart,
+            dtEnd
+          );
+          if (eventId) {
+            await handleUpdateAppointment({ ...appt, calendarEventId: eventId });
+          }
+        } catch (err) {
+          console.error("Auto-sync Google Calendar failed:", err);
         }
-      } catch (err) {
-        console.error("Auto-sync Google Calendar failed:", err);
       }
-    });
+    })();
   }, [appointments, isGoogleConnected]);
 
   const navigationItems = [

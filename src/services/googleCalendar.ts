@@ -73,23 +73,18 @@ declare global {
 function loadGIScript(): Promise<void> {
   return new Promise((resolve, reject) => {
     if (window.google?.accounts?.oauth2) {
-      console.warn("[GIS] loadGIScript: already loaded, resolving immediately");
       resolve();
       return;
     }
     const existing = document.querySelector(`script[src="${GIS_SCRIPT_URL}"]`);
     if (existing) {
-      console.warn("[GIS] loadGIScript: script tag exists but oauth2 not ready, polling...");
       let pollAttempts = 0;
       const poll = () => {
-        if (window.google?.accounts?.oauth2) { console.warn("[GIS] loadGIScript: oauth2 ready after", pollAttempts, "poll attempts"); resolve(); return; }
-        if (pollAttempts++ >= 50) { console.warn("[GIS] loadGIScript: poll timeout after 50 attempts"); reject(new Error("GIS script tag exists but oauth2 not available after 5s")); return; }
         setTimeout(poll, 100);
       };
       poll();
       return;
     }
-    console.warn("[GIS] loadGIScript: loading GIS script from network...");
     const script = document.createElement("script");
     script.src = GIS_SCRIPT_URL;
     script.async = true;
@@ -97,7 +92,6 @@ function loadGIScript(): Promise<void> {
     script.onload = () => {
       let attempts = 0;
       const poll = () => {
-        if (window.google?.accounts?.oauth2) { console.warn("[GIS] loadGIScript: oauth2 ready after onload, attempts:", attempts); resolve(); return; }
         if (attempts++ < 50) { setTimeout(poll, 100); return; }
         reject(new Error("GIS loaded but oauth2 not available"));
       };
@@ -148,9 +142,6 @@ export function hasPersistedToken(): boolean {
 }
 
 export async function silentConnectGoogle(): Promise<boolean> {
-  console.warn("[GoogleCalendar] silentConnectGoogle START");
-  if (!CLIENT_ID) { console.warn("[GoogleCalendar] silentConnectGoogle: no CLIENT_ID"); return false; }
-  if (accessToken) { console.warn("[GoogleCalendar] silentConnectGoogle: already have token"); return true; }
 
   // On native platforms, first try to restore a persisted token quickly
   if (isNativePlatform()) {
@@ -158,7 +149,6 @@ export async function silentConnectGoogle(): Promise<boolean> {
       const stored = localStorage.getItem(TOKEN_STORAGE_KEY);
       if (stored) {
         accessToken = stored;
-        console.warn("[GoogleCalendar] silentConnectGoogle: restored persisted token");
         return true;
       }
     }
@@ -166,21 +156,16 @@ export async function silentConnectGoogle(): Promise<boolean> {
 
   // Try GIS silent connect on ALL platforms (popup works in Capacitor WebView via Chrome)
   try {
-    console.warn("[GoogleCalendar] silentConnectGoogle: loading GIS...");
     await loadGIScript();
-    console.warn("[GoogleCalendar] silentConnectGoogle: getting token client...");
     const client = await getTokenClient();
-    console.warn("[GoogleCalendar] silentConnectGoogle: requesting access token...");
 
     return new Promise<boolean>((resolve) => {
       const timeout = setTimeout(() => {
-        console.warn("[GoogleCalendar] silentConnectGoogle: TIMEOUT after 10s — no callback received");
         resolve(false);
       }, 10000);
 
       client.callback = (response: any) => {
         clearTimeout(timeout);
-        console.warn(`[GoogleCalendar] silentConnectGoogle callback: access_token=${!!response.access_token}, error=${response.error || "none"}`);
         if (response.access_token) {
           saveToken(response.access_token);
           resolve(true);
@@ -190,7 +175,6 @@ export async function silentConnectGoogle(): Promise<boolean> {
       };
       client.errorCallback = (err: any) => {
         clearTimeout(timeout);
-        console.warn("[GoogleCalendar] silentConnectGoogle errorCallback:", err);
         resolve(false);
       };
 
@@ -198,12 +182,10 @@ export async function silentConnectGoogle(): Promise<boolean> {
         client.requestAccessToken({ prompt: "" });
       } catch (e) {
         clearTimeout(timeout);
-        console.warn("[GoogleCalendar] silentConnectGoogle requestAccessToken threw:", e);
         resolve(false);
       }
     });
   } catch (e) {
-    console.warn("[GoogleCalendar] silentConnectGoogle caught:", e);
     return false;
   }
 }
@@ -265,11 +247,9 @@ async function connectGoogleCalendarNative(): Promise<string> {
     `&include_granted_scopes=true` +
     `&state=${encodeURIComponent(sessionId)}`;
 
-  console.warn("[GoogleCalendar] Opening system browser for OAuth...");
   await Browser.open({ url: authUrl });
 
   // Poll Firestore for the token (written by SPA at redirect_uri)
-  console.warn("[GoogleCalendar] Polling Firestore for token...");
   const token = await pollTokenFromFirestore(sessionId, 120000);
 
   await Browser.close().catch(() => {});
@@ -313,7 +293,6 @@ export function extractTokenFromUrl(): boolean {
     if (!token) return false;
     saveToken(token);
     window.history.replaceState({}, "", window.location.pathname + window.location.search);
-    console.log("[GoogleCalendar] Token extracted from URL");
     return true;
   } catch { return false; }
 }
@@ -427,7 +406,6 @@ export async function fetchGoogleCalendarEvents(
   } catch (err: any) {
     if (err?.message === "TOKEN_EXPIRED") throw err;
     if (err?.message === "PERMISSION_ERROR") throw err;
-    console.warn("Não foi possível listar sub-agendas, fallback para 'primary':", err);
   }
 
   // Only the primary calendar is a hard requirement. If a sub-agenda denies
@@ -443,7 +421,6 @@ export async function fetchGoogleCalendarEvents(
         if (cal.id === "primary") {
           throw new Error("PERMISSION_ERROR");
         }
-        console.warn(`[GoogleCalendar] Sem permissão na sub-agenda "${cal.id}" — ignorando, mantendo as demais.`);
         return [];
       }
       if (response.status === 401) {
@@ -473,7 +450,6 @@ export async function fetchGoogleCalendarEvents(
     } catch (err: any) {
       if (err?.message === "TOKEN_EXPIRED") throw err;
       if (err?.message === "PERMISSION_ERROR") throw err;
-      console.warn(`[GoogleCalendar] Falha ao ler a sub-agenda "${cal.id}" — ignorando:`, err);
       return [];
     }
   });
@@ -542,54 +518,70 @@ export async function createGoogleCalendarEvent(
   summary: string, description: string, startTime: string, endTime: string, colorId?: string
 ): Promise<string | null> {
   if (!accessToken) return null;
-  const response = await fetch(
-    "https://www.googleapis.com/calendar/v3/calendars/primary/events",
-    {
-      method: "POST",
-      headers: { Authorization: `Bearer ${accessToken}`, "Content-Type": "application/json" },
-      body: JSON.stringify({
-        summary, description,
-        start: { dateTime: startTime, timeZone: "America/Sao_Paulo" },
-        end: { dateTime: endTime, timeZone: "America/Sao_Paulo" },
-        ...(colorId ? { colorId } : {}),
-      }),
+  try {
+    const response = await fetch(
+      "https://www.googleapis.com/calendar/v3/calendars/primary/events",
+      {
+        method: "POST",
+        headers: { Authorization: `Bearer ${accessToken}`, "Content-Type": "application/json" },
+        body: JSON.stringify({
+          summary, description,
+          start: { dateTime: startTime, timeZone: "America/Sao_Paulo" },
+          end: { dateTime: endTime, timeZone: "America/Sao_Paulo" },
+          ...(colorId ? { colorId } : {}),
+        }),
+      }
+    );
+    if (!response.ok) {
+      if (response.status === 401) { accessToken = null; throw new Error("TOKEN_EXPIRED"); }
+      if (response.status === 403) { throw new Error("PERMISSION_ERROR"); }
+      return null;
     }
-  );
-  if (!response.ok) {
-    if (response.status === 401) { accessToken = null; throw new Error("TOKEN_EXPIRED"); }
-    if (response.status === 403) { throw new Error("PERMISSION_ERROR"); }
+    return (await response.json()).id || null;
+  } catch (err) {
+    if (err instanceof Error && (err.message === "TOKEN_EXPIRED" || err.message === "PERMISSION_ERROR")) throw err;
+    console.error("[GoogleCalendar] createEvent failed:", err);
     return null;
   }
-  return (await response.json()).id || null;
 }
 
 export async function updateGoogleCalendarEvent(
   eventId: string, summary: string, description: string, startTime: string, endTime: string
 ): Promise<boolean> {
   if (!accessToken) return false;
-  const response = await fetch(
-    `https://www.googleapis.com/calendar/v3/calendars/primary/events/${eventId}`,
-    {
-      method: "PUT",
-      headers: { Authorization: `Bearer ${accessToken}`, "Content-Type": "application/json" },
-      body: JSON.stringify({
-        summary, description,
-        start: { dateTime: startTime, timeZone: "America/Sao_Paulo" },
-        end: { dateTime: endTime, timeZone: "America/Sao_Paulo" },
-      }),
+  try {
+    const response = await fetch(
+      `https://www.googleapis.com/calendar/v3/calendars/primary/events/${eventId}`,
+      {
+        method: "PUT",
+        headers: { Authorization: `Bearer ${accessToken}`, "Content-Type": "application/json" },
+        body: JSON.stringify({
+          summary, description,
+          start: { dateTime: startTime, timeZone: "America/Sao_Paulo" },
+          end: { dateTime: endTime, timeZone: "America/Sao_Paulo" },
+        }),
+      }
+    );
+    if (!response.ok) {
+      if (response.status === 401) { accessToken = null; throw new Error("TOKEN_EXPIRED"); }
+      return false;
     }
-  );
-  if (!response.ok) {
-    if (response.status === 401) { accessToken = null; throw new Error("TOKEN_EXPIRED"); }
+    return true;
+  } catch (err) {
+    if (err instanceof Error && err.message === "TOKEN_EXPIRED") throw err;
+    console.error("[GoogleCalendar] updateEvent failed:", err);
     return false;
   }
-  return true;
 }
 
 export async function deleteGoogleCalendarEvent(eventId: string): Promise<void> {
   if (!accessToken) return;
-  await fetch(
-    `https://www.googleapis.com/calendar/v3/calendars/primary/events/${eventId}`,
-    { method: "DELETE", headers: { Authorization: `Bearer ${accessToken}` } }
-  );
+  try {
+    await fetch(
+      `https://www.googleapis.com/calendar/v3/calendars/primary/events/${eventId}`,
+      { method: "DELETE", headers: { Authorization: `Bearer ${accessToken}` } }
+    );
+  } catch (err) {
+    console.error("[GoogleCalendar] deleteEvent failed:", err);
+  }
 }

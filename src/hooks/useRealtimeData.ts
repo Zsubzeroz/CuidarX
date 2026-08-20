@@ -49,7 +49,6 @@ export function useRealtimeData(enabled = true) {
     if (!enabled) return;
     return onAuthStateChange((user) => {
       const uid = user?.uid ?? null;
-      console.warn(`[useRealtimeData] onAuthStateChanged: uid=${uid}`);
       firebaseUidRef.current = uid;
       setFirebaseUid(uid);
     });
@@ -59,12 +58,10 @@ export function useRealtimeData(enabled = true) {
   // Use firebaseUidRef to avoid unnecessary restarts.
   useEffect(() => {
     if (!enabled) {
-      console.warn("[useRealtimeData] not enabled, skipping listeners");
       return;
     }
 
     const hasUser = !!firebaseUidRef.current || !!auth?.currentUser;
-    console.warn(`[useRealtimeData] starting listeners (enabled=${enabled}, hasUser=${hasUser})`);
 
     cleanupRef.current?.();
     startListeners(hasUser);
@@ -79,7 +76,6 @@ export function useRealtimeData(enabled = true) {
   }, []);
 
   function startListeners(hasUser: boolean) {
-    console.warn(`[useRealtimeData] Auth ready (hasUser=${hasUser}), starting Firestore listeners...`);
     // Only show loading on initial start, not on auth reconnect
     if (!listenersStartedRef.current) {
       setIsLoading(true);
@@ -101,39 +97,38 @@ export function useRealtimeData(enabled = true) {
     // Safety timeout: force-load after 8s even if some listeners haven't responded
     const safetyTimer = setTimeout(() => {
       if (loadedCount < totalCollections) {
-        console.warn(`[useRealtimeData] Safety timeout: only ${loadedCount}/${totalCollections} collections loaded, forcing UI ready`);
         setIsLoading(false);
       }
     }, 8000);
 
     const unsubPatients = listenPatients(
-      (data) => { console.warn(`[useRealtimeData] patients OK: ${data.length}`); setPatients(data); setSyncStatus("synced"); setSyncError(null); checkLoaded(); },
-      (err) => { console.error("[useRealtimeData] patients FAIL:", err); setSyncStatus("error"); setSyncError(`Pacientes: ${err.message || err}`); checkLoaded(); }
+      (data) => { setPatients(data); setSyncStatus("synced"); setSyncError(null); checkLoaded(); },
+      (err) => { setSyncStatus("error"); setSyncError(`Pacientes: ${err.message || err}`); checkLoaded(); }
     );
 
     const unsubAppointments = listenAppointments(
-      (data) => { console.warn(`[useRealtimeData] appointments OK: ${data.length}`); setAppointments(data); setSyncStatus("synced"); setSyncError(null); checkLoaded(); },
-      (err) => { console.error("[useRealtimeData] appointments FAIL:", err); setSyncStatus("error"); setSyncError(`Agendamentos: ${err.message || err}`); checkLoaded(); }
+      (data) => { setAppointments(data); setSyncStatus("synced"); setSyncError(null); checkLoaded(); },
+      (err) => { setSyncStatus("error"); setSyncError(`Agendamentos: ${err.message || err}`); checkLoaded(); }
     );
 
     const unsubFinances = listenFinances(
-      (data) => { console.warn(`[useRealtimeData] finances OK: ${data.length}`); setFinances(data); setSyncStatus("synced"); setSyncError(null); checkLoaded(); },
-      (err) => { console.error("[useRealtimeData] finances FAIL:", err); setSyncStatus("error"); setSyncError(`Financeiro: ${err.message || String(err)}`); checkLoaded(); }
+      (data) => { setFinances(data); setSyncStatus("synced"); setSyncError(null); checkLoaded(); },
+      (err) => { setSyncStatus("error"); setSyncError(`Financeiro: ${err.message || String(err)}`); checkLoaded(); }
     );
 
     const unsubServices = listenServices(
-      (data) => { console.warn(`[useRealtimeData] services OK: ${data.length}`); setServices(data); setSyncStatus("synced"); setSyncError(null); checkLoaded(); },
-      (err) => { console.error("[useRealtimeData] services FAIL:", err); setSyncStatus("error"); setSyncError(`Serviços: ${err.message || String(err)}`); checkLoaded(); }
+      (data) => { setServices(data); setSyncStatus("synced"); setSyncError(null); checkLoaded(); },
+      (err) => { setSyncStatus("error"); setSyncError(`Serviços: ${err.message || String(err)}`); checkLoaded(); }
     );
 
     const unsubScheduleBlocks = listenScheduleBlocks(
-      (data) => { console.warn(`[useRealtimeData] blocks OK: ${data.length}`); setNativeBlocks(data); setSyncStatus("synced"); setSyncError(null); checkLoaded(); },
-      (err) => { console.error("[useRealtimeData] blocks FAIL:", err); setSyncStatus("error"); setSyncError(`Bloqueios: ${err.message || String(err)}`); checkLoaded(); }
+      (data) => { setNativeBlocks(data); setSyncStatus("synced"); setSyncError(null); checkLoaded(); },
+      (err) => { setSyncStatus("error"); setSyncError(`Bloqueios: ${err.message || String(err)}`); checkLoaded(); }
     );
 
     const unsubBlockedDays = listenBlockedDays(
-      (data) => { console.warn(`[useRealtimeData] blockedDays OK: ${data.length}`); setWebAdminBlocks(data); setSyncStatus("synced"); setSyncError(null); checkLoaded(); },
-      (err) => { console.error("[useRealtimeData] blockedDays FAIL:", err); setSyncStatus("error"); setSyncError(`Dias bloqueados: ${err.message || String(err)}`); checkLoaded(); }
+      (data) => { setWebAdminBlocks(data); setSyncStatus("synced"); setSyncError(null); checkLoaded(); },
+      (err) => { setSyncStatus("error"); setSyncError(`Dias bloqueados: ${err.message || String(err)}`); checkLoaded(); }
     );
 
     // Store cleanup refs
@@ -175,9 +170,7 @@ export function useRealtimeData(enabled = true) {
     if (!firebaseUid) return;
     if (nativeBlocks.length === 0) return;
     hasSyncedRef.current = true;
-    console.warn("[useRealtimeData] Auto-syncing publicScheduleBlocks on admin login...");
     syncPublicScheduleBlocks()
-      .then((r) => console.warn(`[useRealtimeData] Auto-sync OK: ${r.written} written, ${r.deleted} deleted`))
       .catch((e) => logSyncError("autoSyncOnLogin", e));
   }, [firebaseUid, nativeBlocks.length]);
 

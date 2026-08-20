@@ -245,7 +245,6 @@ export default function BookingPortalView({
         });
       }
     } catch (err) {
-      console.warn("[Portal] Falha ao consultar Google Agenda:", err);
     }
 
     // 2. Fetch schedule blocks for this date (from public mirror — no sensitive fields)
@@ -291,15 +290,19 @@ export default function BookingPortalView({
       setSlotsError(null);
       return;
     }
+    let mounted = true;
     setIsLoadingSlots(true);
     setSlotsError(null);
     loadBlockedSlots(date)
-      .then(() => setIsLoadingSlots(false))
+      .then(() => { if (mounted) setIsLoadingSlots(false); })
       .catch((err) => {
         console.error("[Portal] Erro ao carregar horários:", err);
-        setSlotsError("Erro ao carregar horários. Tente novamente.");
-        setIsLoadingSlots(false);
+        if (mounted) {
+          setSlotsError("Erro ao carregar horários. Tente novamente.");
+          setIsLoadingSlots(false);
+        }
       });
+    return () => { mounted = false; };
   }, [date, loadBlockedSlots]);
 
   // Compute available slots whenever blockedSlots or selectedServiceDuration changes
@@ -920,9 +923,19 @@ export default function BookingPortalView({
 
           <a
             href="/cliente/consultar"
-            className="block text-center text-[13px] text-brand/60 hover:text-brand transition-colors mt-5 mb-1"
+            className="group flex items-center gap-3 bg-gradient-to-r from-[#C8A45A]/10 to-[#0F3B2E]/5 hover:from-[#C8A45A]/20 hover:to-[#0F3B2E]/10 border border-[#C8A45A]/30 hover:border-[#C8A45A]/50 rounded-2xl px-5 py-4 mt-5 mb-1 transition-all duration-200 shadow-sm hover:shadow-md cursor-pointer"
           >
-            Já agendou e esqueceu a data? <span className="underline underline-offset-2">Consultar meu agendamento</span>
+            <div className="flex-shrink-0 w-10 h-10 rounded-full bg-[#C8A45A]/15 flex items-center justify-center group-hover:bg-[#C8A45A]/25 transition-colors">
+              <Calendar className="w-5 h-5 text-[#C8A45A]" />
+            </div>
+            <div className="flex-1 text-left">
+              <p className="text-sm font-bold text-[#0F3B2E] leading-tight">
+                Já agendou e esqueceu a data?
+              </p>
+              <p className="text-xs text-[#C8A45A] font-semibold mt-0.5 group-hover:underline underline-offset-2">
+                Consultar meu agendamento →
+              </p>
+            </div>
           </a>
 
           <p className="text-[10px] text-slate-400 text-center mt-2">

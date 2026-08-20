@@ -54,16 +54,12 @@ export function useRealtimeInventory() {
 
     const safetyTimer = setTimeout(() => {
       if (loadedCount < totalCollections) {
-        console.warn(
-          `[useRealtimeInventory] Safety timeout: only ${loadedCount}/${totalCollections} collections loaded`
-        );
         setIsLoading(false);
       }
     }, 3000);
 
     const unsubProducts = listenProducts(
       (data) => {
-        console.log(`[useRealtimeInventory] products update: ${data.length} records`);
         setProducts(data);
         setSyncStatus("synced");
         checkLoaded();
@@ -77,7 +73,6 @@ export function useRealtimeInventory() {
 
     const unsubLots = listenProductLots(
       (data) => {
-        console.log(`[useRealtimeInventory] lots update: ${data.length} records`);
         setLots(data);
         setSyncStatus("synced");
         checkLoaded();
@@ -91,7 +86,6 @@ export function useRealtimeInventory() {
 
     const unsubInstruments = listenInstruments(
       (data) => {
-        console.log(`[useRealtimeInventory] instruments update: ${data.length} records`);
         setInstruments(data);
         setSyncStatus("synced");
         checkLoaded();
@@ -105,7 +99,6 @@ export function useRealtimeInventory() {
 
     const unsubDiscards = listenDiscards(
       (data) => {
-        console.log(`[useRealtimeInventory] discards update: ${data.length} records`);
         setDiscards(data);
         setSyncStatus("synced");
         checkLoaded();
@@ -119,7 +112,6 @@ export function useRealtimeInventory() {
 
     const unsubKits = listenKits(
       (data) => {
-        console.log(`[useRealtimeInventory] kits update: ${data.length} records`);
         setKits(data);
         setSyncStatus("synced");
         checkLoaded();

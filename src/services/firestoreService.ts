@@ -26,7 +26,6 @@ function listenCollection<T extends { id: string }>(
   onError?: (error: Error) => void
 ): Unsubscribe {
   if (!isFirebaseConfigured || !db) {
-    console.warn(`Firestore not configured. Skipping listener for ${collectionName}.`);
     callback([]);
     return () => {};
   }
@@ -274,7 +273,6 @@ export async function syncPublicScheduleBlocks(): Promise<{ written: number; del
   }
 
   await Promise.all(batches);
-  console.log(`[syncPublicScheduleBlocks] ${written} written, ${deleted} deleted`);
   return { written, deleted };
 }
 

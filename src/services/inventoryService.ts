@@ -336,6 +336,26 @@ export async function getExpiringProductAlerts(): Promise<ExpiryAlert[]> {
   const alerts: ExpiryAlert[] = [];
   const lotsSnap = await getDocs(query(collection(db, "inventoryLots")));
 
+  const productIds = new Set<string>();
+  for (const lotDoc of lotsSnap.docs) {
+    const lot = { id: lotDoc.id, ...lotDoc.data() } as ProductLot;
+    if (lot.remainingQuantity <= 0) continue;
+    const days = daysUntil(lot.expiryDate);
+    if (days <= 30) productIds.add(lot.productId);
+  }
+
+  const productNames = new Map<string, string>();
+  if (productIds.size > 0) {
+    const ids = Array.from(productIds);
+    for (let i = 0; i < ids.length; i += 10) {
+      const batch = ids.slice(i, i + 10);
+      const snaps = await Promise.all(batch.map((id) => getDoc(doc(db, "inventoryProducts", id))));
+      snaps.forEach((snap, idx) => {
+        productNames.set(batch[idx], snap.exists() ? (snap.data() as InventoryProduct).name : batch[idx]);
+      });
+    }
+  }
+
   for (const lotDoc of lotsSnap.docs) {
     const lot = { id: lotDoc.id, ...lotDoc.data() } as ProductLot;
     if (lot.remainingQuantity <= 0) continue;
@@ -343,15 +363,10 @@ export async function getExpiringProductAlerts(): Promise<ExpiryAlert[]> {
     const days = daysUntil(lot.expiryDate);
 
     if (days < 0) {
-      const productSnap = await getDoc(doc(db, "inventoryProducts", lot.productId));
-      const productName = productSnap.exists()
-        ? (productSnap.data() as InventoryProduct).name
-        : lot.productId;
-
       alerts.push({
         type: "product_expiry",
         severity: "critical",
-        itemName: productName,
+        itemName: productNames.get(lot.productId) || lot.productId,
         itemId: lot.productId,
         expiryDate: lot.expiryDate,
         daysUntilExpiry: days,
@@ -359,15 +374,10 @@ export async function getExpiringProductAlerts(): Promise<ExpiryAlert[]> {
         details: `Lote vencido há ${Math.abs(days)} dia(s). ${lot.remainingQuantity} unidade(s) em estoque.`,
       });
     } else if (days <= 30) {
-      const productSnap = await getDoc(doc(db, "inventoryProducts", lot.productId));
-      const productName = productSnap.exists()
-        ? (productSnap.data() as InventoryProduct).name
-        : lot.productId;
-
       alerts.push({
         type: "product_expiry",
         severity: days <= 7 ? "critical" : "warning",
-        itemName: productName,
+        itemName: productNames.get(lot.productId) || lot.productId,
         itemId: lot.productId,
         expiryDate: lot.expiryDate,
         daysUntilExpiry: days,
@@ -456,13 +466,13 @@ export async function consumeStockForAppointment(
       const lotSnap = await transaction.get(lotRef);
 
       if (!productSnap.exists() || !lotSnap.exists()) {
-        throw "Produto ou Lote não encontrado!";
+        throw new Error("Produto ou Lote não encontrado!");
       }
 
       const newProductStock = (productSnap.data().currentStock || 0) - quantity;
       const newLotQuantity = (lotSnap.data().remainingQuantity || 0) - quantity;
 
-      if (newLotQuantity < 0) throw "Estoque insuficiente neste lote!";
+      if (newLotQuantity < 0) throw new Error("Estoque insuficiente neste lote!");
 
       // Atualiza os dois de uma vez
       transaction.update(productRef, { currentStock: newProductStock });

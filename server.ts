@@ -1,10 +1,14 @@
-import express, { Request, Response } from "express";
+import express, { Request, Response, NextFunction } from "express";
 import path from "path";
 import fs from "fs";
 import http from "http";
 import { createServer as createViteServer } from "vite";
 import { GoogleGenAI } from "@google/genai";
 import dotenv from "dotenv";
+import cors from "cors";
+import rateLimit from "express-rate-limit";
+import { initializeApp, cert, getApps } from "firebase-admin/app";
+import { getAuth } from "firebase-admin/auth";
 import { Patient, Appointment, FinanceRecord, ClinicService } from "./src/types.js";
 import patientRouter from "./src/routes/patients.js";
 import {
@@ -16,6 +20,21 @@ import {
 } from "./firebase-server.js";
 
 dotenv.config();
+
+// Initialize Firebase Admin SDK for token verification
+if (getApps().length === 0 && process.env.FIREBASE_PROJECT_ID) {
+  try {
+    initializeApp({
+      credential: cert({
+        projectId: process.env.FIREBASE_PROJECT_ID,
+        clientEmail: process.env.FIREBASE_CLIENT_EMAIL,
+        privateKey: process.env.FIREBASE_PRIVATE_KEY?.replace(/\\n/g, "\n"),
+      }),
+    });
+  } catch (err) {
+    console.error("Firebase Admin init error:", err);
+  }
+}
 
 const app = express();
 const PORT = Number(process.env.PORT) || 3000;
@@ -41,11 +60,59 @@ function getGemini(): GoogleGenAI {
   return ai;
 }
 
-// Enable JSON bodies
+// CORS — whitelist
+const ALLOWED_ORIGINS = [
+  "https://podologa-fabricia.web.app",
+  "https://podologa-fabricia.firebaseapp.com",
+];
+app.use(cors({
+  origin: (origin, callback) => {
+    if (!origin || ALLOWED_ORIGINS.includes(origin)) {
+      callback(null, true);
+    } else {
+      callback(new Error("Not allowed by CORS"));
+    }
+  },
+  credentials: true,
+}));
+
+// Rate limiting
+const generalLimiter = rateLimit({
+  windowMs: 60 * 1000,
+  max: 100,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { error: "Muitas requisições. Aguarde um momento." },
+});
+const aiLimiter = rateLimit({
+  windowMs: 60 * 1000,
+  max: 10,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { error: "Limite de requisições de IA atingido. Aguarde." },
+});
+app.use("/api/", generalLimiter);
+
+// Enable JSON body parsing
 app.use(express.json());
 
-// Patient CRUD REST API
-app.use("/api/patients", patientRouter);
+// Firebase Auth middleware — verifies ID token from Authorization header
+async function verifyFirebaseToken(req: Request, res: Response, next: NextFunction) {
+  const authHeader = req.headers.authorization;
+  if (!authHeader?.startsWith("Bearer ")) {
+    return res.status(401).json({ error: "Token de autenticação não fornecido." });
+  }
+  try {
+    const token = authHeader.split("Bearer ")[1];
+    await getAuth().verifyIdToken(token);
+    next();
+  } catch {
+    return res.status(401).json({ error: "Token de autenticação inválido ou expirado." });
+  }
+}
+
+// Patient CRUD REST API — requires auth
+app.use("/api/patients", verifyFirebaseToken, patientRouter);
 
 // Load and seed database
 function loadClinicData() {
@@ -314,7 +381,7 @@ function saveClinicData(data: any) {
 let db = loadClinicData();
 
 // REST API Endpoints
-app.get("/api/data", async (req: Request, res: Response) => {
+app.get("/api/data", verifyFirebaseToken, async (req: Request, res: Response) => {
   if (isFirebaseEnabled) {
     const firestoreData = await fetchFromFirestore();
     if (firestoreData) {
@@ -327,7 +394,7 @@ app.get("/api/data", async (req: Request, res: Response) => {
   res.json(db);
 });
 
-app.post("/api/appointments", async (req: Request, res: Response) => {
+app.post("/api/appointments", verifyFirebaseToken, async (req: Request, res: Response) => {
   const appt: Appointment = req.body;
   db = loadClinicData();
   
@@ -369,7 +436,7 @@ app.post("/api/appointments", async (req: Request, res: Response) => {
   res.json(appt);
 });
 
-app.delete("/api/appointments/:id", async (req: Request, res: Response) => {
+app.delete("/api/appointments/:id", verifyFirebaseToken, async (req: Request, res: Response) => {
   const { id } = req.params;
   db = loadClinicData();
   db.appointments = db.appointments.filter((a: Appointment) => a.id !== id);
@@ -382,7 +449,7 @@ app.delete("/api/appointments/:id", async (req: Request, res: Response) => {
   res.json({ success: true });
 });
 
-app.post("/api/finances", async (req: Request, res: Response) => {
+app.post("/api/finances", verifyFirebaseToken, async (req: Request, res: Response) => {
   const record: FinanceRecord = req.body;
   db = loadClinicData();
   
@@ -398,7 +465,7 @@ app.post("/api/finances", async (req: Request, res: Response) => {
   res.json(record);
 });
 
-app.post("/api/services", async (req: Request, res: Response) => {
+app.post("/api/services", verifyFirebaseToken, async (req: Request, res: Response) => {
   const service: ClinicService = req.body;
   db = loadClinicData();
   
@@ -423,7 +490,7 @@ app.post("/api/services", async (req: Request, res: Response) => {
   res.json(service);
 });
 
-app.delete("/api/services/:id", async (req: Request, res: Response) => {
+app.delete("/api/services/:id", verifyFirebaseToken, async (req: Request, res: Response) => {
   const { id } = req.params;
   db = loadClinicData();
   
@@ -441,8 +508,8 @@ app.delete("/api/services/:id", async (req: Request, res: Response) => {
 });
 
 // Server-side Gemini Clinical AI Assistant Endpoint
-app.post("/api/gemini", async (req: Request, res: Response) => {
-  const { prompt, patientContext } = req.body;
+app.post("/api/gemini", verifyFirebaseToken, aiLimiter, async (req: Request, res: Response) => {
+  const { prompt, patientContext, systemPrompt: clientSystemPrompt } = req.body;
 
   try {
     // Reload latest database to ensure dynamic accuracy
@@ -538,7 +605,8 @@ app.post("/api/gemini", async (req: Request, res: Response) => {
     }
 
     // --- REAL GEMINI PROCESSING ---
-    const systemPrompt = `Você é o Assistente Clínico Inteligente da Dra. Fabrícia, uma podóloga especialista em saúde dos pés. 
+    // Use client-provided systemPrompt if available, otherwise use default clinical assistant prompt
+    const systemPrompt = clientSystemPrompt || `Você é o Assistente Clínico Inteligente da Dra. Fabrícia, uma podóloga especialista em saúde dos pés. 
 Sua missão é auxiliar na gestão da clínica, análise de prontuários e suporte à decisão clínica.
 
 ### DIRETRIZES DE ATUAÇÃO:
@@ -664,7 +732,7 @@ async function chatWithOllama(model: string, systemPrompt: string, prompt: strin
   });
 }
 
-app.post("/api/ollama", async (req: Request, res: Response) => {
+app.post("/api/ollama", verifyFirebaseToken, aiLimiter, async (req: Request, res: Response) => {
   const { prompt, systemPrompt, patientContext } = req.body;
 
   if (!prompt || typeof prompt !== "string") {
