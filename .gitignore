@@ -70,7 +70,6 @@ __pycache__/
 db.sqlite3
 backend/
 cliente/
-clinica_fabricia/
 core/
 integracoes/
 profissional/

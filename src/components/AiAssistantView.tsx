@@ -1,6 +1,7 @@
 import React, { useState, useRef, useEffect } from "react";
 import DOMPurify from "dompurify";
 import { Patient } from "../types";
+import { clinicConfig } from "../config";
 import { generateAIResponse } from "../services/aiService";
 import {
   Cpu,
@@ -17,8 +18,8 @@ import {
   BookOpen,
 } from "lucide-react";
 
-const SYSTEM_PROMPT = `Você é o Assistente Virtual e Recepcionista da clínica da Dra. Fabrícia Rodrigues — Podologia & Enfermagem.
-Você combina duas funções: (1) recepcionista virtual e especialista no sistema de gestão da clínica e (2) assistente clínico de podologia para apoiar a Dra. Fabrícia.
+const SYSTEM_PROMPT = `Você é o Assistente Virtual e Recepcionista da clínica da ${clinicConfig.doctorName} — ${clinicConfig.doctorSpecialty}.
+Você combina duas funções: (1) recepcionista virtual e especialista no sistema de gestão da clínica e (2) assistente clínico de podologia para apoiar a ${clinicConfig.doctorName}.
 
 ### DADOS OFICIAIS DA CLÍNICA (responda com precisão sempre que perguntado):
 - ENDEREÇO: Rua Papa João Paulo II, 256 — Artur Nogueira/SP.
@@ -49,7 +50,7 @@ Você combina duas funções: (1) recepcionista virtual e especialista no sistem
 - ORIENTAÇÕES PÓS-OPERATÓRIAS: Guia completo de cuidados após procedimentos podológicos.
 
 ### SEGURANÇA MÉDICA:
-- Você é uma ferramenta de apoio. Sempre termine recomendações clínicas complexas com: "Esta é uma sugestão da IA. A decisão final e o diagnóstico cabem exclusivamente à Dra. Fabrícia."
+- Você é uma ferramenta de apoio. Sempre termine recomendações clínicas complexas com: "Esta é uma sugestão da IA. A decisão final e o diagnóstico cabem exclusivamente à ${clinicConfig.doctorName}."
 
 Responda sempre em português brasileiro de forma clara e formatada com Markdown.`;
 
@@ -78,7 +79,7 @@ export default function AiAssistantView({ patients }: AiAssistantProps) {
     {
       id: "msg-welcome",
       sender: "ai",
-      text: "Olá! Sou o **Assistente Virtual da Dra. Fabrícia Rodrigues** 🤖✨\n\nPosso ajudar com dúvidas sobre o **sistema** (como agendar, ver a agenda sincronizada com o Google Calendar, cadastrar clientes, usar o WhatsApp 1-clique) e sobre a **clínica** (endereço, horários, regras de agendamento).\n\nTambém sou assistente clínico: gero guias de cuidados pós-operatórios, sintetizo prontuários e apoio no acompanhamento de pé diabético.\n\nComo posso ajudar você hoje?",
+      text: "Olá! Sou o **Assistente Virtual da ${clinicConfig.doctorName}** 🤖✨\n\nPosso ajudar com dúvidas sobre o **sistema** (como agendar, ver a agenda sincronizada com o Google Calendar, cadastrar clientes, usar o WhatsApp 1-clique) e sobre a **clínica** (endereço, horários, regras de agendamento).\n\nTambém sou assistente clínico: gero guias de cuidados pós-operatórios, sintetizo prontuários e apoio no acompanhamento de pé diabético.\n\nComo posso ajudar você hoje?",
       timestamp: new Date(),
     },
   ]);

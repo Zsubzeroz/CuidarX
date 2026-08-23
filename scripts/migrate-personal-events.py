@@ -4,7 +4,7 @@ import json, re, os, time
 from urllib.request import Request, urlopen
 from urllib.error import HTTPError
 
-PROJECT = "podologa-fabricia"
+PROJECT = os.environ.get("FIREBASE_PROJECT_ID", "cuidarx")
 BASE = f"https://firestore.googleapis.com/v1/projects/{PROJECT}/databases/(default)/documents"
 
 PERSONAL_PATTERNS = [

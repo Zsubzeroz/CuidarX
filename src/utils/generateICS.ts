@@ -1,3 +1,5 @@
+import { clinicConfig } from "../config";
+
 function pad(n: number): string {
   return n.toString().padStart(2, "0");
 }
@@ -37,12 +39,13 @@ export function generateICSFile(params: {
     pad(now.getUTCSeconds()) +
     "Z";
 
-  const uid = `appt-${date}-${time}-${Date.now()}@podologa-fabricia.web.app`;
+  const host = clinicConfig.clinicUrl ? new URL(clinicConfig.clinicUrl).hostname : "cuidarx.app";
+  const uid = `appt-${date}-${time}-${Date.now()}@${host}`;
 
   const lines = [
     "BEGIN:VCALENDAR",
     "VERSION:2.0",
-    "PRODID:-//Clínica Dra. Fabrícia Rodrigues//Agendamento//PT",
+    `PRODID:-//${clinicConfig.clinicName}//Agendamento//PT`,
     "CALSCALE:GREGORIAN",
     "METHOD:PUBLISH",
     "X-WR-TIMEZONE:America/Sao_Paulo",
@@ -63,7 +66,7 @@ export function generateICSFile(params: {
     `DTSTART;TZID=America/Sao_Paulo:${dtStart}`,
     `DTEND;TZID=America/Sao_Paulo:${dtEnd}`,
     `SUMMARY:${procedure} - ${patientName}`,
-    `DESCRIPTION:Consulta agendada com Dra. Fabrícia Rodrigues. Procedimento: ${procedure}`,
+    `DESCRIPTION:Consulta agendada com ${clinicConfig.doctorName}. Procedimento: ${procedure}`,
     location ? `LOCATION:${location}` : "",
     "STATUS:CONFIRMED",
     "BEGIN:VALARM",

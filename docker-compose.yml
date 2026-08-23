@@ -1,7 +1,7 @@
 services:
   app:
     build: .
-    container_name: podologia-fabricia
+    container_name: cuidarx
     ports:
       - "3000:3000"
     env_file: .env

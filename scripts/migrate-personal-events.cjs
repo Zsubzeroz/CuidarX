@@ -28,7 +28,7 @@ fs.writeFileSync(tokenFilePath, JSON.stringify({
 
 admin.initializeApp({
   credential: admin.credential.refreshToken(tokenFilePath),
-  projectId: "podologa-fabricia",
+  projectId: process.env.FIREBASE_PROJECT_ID || "cuidarx",
 });
 
 const db = admin.firestore();

@@ -1,3 +1,5 @@
+import { clinicConfig } from "../config";
+
 const CLIENT_ID = import.meta.env.VITE_GOOGLE_CALENDAR_CLIENT_ID || "";
 
 const SCOPES = "openid email profile https://www.googleapis.com/auth/calendar https://www.googleapis.com/auth/calendar.events https://www.googleapis.com/auth/calendar.readonly";
@@ -6,11 +8,9 @@ const TOKEN_STORAGE_KEY = "google_calendar_access_token";
 const TOKEN_EXPIRY_KEY = "google_calendar_token_expiry";
 const GIS_SCRIPT_URL = "https://accounts.google.com/gsi/client";
 
-// Detecta se está rodando no Capacitor (Android/iOS)
+// Web-only: always return false
 export function isNativePlatform(): boolean {
-  try {
-    return !!(window as any).Capacitor || navigator.userAgent.includes("Capacitor");
-  } catch { return false; }
+  return false;
 }
 
 let tokenClient: any = null;
@@ -143,18 +143,7 @@ export function hasPersistedToken(): boolean {
 
 export async function silentConnectGoogle(): Promise<boolean> {
 
-  // On native platforms, first try to restore a persisted token quickly
-  if (isNativePlatform()) {
-    if (hasPersistedToken()) {
-      const stored = localStorage.getItem(TOKEN_STORAGE_KEY);
-      if (stored) {
-        accessToken = stored;
-        return true;
-      }
-    }
-  }
-
-  // Try GIS silent connect on ALL platforms (popup works in Capacitor WebView via Chrome)
+  // Try GIS silent connect
   try {
     await loadGIScript();
     const client = await getTokenClient();
@@ -202,13 +191,6 @@ export async function connectGoogleCalendar(): Promise<string> {
   setConnecting(true);
 
   try {
-    // On native: open OAuth in system browser, relay token via Firestore
-    if (isNativePlatform()) {
-      const token = await connectGoogleCalendarNative();
-      setConnecting(false);
-      return token;
-    }
-
     // Web: use GIS popup
     await loadGIScript();
     const client = await getTokenClient();
@@ -227,39 +209,6 @@ export async function connectGoogleCalendar(): Promise<string> {
     setConnecting(false);
     throw err;
   }
-}
-
-async function connectGoogleCalendarNative(): Promise<string> {
-  const { generateSessionId, pollTokenFromFirestore } = await import("./tokenRelayService");
-  const { Browser } = await import("@capacitor/browser");
-  const { App } = await import("@capacitor/app");
-
-  const sessionId = generateSessionId();
-  const redirectUri = "https://podologa-fabricia.web.app";
-
-  const authUrl =
-    `https://accounts.google.com/o/oauth2/v2/auth` +
-    `?client_id=${encodeURIComponent(CLIENT_ID)}` +
-    `&redirect_uri=${encodeURIComponent(redirectUri)}` +
-    `&response_type=token` +
-    `&scope=${encodeURIComponent(SCOPES)}` +
-    `&prompt=consent` +
-    `&include_granted_scopes=true` +
-    `&state=${encodeURIComponent(sessionId)}`;
-
-  await Browser.open({ url: authUrl });
-
-  // Poll Firestore for the token (written by SPA at redirect_uri)
-  const token = await pollTokenFromFirestore(sessionId, 120000);
-
-  await Browser.close().catch(() => {});
-
-  if (!token) {
-    throw new Error("CONNECT_TIMEOUT");
-  }
-
-  saveToken(token);
-  return token;
 }
 
 function requestToken(client: any): Promise<string> {
@@ -306,10 +255,6 @@ export function disconnectGoogleCalendar(): void {
     localStorage.removeItem(TOKEN_STORAGE_KEY);
     localStorage.removeItem(TOKEN_EXPIRY_KEY);
   } catch {}
-}
-
-export async function renewTokenOnNative(): Promise<boolean> {
-  return silentConnectGoogle();
 }
 
 export interface GoogleCalendarEvent {

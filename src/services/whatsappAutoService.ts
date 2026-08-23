@@ -1,3 +1,5 @@
+import { clinicConfig } from "../config";
+
 export type WhatsAppProvider = "z-api" | "ultramsg" | "evolution" | "";
 
 export interface WhatsAppAutoConfig {
@@ -11,7 +13,7 @@ export interface WhatsAppAutoConfig {
 }
 
 export const DEFAULT_CLIENT_MESSAGE_TEMPLATE =
-  `Olá, Dra. Fabrícia! 💐\n\n` +
+  `Olá, ${clinicConfig.doctorName}! 💐\n\n` +
   `Acabei de agendar minha consulta de Podologia e envio o comprovante abaixo:\n\n` +
   `👤 *Nome:* {nome}\n` +
   `📅 *Data:* {data}\n` +
@@ -139,7 +141,7 @@ export async function sendConfirmation(
   }
 
   const formattedDate = new Date(date + "T00:00:00").toLocaleDateString("pt-BR");
-  const message = `Olá ${patientName}! Confirmando sua consulta de Podologia com a Dra. Fabrícia Rodrigues amanhã, ${formattedDate} às ${time}. Podemos confirmar? Responda com SIM.`;
+  const message = `Olá ${patientName}! Confirmando sua consulta de ${clinicConfig.doctorSpecialty} com ${clinicConfig.doctorName} amanhã, ${formattedDate} às ${time}. Podemos confirmar? Responda com SIM.`;
 
   try {
     const { url, body, headers } = buildPayload(
@@ -176,7 +178,7 @@ export async function sendReminder(
   }
 
   const formattedDate = new Date(date + "T00:00:00").toLocaleDateString("pt-BR");
-  const message = `🔔 *Lembrete - Dra. Fabrícia Rodrigues* 🐾\n\nOlá *${patientName}*! Passando para lembrar da sua consulta de Podologia amanhã, *${formattedDate}* às *${time}*.\n\n_Qualquer imprevisto, avise-nos com antecedência._ 😊`;
+  const message = `🔔 *Lembrete - ${clinicConfig.doctorName}* 🐾\n\nOlá *${patientName}*! Passando para lembrar da sua consulta de ${clinicConfig.doctorSpecialty} amanhã, *${formattedDate}* às *${time}*.\n\n_Qualquer imprevisto, avise-nos com antecedência._ 😊`;
 
   try {
     const { url, body, headers } = buildPayload(
@@ -210,7 +212,7 @@ export async function sendFollowUp(
     return { success: false, error: "Automação WhatsApp desligada ou não configurada" };
   }
 
-  const message = `👋 *Dra. Fabrícia Rodrigues* 🐾\n\nOlá *${patientName}*! Esperamos que tenha gostado do seu atendimento. Se precisar de qualquer suporte ou quiser agendar um retorno, estamos à disposição!\n\nAgende online: https://podologa-fabricia.web.app/cliente`;
+  const message = `👋 *${clinicConfig.doctorName}* 🐾\n\nOlá *${patientName}*! Esperamos que tenha gostado do seu atendimento. Se precisar de qualquer suporte ou quiser agendar um retorno, estamos à disposição!\n\nAgende online: ${clinicConfig.clinicUrl}/cliente`;
 
   try {
     const { url, body, headers } = buildPayload(

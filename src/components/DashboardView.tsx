@@ -1,4 +1,5 @@
 import { Patient, Appointment, FinanceRecord } from "../types";
+import { clinicConfig } from "../config";
 // @ts-ignore
 import clinicLogo from "../assets/images/clinic_logo_1783686122531.jpg";
 import {
@@ -118,13 +119,13 @@ export default function DashboardView({
         <div className="flex items-center gap-4 relative">
           <img
             src={clinicLogo}
-            alt="Logo Dra. Fabrícia Rodrigues"
+            alt={`Logo ${clinicConfig.clinicName}`}
             className="w-16 h-16 rounded-2xl object-cover border-2 border-[#C8A45A]/50 shadow-lg hidden sm:block"
             referrerPolicy="no-referrer"
           />
           <div>
             <p className="text-[10px] uppercase tracking-widest text-[#C8A45A] font-semibold mb-1">Bem-vinda, Doutora</p>
-            <h2 className="text-xl md:text-2xl font-bold tracking-tight font-display">Dra. Fabrícia Rodrigues 👋</h2>
+            <h2 className="text-xl md:text-2xl font-bold tracking-tight font-display">{clinicConfig.doctorName} 👋</h2>
             <p className="text-white/60 text-xs mt-1">
               Seu consultório está pronto para os atendimentos de hoje.
             </p>

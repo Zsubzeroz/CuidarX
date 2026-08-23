@@ -1,8 +1,8 @@
-# Podologia Fabricia - Saude & Bem-Estar
+# CuidarX - Sistema de Gestao Clinica
 
 Sistema multiplataforma (Web, Mobile e Tablet) para gestao completa de clinica de podologia.
 
-Desenvolvido para a Dra. Fabricia Rodrigues — gestao de agendamentos, fichas de anamnese com assinatura digital, financeiro, e sincronizacao em tempo real com Google Agenda.
+Sistema SaaS de gestao clinica multi-tenant — gestao de agendamentos, fichas de anamnese com assinatura digital, financeiro, e sincronizacao em tempo real com Google Agenda.
 
 ## Funcionalidades
 
@@ -37,7 +37,7 @@ Desenvolvido para a Dra. Fabricia Rodrigues — gestao de agendamentos, fichas d
 ```
 
 O **mesmo codigo-fonte** (React + TypeScript) alimenta todas as plataformas:
-- **Web**: deploy automatico via Firebase Hosting (`podologa-fabricia.web.app`)
+- **Web**: deploy automatico via Firebase Hosting
 - **Mobile/Tablet**: compilado via Capacitor para Android (APK)
 - **Dados**: Firebase Firestore com listeners `onSnapshot` (tempo real)
 
@@ -75,8 +75,8 @@ O **mesmo codigo-fonte** (React + TypeScript) alimenta todas as plataformas:
 
 ```bash
 # Clonar o repositorio
-git clone https://github.com/Zsubzeroz/podologia-fabricia.git
-cd podologia-fabricia
+git clone https://github.com/Zsubzeroz/cuidarx.git
+cd cuidarx
 
 # Instalar dependencias
 npm install
@@ -158,7 +158,7 @@ android/app/build/outputs/apk/debug/app-debug.apk
 ## Estrutura do Projeto
 
 ```
-podologia-fabricia/
+cuidarx/
 ├── src/
 │   ├── components/
 │   │   ├── CalendarView.tsx      # Agenda diaria com bloqueios
@@ -198,4 +198,4 @@ podologia-fabricia/
 
 ## Licenca
 
-Projeto privado — Dr. Fabricia Rodrigues. Todos os direitos reservados.
+Projeto privado — CuidarX. Todos os direitos reservados. Desenvolvido por Luan Estifer Rodrigues Pereira (Software Engineer).

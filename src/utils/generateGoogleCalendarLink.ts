@@ -1,3 +1,5 @@
+import { clinicConfig } from "../config";
+
 function pad(n: number): string {
   return n.toString().padStart(2, "0");
 }
@@ -39,7 +41,7 @@ export function generateGoogleCalendarLink(params: {
     action: "TEMPLATE",
     text: procedure,
     dates: `${dtStart}/${dtEnd}`,
-    details: `Consulta com Dra. Fabrícia Rodrigues. Procedimento: ${procedure}`,
+    details: `Consulta com ${clinicConfig.doctorName}. Procedimento: ${procedure}`,
   });
   if (location) p.set("location", location);
 

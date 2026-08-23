@@ -1,9 +1,9 @@
 #!/bin/bash
 set -e
 
-IMAGE="zsubzeroz/podologia-fabricia"
-CONTAINER="podologia-fabricia"
-ENV_FILE="/opt/podologia-fabricia/.env"
+IMAGE="cuidarx"
+CONTAINER="cuidarx"
+ENV_FILE="/opt/cuidarx/.env"
 
 echo "🔄 Parando container antigo..."
 docker stop $CONTAINER 2>/dev/null || true

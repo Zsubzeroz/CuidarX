@@ -1,4 +1,5 @@
 import { useState, useEffect } from "react";
+import { clinicConfig } from "../config";
 
 interface SplashScreenProps {
   visible: boolean;
@@ -42,7 +43,7 @@ export default function SplashScreen({ visible }: SplashScreenProps) {
       >
         <img
           src="/logo-fr.png"
-          alt="Dra. Fabrícia Rodrigues"
+          alt={clinicConfig.clinicName}
           style={{ maxWidth: 260, width: "100%", height: "auto" }}
           draggable={false}
         />

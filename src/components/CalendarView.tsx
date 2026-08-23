@@ -37,6 +37,7 @@ import {
   PartyPopper,
   Layers,
 } from "lucide-react";
+import { clinicConfig } from "../config";
 import { syncPublicScheduleBlocks } from "../services/firestoreService";
 
 interface CalendarViewProps {
@@ -1454,7 +1455,7 @@ export default function CalendarView({
       if (isGoogleConnected) {
         const result = await onCreateGoogleEvent(
           `${service} - ${resolvedPatientName}`,
-          notes || `Agendamento via Podologia Fabrícia - ${resolvedPatientName}`,
+          notes || `Agendamento via ${clinicConfig.clinicName} - ${resolvedPatientName}`,
           dtStart,
           dtEnd
         );
@@ -1812,12 +1813,12 @@ export default function CalendarView({
   };
 
   const buildWhatsAppConfirmUrl = (name: string, phone: string, date: string, time: string) => {
-    const msg = `Olá ${name}! Confirmando sua consulta de Podologia com a Dra. Fabrícia Rodrigues amanhã, ${formatDateBR(date)} às ${time}. Podemos confirmar? Responda com SIM.`;
+    const msg = `Olá ${name}! Confirmando sua consulta de Podologia com ${clinicConfig.doctorName} amanhã, ${formatDateBR(date)} às ${time}. Podemos confirmar? Responda com SIM.`;
     return `https://wa.me/${formatPhoneForWa(phone)}?text=${encodeURIComponent(msg)}`;
   };
 
   const buildWhatsAppDetailsUrl = (name: string, phone: string, date: string, time: string, service: string, price: number) => {
-    const msg = `*Clínica Dra. Fabrícia Rodrigues* 🐾\n\nOlá *${name}*! Aqui estão os detalhes da sua consulta:\n\n📅 *Data:* ${formatDateBR(date)}\n🕒 *Horário:* ${time}\n📍 *Procedimento:* ${service}\n💰 *Valor:* R$ ${price}\n\n_Qualquer dúvida, estamos à disposição!_ 😊`;
+    const msg = `*${clinicConfig.clinicName}* 🐾\n\nOlá *${name}*! Aqui estão os detalhes da sua consulta:\n\n📅 *Data:* ${formatDateBR(date)}\n🕒 *Horário:* ${time}\n📍 *Procedimento:* ${service}\n💰 *Valor:* R$ ${price}\n\n_Qualquer dúvida, estamos à disposição!_ 😊`;
     return `https://wa.me/${formatPhoneForWa(phone)}?text=${encodeURIComponent(msg)}`;
   };
 
@@ -2235,7 +2236,7 @@ export default function CalendarView({
               <div className="flex items-start gap-2">
                 <AlertCircle className="w-4 h-4 text-amber-600 shrink-0 mt-0.5" />
                 <p className="text-[10px] text-amber-800 leading-relaxed">
-                  Conta sem permissão. Use <strong>fabriciapodologa@gmail.com</strong>.
+                  Conta sem permissão. Use <strong>{clinicConfig.adminEmail || "email autorizado"}</strong>.
                 </p>
               </div>
               <div className="flex gap-2">

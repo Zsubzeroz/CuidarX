@@ -1,5 +1,5 @@
-import { doc, getDoc, setDoc } from "firebase/firestore";
-import { db, isFirebaseConfigured } from "./firebase";
+import { getClinicId } from "./firestoreService";
+import { loadClinicConfig, saveClinicConfig } from "./clinicConfigService";
 
 export interface ClinicSettings {
   expedienteStart: string;
@@ -12,8 +12,6 @@ export const DEFAULT_CLINIC_SETTINGS: ClinicSettings = {
 };
 
 const STORAGE_KEY = "clinic_settings";
-const FIRESTORE_COLLECTION = "clinicSettings";
-const FIRESTORE_DOC_ID = "geral";
 
 export function getLocalSettings(): ClinicSettings {
   try {
@@ -36,29 +34,36 @@ export function saveLocalSettings(settings: ClinicSettings): void {
 }
 
 export async function loadSettingsFromFirestore(): Promise<ClinicSettings | null> {
-  if (!isFirebaseConfigured || !db) return null;
   try {
-    const ref = doc(db, FIRESTORE_COLLECTION, FIRESTORE_DOC_ID);
-    const snap = await getDoc(ref);
-    if (snap.exists()) {
-      const data = snap.data() as Partial<ClinicSettings>;
-      return {
-        expedienteStart: data.expedienteStart || DEFAULT_CLINIC_SETTINGS.expedienteStart,
-        expedienteEnd: data.expedienteEnd || DEFAULT_CLINIC_SETTINGS.expedienteEnd,
-      };
-    }
+    const clinicId = getClinicId();
+    if (!clinicId) return null;
+    
+    const config = await loadClinicConfig(clinicId);
+    if (!config) return null;
+    
+    return {
+      expedienteStart: config.settings?.expedienteStart || DEFAULT_CLINIC_SETTINGS.expedienteStart,
+      expedienteEnd: config.settings?.expedienteEnd || DEFAULT_CLINIC_SETTINGS.expedienteEnd,
+    };
   } catch (err) {
     console.warn("[ClinicSettings] Falha ao ler do Firestore:", err);
+    return null;
   }
-  return null;
 }
 
 export async function saveSettingsToFirestore(settings: ClinicSettings): Promise<void> {
-  if (!isFirebaseConfigured || !db) return;
   try {
-    await setDoc(doc(db, FIRESTORE_COLLECTION, FIRESTORE_DOC_ID), {
-      ...settings,
-      updatedAt: new Date().toISOString(),
+    const clinicId = getClinicId();
+    if (!clinicId) throw new Error("Nenhuma clínica selecionada");
+    
+    await saveClinicConfig(clinicId, {
+      settings: {
+        ...settings,
+        allowOnlineBooking: true,
+        requireConfirmation: true,
+        bookingWindowDays: 30,
+        timezone: "America/Sao_Paulo",
+      },
     });
   } catch (err) {
     console.warn("[ClinicSettings] Falha ao salvar no Firestore:", err);

@@ -11,7 +11,7 @@ const consoleLogs = [];
 page.on('console', msg => consoleLogs.push(`[${msg.type()}] ${msg.text()}`));
 page.on('pageerror', err => consoleLogs.push(`[ERROR] ${err.message}`));
 
-const URL = 'https://podologa-fabricia.web.app/cliente';
+const URL = process.env.VITE_CLINIC_URL || 'http://localhost:3000/cliente';
 
 console.log('=== Navigating to ' + URL + ' ===');
 await page.goto(URL, { waitUntil: 'domcontentloaded', timeout: 30000 });

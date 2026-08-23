@@ -1,6 +1,6 @@
 {
-  "name": "Podologia Fabrícia",
-  "description": "Sistema de gestão clínica e prontuários para a clínica de Podologia Fabrícia.",
+  "name": "CuidarX",
+  "description": "Sistema de gestao clinica e prontuarios eletronicos multi-tenant.",
   "requestFramePermissions": [],
   "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
 }

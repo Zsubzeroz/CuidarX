@@ -26,8 +26,8 @@ jobs:
           context: .
           push: true
           tags: |
-            ${{ secrets.DOCKERHUB_USERNAME }}/podologia-fabricia:latest
-            ${{ secrets.DOCKERHUB_USERNAME }}/podologia-fabricia:${{ github.sha }}
+            ${{ secrets.DOCKERHUB_USERNAME }}/cuidarx:latest
+            ${{ secrets.DOCKERHUB_USERNAME }}/cuidarx:${{ github.sha }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
@@ -42,6 +42,6 @@ jobs:
           username: ${{ secrets.VPS_USER }}
           key: ${{ secrets.VPS_SSH_KEY }}
           script: |
-            cd /opt/podologia-fabricia
+            cd /opt/cuidarx
             chmod +x deploy.sh
             ./deploy.sh

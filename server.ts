@@ -62,9 +62,8 @@ function getGemini(): GoogleGenAI {
 
 // CORS — whitelist
 const ALLOWED_ORIGINS = [
-  "https://podologa-fabricia.web.app",
-  "https://podologa-fabricia.firebaseapp.com",
-];
+  process.env.APP_URL || "http://localhost:3000",
+].filter(Boolean);
 app.use(cors({
   origin: (origin, callback) => {
     if (!origin || ALLOWED_ORIGINS.includes(origin)) {
@@ -571,7 +570,7 @@ app.post("/api/gemini", verifyFirebaseToken, aiLimiter, async (req: Request, res
 
     if (!apiKeySet) {
       // Simulate highly advanced intelligent responses in Portuguese if API key is not yet configured
-      let simulatedResponse = "Olá! Eu sou o Assistente Clínico IA da Dra. Fabrícia Rodrigues. ";
+      let simulatedResponse = `Olá! Eu sou o Assistente Clínico IA da ${process.env.VITE_CLINIC_NAME || "Sua Clínica"}. `;
       
       if (isScheduleQuery) {
         simulatedResponse = `### 📅 Agenda de Atendimentos para Hoje (${targetDate}):\n\n` +
@@ -628,7 +627,7 @@ app.post("/api/gemini", verifyFirebaseToken, aiLimiter, async (req: Request, res
       }
       
       if (prompt.toLowerCase().includes("onicocriptose") || prompt.toLowerCase().includes("encravada") || prompt.toLowerCase().includes("diabet") || prompt.toLowerCase().includes("pé diabético") || prompt.toLowerCase().includes("prontuário") || prompt.toLowerCase().includes("sintetizar")) {
-        simulatedResponse += `\n\n*Esta é uma sugestão da IA. A decisão final e o diagnóstico cabem exclusivamente à Dra. Fabrícia.*`;
+        simulatedResponse += `\n\n*Esta é uma sugestão da IA. A decisão final e o diagnóstico cabem exclusivamente ao profissional responsável.*`;
       }
       
       return res.json({ text: simulatedResponse });
@@ -636,7 +635,9 @@ app.post("/api/gemini", verifyFirebaseToken, aiLimiter, async (req: Request, res
 
     // --- REAL GEMINI PROCESSING ---
     // Use client-provided systemPrompt if available, otherwise use default clinical assistant prompt
-    const systemPrompt = clientSystemPrompt || `Você é o Assistente Clínico Inteligente da Dra. Fabrícia, uma podóloga especialista em saúde dos pés. 
+    const doctorName = process.env.VITE_DOCTOR_NAME || "Dra. Profissional";
+    const clinicName = process.env.VITE_CLINIC_NAME || "Sua Clínica";
+    const systemPrompt = clientSystemPrompt || `Você é o Assistente Clínico Inteligente da ${doctorName}, uma profissional especialista em saúde.
 Sua missão é auxiliar na gestão da clínica, análise de prontuários e suporte à decisão clínica.
 
 ### DIRETRIZES DE ATUAÇÃO:
@@ -647,20 +648,20 @@ Sua missão é auxiliar na gestão da clínica, análise de prontuários e supor
 
 ### SUAS FUNÇÕES PRINCIPAIS:
 - RESUMO DE CASOS: Analisar o histórico de consultas do paciente e destacar alertas (ex: "Paciente diabético com histórico de úlceras").
-- APOIO FINANCEIRO: Ajudar a Dra. Fabrícia a entender o faturamento mensal e fluxos de caixa quando ela perguntar sobre o painel financeiro.
+- APOIO FINANCEIRO: Ajudar a ${doctorName} a entender o faturamento mensal e fluxos de caixa quando ela perguntar sobre o painel financeiro.
 - AGENDA: Sugerir prioridades de agendamento com base na gravidade do caso.
 - ALERTAS DIABÉTICOS: Se um paciente for marcado como "Diabético", sempre reforce a necessidade de inspeção minuciosa e orientações de autocuidado.
 - GESTÃO DE AGENDAMENTOS (SITE -> WHATSAPP):
   - Sua função é monitorar a coleção 'appointments' (agendamentos) do Firebase.
-  - Quando a Dra. Fabrícia perguntar "Quem vem hoje?", você deve listar os nomes, horários e se há alguma observação clínica (ex: 'Paciente novo' ou 'Retorno de Onicocriptose').
+  - Quando a ${doctorName} perguntar "Quem vem hoje?", você deve listar os nomes, horários e se há alguma observação clínica.
   - Se houver conflito de horários ou muitos diabéticos no mesmo dia, sugira uma preparação especial de materiais.
-  - Ajude a Dra. a converter as mensagens do WhatsApp em dados: se ela colar um texto do WhatsApp, você deve extrair o nome e o problema e sugerir o cadastro no sistema.
+  - Ajude a ${doctorName} a converter as mensagens do WhatsApp em dados: se ela colar um texto do WhatsApp, você deve extrair o nome e o problema e sugerir o cadastro no sistema.
 
 ### SEGURANÇA MÉDICA:
-- Você é uma ferramenta de apoio. Sempre termine recomendações clínicas complexas com a frase: "Esta é uma sugestão da IA. A decisão final e o diagnóstico cabem exclusivamente à Dra. Fabrícia."
+- Você é uma ferramenta de apoio. Sempre termine recomendações clínicas complexas com a frase: "Esta é uma sugestão da IA. A decisão final e o diagnóstico cabem exclusivamente ao profissional responsável."
 
 ### CONTEXTO DA CLÍNICA EM TEMPO REAL:
-Abaixo estão os dados atuais e reais extraídos do banco de dados Firebase/Firestore para você analisar e responder à Dra. Fabrícia:
+Abaixo estão os dados atuais e reais extraídos do banco de dados Firebase/Firestore para você analisar e responder à ${doctorName}:
 
 Pacientes Cadastrados:
 ${db.patients.map((p: Patient) => `- ID: ${p.id}, Nome: ${p.name}, WhatsApp: ${p.phone}, Diabético: ${p.isDiabetic ? "Sim" : "Não"}, Circulatório: ${p.hasCirculatoryIssues ? "Sim" : "Não"}, Alergias: ${p.hasAllergies}, Tipo de Pisada: ${p.footStrikeType || "Não Informado"}, Notas Clínicas: "${p.observations || "Nenhuma"}", Problemas Ativos: ${JSON.stringify(p.footIssues?.filter((i: any) => i.status === "active").map((i: any) => `${i.condition} no pé ${i.foot === "right" ? "direito" : "esquerdo"} (${i.notes || ""})`) || [])}`).join("\n")}
@@ -675,7 +676,7 @@ Histórico Financeiro do Caixa:
 ### INTEGRAÇÃO COM A INTERFACE WEB (SISTEMA):
 - FORMATATAÇÃO: Use sempre Markdown para as respostas (negrito, listas, tabelas) para que o texto fique bonito e legível no site.
 - RESPOSTAS CURTAS: No chat lateral do site, prefira respostas objetivas. Se o assunto for complexo, use tópicos.
-- STATUS DO FIREBASE: Quando a Dra. Fabrícia mencionar que "atualizou o prontuário" ou "lançou um pagamento", confirme que você (via sistema) levará isso em conta na próxima análise.
+- STATUS DO FIREBASE: Quando a ${doctorName} mencionar que "atualizou o prontuário" ou "lançou um pagamento", confirme que você (via sistema) levará isso em conta na próxima análise.
 - BOTÕES DE AÇÃO: Se você sugerir um exame ou retorno, formate como: "[AÇÃO: Agendar Retorno]", para que o desenvolvedor possa futuramente criar botões automáticos baseados no seu texto.
 
 Por favor, responda sempre em português brasileiro de forma clara e formatada com Markdown.`;
@@ -778,8 +779,9 @@ app.post("/api/ollama", verifyFirebaseToken, aiLimiter, async (req: Request, res
 
     db = isFirebaseEnabled ? (await fetchFromFirestore() || loadClinicData()) : loadClinicData();
 
-    const defaultSystem = `Você é o Assistente Clínico Inteligente da Dra. Fabrícia, uma podóloga especialista em saúde dos pés.
-Você é uma ferramenta de apoio. Sempre termine recomendações clínicas complexas com: "Esta é uma sugestão da IA. A decisão final e o diagnóstico cabem exclusivamente à Dra. Fabrícia."
+    const doctorNameOllama = process.env.VITE_DOCTOR_NAME || "Dra. Profissional";
+    const defaultSystem = `Você é o Assistente Clínico Inteligente da ${doctorNameOllama}, uma profissional especialista em saúde.
+Você é uma ferramenta de apoio. Sempre termine recomendações clínicas complexas com: "Esta é uma sugestão da IA. A decisão final e o diagnóstico cabem exclusivamente ao profissional responsável."
 Responda sempre em português brasileiro de forma clara e formatada com Markdown.
 
 ### CONTEXTO DA CLÍNICA EM TEMPO REAL:
@@ -838,7 +840,7 @@ async function startServer() {
   }
 
   app.listen(PORT, "0.0.0.0", () => {
-    console.log(`Podologia Fabrícia App running on http://localhost:${PORT}`);
+    console.log(`CuidarX App running on http://localhost:${PORT}`);
   });
 }
 

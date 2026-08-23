@@ -1,6 +1,7 @@
 import React, { useState, useRef, useEffect } from "react";
 import DOMPurify from "dompurify";
 import { MessageCircle, X, Send, Bot, Sparkles } from "lucide-react";
+import { clinicConfig } from "../config";
 import { getClinicWhatsAppLink, getClinicWhatsAppDisplay } from "../services/whatsappAutoService";
 import { generateAIResponse } from "../services/aiService";
 
@@ -10,7 +11,7 @@ interface ChatMsg {
   text: string;
 }
 
-const RECEPTIONIST_SYSTEM_PROMPT = `Você é a Recepcionista Virtual da Dra. Fabrícia Rodrigues — clínica de Podologia & Enfermagem.
+const RECEPTIONIST_SYSTEM_PROMPT = `Você é a Recepcionista Virtual da ${clinicConfig.doctorName} — clínica de ${clinicConfig.doctorSpecialty}.
 Você atende clientes no site de agendamento online, sempre em português brasileiro, de forma extremamente acolhedora, educada e prestativa.
 
 ### DADOS OFICIAIS DA CLÍNICA (use SEMPRE estes dados):
@@ -30,9 +31,9 @@ Você atende clientes no site de agendamento online, sempre em português brasil
 ### DIRETRIZES:
 1. Seja sempre acolhedora e educada. Use emojis com moderação para transmitir calor humano.
 2. Seja curta e direta; use listas/negrito quando ajudar.
-3. Se o paciente perguntar sobre algum tratamento clínico (unha encravada, micose, pé diabético, verruga, calosidade), explique de forma simples e gentil, e SEMPRE recomende agendar uma avaliação com a Dra. Fabrícia: "Para um diagnóstico preciso e um tratamento personalizado, que tal agendar uma avaliação? Você pode escolher o dia e horário pelo formulário ao lado! 😊"
-4. Nunca dê diagnósticos definitivos. Use frases como "Parece ser...", "Pode ser indicativo de...", "A Dra. Fabrícia vai poder avaliar melhor..."
-5. Termine recomendações clínicas com: "Lembre-se: a decisão final e o diagnóstico cabem exclusivamente à Dra. Fabrícia."
+3. Se o paciente perguntar sobre algum tratamento clínico (unha encravada, micose, pé diabético, verruga, calosidade), explique de forma simples e gentil, e SEMPRE recomende agendar uma avaliação com a ${clinicConfig.doctorName}: "Para um diagnóstico preciso e um tratamento personalizado, que tal agendar uma avaliação? Você pode escolher o dia e horário pelo formulário ao lado! 😊"
+4. Nunca dê diagnósticos definitivos. Use frases como "Parece ser...", "Pode ser indicativo de...", "A ${clinicConfig.doctorName} vai poder avaliar melhor..."
+5. Termine recomendações clínicas com: "Lembre-se: a decisão final e o diagnóstico cabem exclusivamente à ${clinicConfig.doctorName}."
 6. Se o paciente agradecer, responda com carinho e reforce que está à disposição.
 7. Se não souber responder algo, diga que vai verificar e oriente a chamar no WhatsApp.`;
 
@@ -47,7 +48,7 @@ const kb: { keywords: string[]; answer: string }[] = [
   {
     keywords: ["endereco", "local", "onde", "fica", "rua", "localizacao", "chegar", "endereco"],
     answer:
-      "📍 **Endereço da clínica:**\n\nRua Papa João Paulo II, 256 — **Artur Nogueira/SP**\n\nVocê pode abrir no mapa pelo botão de WhatsApp e pedir a localização da Dra. Fabrícia.",
+      "📍 **Endereço da clínica:**\n\nRua Papa João Paulo II, 256 — **Artur Nogueira/SP**\n\nVocê pode abrir no mapa pelo botão de WhatsApp e pedir a localização da ${clinicConfig.doctorName}.",
   },
   {
     keywords: ["whatsapp", "zap", "telefone", "contato", "ligar", "numero", "mensagem", "falar", "falar"],
@@ -71,17 +72,17 @@ const kb: { keywords: string[]; answer: string }[] = [
   {
     keywords: ["servico", "faz", "oferece", "tratamento", "especialidade", "procedimento", "unha", "encravada", "micose", "calo", "verruga", "ortese", "fissura"],
     answer:
-      "✨ **Serviços oferecidos pela clínica:**\n\n• Podologia Geral\n• Tratamento de Órtese (hálux)\n• Tratamento de Verruga Plantar\n• Tratamento de Onicocriptose (unha encravada)\n• Onicomicose (micose nas unhas)\n• Calosidades e fissuras\n• Avaliação de Pé Diabético\n\nTudo com acompanhamento da Dra. Fabrícia Rodrigues.",
+      "✨ **Serviços oferecidos pela clínica:**\n\n• Podologia Geral\n• Tratamento de Órtese (hálux)\n• Tratamento de Verruga Plantar\n• Tratamento de Onicocriptose (unha encravada)\n• Onicomicose (micose nas unhas)\n• Calosidades e fissuras\n• Avaliação de Pé Diabético\n\nTudo com acompanhamento da ${clinicConfig.doctorName}.",
   },
   {
     keywords: ["diabetico", "diabetes", "pe diabetico"],
     answer:
-      "🩺 **Pé Diabético:**\n\nA clínica realiza avaliação e cuidados especializados para pés diabéticos, com inspeção minuciosa e orientações de autocuidado. Recomendamos avaliação periódica com a Dra. Fabrícia.",
+      "🩺 **Pé Diabético:**\n\nA clínica realiza avaliação e cuidados especializados para pés diabéticos, com inspeção minuciosa e orientações de autocuidado. Recomendamos avaliação periódica com a ${clinicConfig.doctorName}.",
   },
   {
     keywords: ["oi", "ola", "bom dia", "boa tarde", "boa noite", "hey", "eai", "tudo bem", "opa"],
     answer:
-      "Olá! 😊 Sou a **recepcionista virtual** da Dra. Fabrícia Rodrigues.\n\nPosso te ajudar com **endereço**, **horários**, **valores**, **serviços** e **agendamentos**. O que você precisa?",
+      "Olá! 😊 Sou a **recepcionista virtual** da ${clinicConfig.doctorName}.\n\nPosso te ajudar com **endereço**, **horários**, **valores**, **serviços** e **agendamentos**. O que você precisa?",
   },
   {
     keywords: ["obrigado", "obrigada", "valeu", "grato", "gratidao", "vlw", "agradeco"],
@@ -125,7 +126,7 @@ export default function AiReceptionistWidget() {
     {
       id: "welcome",
       sender: "ai",
-      text: "Olá! 😊 Sou a **recepcionista virtual** da Dra. Fabrícia.\n\nPergunte sobre **endereço**, **horários**, **valores** ou **agendamento**.",
+      text: "Olá! 😊 Sou a **recepcionista virtual** da ${clinicConfig.doctorName}.\n\nPergunte sobre **endereço**, **horários**, **valores** ou **agendamento**.",
     },
   ]);
   const [inputText, setInputText] = useState("");
@@ -175,7 +176,7 @@ export default function AiReceptionistWidget() {
               </div>
               <div>
                 <p className="text-xs font-bold leading-tight">Recepcionista Virtual</p>
-                <p className="text-[9px] text-[#C8A45A]/80 font-medium">Dra. Fabrícia Rodrigues · Podologia</p>
+                <p className="text-[9px] text-[#C8A45A]/80 font-medium">${clinicConfig.doctorName} · Podologia</p>
               </div>
             </div>
             <button

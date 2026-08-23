@@ -23,7 +23,7 @@ import {
 const AUTH_STORAGE_KEY = "google_admin_auth";
 
 const ADMIN_EMAILS: string[] = [
-  "fabriciapodologa@gmail.com",
+  import.meta.env.VITE_AUTHORIZED_ADMIN_EMAIL || "",
 ];
 
 export interface AdminUser {
