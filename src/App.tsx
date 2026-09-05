@@ -28,6 +28,8 @@ import {
   savePatientToFirestore,
   checkAndSeedFirestore,
   testFirestoreConnection,
+  onAuthChange,
+  logoutProfessional,
 } from './firebase';
 import {
   Bell,
@@ -160,6 +162,7 @@ export default function App() {
   };
 
   const handleLogout = () => {
+    logoutProfessional().catch(() => {});
     setIsAuthenticated(false);
     localStorage.removeItem('cuidarx_authenticated');
     localStorage.removeItem('cuidarx_logged_prof_id');
@@ -252,6 +255,29 @@ export default function App() {
     };
   }, []);
 
+  // Firebase Auth state listener
+  useEffect(() => {
+    const unsubscribe = onAuthChange((user) => {
+      if (user) {
+        // Find professional by authUid
+        const found = professionals.find((p) => p.authUid === user.uid);
+        if (found) {
+          setCurrentProfessional(found);
+          setIsAuthenticated(true);
+          localStorage.setItem('cuidarx_logged_prof_id', found.id);
+          localStorage.setItem('cuidarx_authenticated', 'true');
+        }
+      } else {
+        // No user logged in
+        setCurrentProfessional(null);
+        setIsAuthenticated(false);
+        localStorage.removeItem('cuidarx_logged_prof_id');
+        localStorage.removeItem('cuidarx_authenticated');
+      }
+    });
+    return () => unsubscribe();
+  }, [professionals]);
+
   // Save patients to localStorage as fast offline cache
   useEffect(() => {
     localStorage.setItem('cuidarx_patients', JSON.stringify(patients));
@@ -278,11 +304,15 @@ export default function App() {
   };
 
   const handleCreatePatient = (newPatient: Patient) => {
-    setPatients((prev) => [newPatient, ...prev]);
-    setSelectedPatientId(newPatient.id);
+    const patientWithPro = {
+      ...newPatient,
+      professionalId: currentProfessional?.id || undefined,
+    };
+    setPatients((prev) => [patientWithPro, ...prev]);
+    setSelectedPatientId(patientWithPro.id);
     setIsDetailOpen(true);
     // Persist to Firebase Firestore
-    savePatientToFirestore(newPatient).catch((err) => {
+    savePatientToFirestore(patientWithPro).catch((err) => {
       console.warn('Could not sync created patient to Firestore:', err);
     });
   };

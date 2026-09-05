@@ -10,8 +10,17 @@ import {
   onSnapshot,
   getDocs,
   getDocFromServer,
+  query,
+  where,
 } from 'firebase/firestore';
-import { getAuth } from 'firebase/auth';
+import {
+  getAuth,
+  createUserWithEmailAndPassword,
+  signInWithEmailAndPassword,
+  signOut as firebaseSignOut,
+  onAuthStateChanged,
+  User,
+} from 'firebase/auth';
 import { Patient } from './types';
 
 // Your web app's Firebase configuration
@@ -150,4 +159,94 @@ export async function checkAndSeedFirestore(defaultPatients: Patient[]): Promise
   } catch (error) {
     console.warn('Initial Firestore seeding check note:', error);
   }
+}
+
+// ===================== AUTH HELPERS =====================
+
+export async function registerProfessional(email: string, password: string): Promise<User> {
+  const cred = await createUserWithEmailAndPassword(auth, email, password);
+  return cred.user;
+}
+
+export async function loginProfessional(email: string, password: string): Promise<User> {
+  const cred = await signInWithEmailAndPassword(auth, email, password);
+  return cred.user;
+}
+
+export async function logoutProfessional(): Promise<void> {
+  await firebaseSignOut(auth);
+}
+
+export function onAuthChange(callback: (user: User | null) => void) {
+  return onAuthStateChanged(auth, callback);
+}
+
+// ===================== FIRESTORE PROFESSIONALS =====================
+
+export interface ProfessionalDoc {
+  id: string;
+  name: string;
+  title: string;
+  crpo: string;
+  avatar: string;
+  color: string;
+  email: string;
+  phone: string;
+  specialties: string[];
+  bio: string;
+  availableDays: string[];
+  workingHours: string;
+  active: boolean;
+  rating?: number;
+  reviewsCount?: number;
+  authUid: string;
+}
+
+export async function saveProfessionalToFirestore(prof: ProfessionalDoc): Promise<void> {
+  try {
+    const docRef = doc(db, 'professionals', prof.id);
+    await setDoc(docRef, prof, { merge: true });
+  } catch (error) {
+    handleFirestoreError(error, OperationType.WRITE, `professionals/${prof.id}`);
+    throw error;
+  }
+}
+
+export async function getProfessionalByAuthUid(authUid: string): Promise<ProfessionalDoc | null> {
+  try {
+    const professionalsCol = collection(db, 'professionals');
+    const q = query(professionalsCol, where('authUid', '==', authUid));
+    const snapshot = await getDocs(q);
+    if (snapshot.empty) return null;
+    const docSnap = snapshot.docs[0];
+    return { ...docSnap.data(), id: docSnap.id } as ProfessionalDoc;
+  } catch (error) {
+    handleFirestoreError(error, OperationType.GET, 'professionals');
+    return null;
+  }
+}
+
+// Subscribe to real-time updates for patients of a specific professional
+export function subscribeToPatientsForProfessional(
+  professionalId: string,
+  onUpdate: (patients: Patient[]) => void,
+  onError?: (err: unknown) => void
+) {
+  const patientsCol = collection(db, 'patients');
+  const q = query(patientsCol, where('professionalId', '==', professionalId));
+  return onSnapshot(
+    q,
+    (snapshot) => {
+      const list: Patient[] = [];
+      snapshot.forEach((docSnap) => {
+        const data = docSnap.data() as Patient;
+        list.push({ ...data, id: docSnap.id });
+      });
+      onUpdate(list);
+    },
+    (error) => {
+      handleFirestoreError(error, OperationType.LIST, `patients/${professionalId}`);
+      if (onError) onError(error);
+    }
+  );
 }

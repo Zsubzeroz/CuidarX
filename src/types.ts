@@ -51,6 +51,7 @@ export interface Patient {
   footStrike?: 'pronada' | 'supinada' | 'neutra';
   shoeHabit?: string;
   footMarkers?: FootMarker[];
+  professionalId?: string;
 }
 
 export interface Professional {
@@ -69,6 +70,7 @@ export interface Professional {
   active: boolean;
   rating?: number;
   reviewsCount?: number;
+  authUid?: string;
 }
 
 export interface Appointment {
