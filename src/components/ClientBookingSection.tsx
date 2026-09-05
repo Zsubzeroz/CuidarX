@@ -133,6 +133,28 @@ export const ClientBookingSection: React.FC<ClientBookingSectionProps> = ({
   const [gender, setGender] = useState<'Feminino' | 'Masculino' | 'Outro'>('Feminino');
   const [hasDiabetes, setHasDiabetes] = useState<boolean>(currentPatient?.isDiabetic || false);
 
+  // Validation errors
+  const [errors, setErrors] = useState<Record<string, string>>({});
+
+  const clearError = (field: string) => {
+    setErrors((prev) => {
+      const next = { ...prev };
+      delete next[field];
+      return next;
+    });
+  };
+
+  const validateStep1 = (): boolean => {
+    const e: Record<string, string> = {};
+    if (!patientName.trim()) e.patientName = 'Preencha o nome completo';
+    if (!phone.trim()) e.phone = 'Preencha o celular / WhatsApp';
+    if (!birthDate.trim()) e.birthDate = 'Preencha a data de nascimento';
+    setErrors(e);
+    return Object.keys(e).length === 0;
+  };
+
+  const step1Valid = patientName.trim() && phone.trim() && birthDate.trim();
+
   // Step 2: Procedure selection
   const [selectedProcedureIds, setSelectedProcedureIds] = useState<string[]>([
     currentPatient?.condition?.toLowerCase().includes('diabét')
@@ -215,8 +237,13 @@ export const ClientBookingSection: React.FC<ClientBookingSectionProps> = ({
   };
 
   const handleConfirmBooking = () => {
-    if (!patientName.trim()) {
+    if (!patientName.trim() || !phone.trim() || !birthDate.trim()) {
       setCurrentStep(1);
+      validateStep1();
+      return;
+    }
+
+    if (!selectedDateStr || !selectedTimeSlot) {
       return;
     }
 
@@ -558,7 +585,8 @@ export const ClientBookingSection: React.FC<ClientBookingSectionProps> = ({
               <button
                 type="button"
                 onClick={() => {
-                  if (patientName.trim()) setCurrentStep(2);
+                  if (step1Valid) { setErrors({}); setCurrentStep(2); }
+                  else validateStep1();
                 }}
                 className={`px-3 py-1 rounded-lg text-[11.5px] font-bold transition-all ${
                   currentStep === 2
@@ -571,7 +599,8 @@ export const ClientBookingSection: React.FC<ClientBookingSectionProps> = ({
               <button
                 type="button"
                 onClick={() => {
-                  if (patientName.trim()) setCurrentStep(3);
+                  if (step1Valid) { setErrors({}); setCurrentStep(3); }
+                  else validateStep1();
                 }}
                 className={`px-3 py-1 rounded-lg text-[11.5px] font-bold transition-all ${
                   currentStep === 3
@@ -597,9 +626,16 @@ export const ClientBookingSection: React.FC<ClientBookingSectionProps> = ({
                 required
                 placeholder="Ex: Roberto Carlos"
                 value={patientName}
-                onChange={(e) => setPatientName(e.target.value)}
-                className="w-full bg-[#FAF8F5] border border-[#E4D8C4] rounded-xl px-4 py-3 text-[14px] text-[#14261C] placeholder-[#9CA3AF] focus:outline-none focus:border-[#0F766E] focus:ring-1 focus:ring-[#0F766E]"
+                onChange={(e) => { setPatientName(e.target.value); clearError('patientName'); }}
+                className={`w-full bg-[#FAF8F5] border rounded-xl px-4 py-3 text-[14px] text-[#14261C] placeholder-[#9CA3AF] focus:outline-none focus:ring-1 ${
+                  errors.patientName
+                    ? 'border-[#DC2626] focus:border-[#DC2626] focus:ring-[#DC2626]'
+                    : 'border-[#E4D8C4] focus:border-[#0F766E] focus:ring-[#0F766E]'
+                }`}
               />
+              {errors.patientName && (
+                <p className="text-[11px] text-[#DC2626] mt-1 font-medium">{errors.patientName}</p>
+              )}
             </div>
 
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
@@ -612,25 +648,41 @@ export const ClientBookingSection: React.FC<ClientBookingSectionProps> = ({
                   required
                   placeholder="(11) 98888-7777"
                   value={phone}
-                  onChange={(e) => setPhone(e.target.value)}
-                  className="w-full bg-[#FAF8F5] border border-[#E4D8C4] rounded-xl px-4 py-3 text-[14px] text-[#14261C] placeholder-[#9CA3AF] focus:outline-none focus:border-[#0F766E] focus:ring-1 focus:ring-[#0F766E]"
+                  onChange={(e) => { setPhone(e.target.value); clearError('phone'); }}
+                  className={`w-full bg-[#FAF8F5] border rounded-xl px-4 py-3 text-[14px] text-[#14261C] placeholder-[#9CA3AF] focus:outline-none focus:ring-1 ${
+                    errors.phone
+                      ? 'border-[#DC2626] focus:border-[#DC2626] focus:ring-[#DC2626]'
+                      : 'border-[#E4D8C4] focus:border-[#0F766E] focus:ring-[#0F766E]'
+                  }`}
                 />
+                {errors.phone && (
+                  <p className="text-[11px] text-[#DC2626] mt-1 font-medium">{errors.phone}</p>
+                )}
               </div>
 
               <div>
                 <label className="block text-[11.5px] font-bold text-[#14261C] uppercase tracking-wider mb-1.5">
-                  DATA DE NASCIMENTO
+                  DATA DE NASCIMENTO *
                 </label>
                 <input
                   type="text"
+                  required
                   placeholder="DD/MM/AAAA"
                   value={birthDate}
-                  onChange={(e) => setBirthDate(e.target.value)}
-                  className="w-full bg-[#FAF8F5] border border-[#E4D8C4] rounded-xl px-4 py-3 text-[14px] text-[#14261C] placeholder-[#9CA3AF] focus:outline-none focus:border-[#0F766E] focus:ring-1 focus:ring-[#0F766E]"
+                  onChange={(e) => { setBirthDate(e.target.value); clearError('birthDate'); }}
+                  className={`w-full bg-[#FAF8F5] border rounded-xl px-4 py-3 text-[14px] text-[#14261C] placeholder-[#9CA3AF] focus:outline-none focus:ring-1 ${
+                    errors.birthDate
+                      ? 'border-[#DC2626] focus:border-[#DC2626] focus:ring-[#DC2626]'
+                      : 'border-[#E4D8C4] focus:border-[#0F766E] focus:ring-[#0F766E]'
+                  }`}
                 />
-                <span className="text-[11px] text-[#6B7280] mt-1 block">
-                  Formato: dia/mês/ano
-                </span>
+                {errors.birthDate ? (
+                  <p className="text-[11px] text-[#DC2626] mt-1 font-medium">{errors.birthDate}</p>
+                ) : (
+                  <span className="text-[11px] text-[#6B7280] mt-1 block">
+                    Formato: dia/mês/ano
+                  </span>
+                )}
               </div>
             </div>
 
@@ -687,8 +739,13 @@ export const ClientBookingSection: React.FC<ClientBookingSectionProps> = ({
             <div className="pt-2 flex justify-end">
               <button
                 type="button"
-                disabled={!patientName.trim()}
-                onClick={() => setCurrentStep(2)}
+                disabled={!step1Valid}
+                onClick={() => {
+                  if (validateStep1()) {
+                    setErrors({});
+                    setCurrentStep(2);
+                  }
+                }}
                 className="w-full sm:w-auto px-8 py-3.5 rounded-xl bg-[#133023] hover:bg-[#1A402F] text-white text-[14px] font-bold shadow-sm flex items-center justify-center gap-2 transition-all disabled:opacity-40 cursor-pointer"
               >
                 Continuar
@@ -955,8 +1012,9 @@ export const ClientBookingSection: React.FC<ClientBookingSectionProps> = ({
               </button>
               <button
                 type="button"
+                disabled={!step1Valid || !selectedDateStr || !selectedTimeSlot}
                 onClick={handleConfirmBooking}
-                className="px-8 py-3.5 rounded-xl bg-[#133023] hover:bg-[#1A402F] text-white text-[14px] font-bold shadow-md flex items-center gap-2"
+                className="px-8 py-3.5 rounded-xl bg-[#133023] hover:bg-[#1A402F] text-white text-[14px] font-bold shadow-md flex items-center gap-2 disabled:opacity-40 cursor-pointer"
               >
                 Confirmar Agendamento
                 <CheckCircle2 size={17} />
