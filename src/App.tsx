@@ -101,9 +101,10 @@ export default function App() {
           {
             id: `tl-${Date.now()}`,
             date: newApp.date || 'Hoje',
-            description: `Agendamento Online Confirmado: ${newApp.type} às ${newApp.time}`,
+            title: `Agendamento Online`,
+            note: `Confirmado: ${newApp.type} às ${newApp.time}`,
             procedure: newApp.type,
-            status: 'completed',
+            done: true,
           },
           ...targetPatient.timeline,
         ],
@@ -1195,6 +1196,7 @@ export default function App() {
             return updated;
           });
         }}
+        onLogout={handleLogout}
       />
     </div>
   );
