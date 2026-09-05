@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Patient, TabType, TimelineItem, Appointment, Professional } from './types';
 import { INITIAL_PATIENTS, INITIAL_APPOINTMENTS } from './data/mockPatients';
 import { INITIAL_PROFESSIONALS } from './data/mockProfessionals';
@@ -28,8 +28,8 @@ import {
   savePatientToFirestore,
   checkAndSeedFirestore,
   testFirestoreConnection,
-  onAuthChange,
   logoutProfessional,
+  auth,
 } from './firebase';
 import {
   Bell,
@@ -255,38 +255,19 @@ export default function App() {
     };
   }, []);
 
-  // Firebase Auth state listener — only for session restore on page refresh
-  const professionalsRef = useRef(professionals);
-  professionalsRef.current = professionals;
-  const authReady = useRef(false);
-
+  // Restore session on page refresh — check Firebase Auth current user once on mount
   useEffect(() => {
-    const unsubscribe = onAuthChange((user) => {
-      // Skip the first emission (initial value) — let explicit login handle it
-      if (!authReady.current) {
-        authReady.current = true;
-        // On first emission, if user is already logged in (page refresh), restore session
-        if (user) {
-          const found = professionalsRef.current.find((p) => p.authUid === user.uid);
-          if (found) {
-            setCurrentProfessional(found);
-            setIsAuthenticated(true);
-            localStorage.setItem('cuidarx_logged_prof_id', found.id);
-            localStorage.setItem('cuidarx_authenticated', 'true');
-          }
-        }
-        return;
+    const user = auth.currentUser;
+    if (user) {
+      const found = professionals.find((p) => p.authUid === user.uid);
+      if (found) {
+        setCurrentProfessional(found);
+        setIsAuthenticated(true);
+        localStorage.setItem('cuidarx_logged_prof_id', found.id);
+        localStorage.setItem('cuidarx_authenticated', 'true');
       }
-      // After first emission, only handle logout (sign out from another tab, etc.)
-      if (!user) {
-        setCurrentProfessional(null);
-        setIsAuthenticated(false);
-        localStorage.removeItem('cuidarx_logged_prof_id');
-        localStorage.removeItem('cuidarx_authenticated');
-      }
-    });
-    return () => unsubscribe();
-  }, []);
+    }
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Save patients to localStorage as fast offline cache
   useEffect(() => {
