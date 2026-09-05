@@ -5,7 +5,7 @@ import { INITIAL_PROFESSIONALS } from './data/mockProfessionals';
 import { BrandLogo } from './components/BrandLogo';
 import { PatientCard } from './components/PatientCard';
 import { DetailScreen } from './components/DetailScreen';
-import { NewPatientModal } from './components/NewPatientModal';
+import { NewPatientWizard } from './components/NewPatientWizard';
 import { NewSessionModal } from './components/NewSessionModal';
 import { PhotoInspectionModal } from './components/PhotoInspectionModal';
 import { AgendaTab } from './components/AgendaTab';
@@ -597,7 +597,7 @@ export default function App() {
         </div>
 
         {/* Modals */}
-        <NewPatientModal
+        <NewPatientWizard
           isOpen={isNewPatientOpen}
           onClose={() => setIsNewPatientOpen(false)}
           onSave={handleCreatePatient}
@@ -1153,7 +1153,7 @@ export default function App() {
       </button>
 
       {/* GLOBAL MODALS */}
-      <NewPatientModal
+      <NewPatientWizard
         isOpen={isNewPatientOpen}
         onClose={() => setIsNewPatientOpen(false)}
         onSave={handleCreatePatient}

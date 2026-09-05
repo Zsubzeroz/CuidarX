@@ -1,0 +1,266 @@
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,500;9..144,600&family=Inter:wght@400;500;600&display=swap">
+<h2 class="sr-only" style="position:absolute;width:1px;height:1px;overflow:hidden;">Protótipo do fluxo de nova ficha em etapas, com tela de conclusão final</h2>
+<div id="wizard-root" style="font-family:'Inter',sans-serif; background:#FBF3E7; border-radius:16px; padding:0; color:#24312E; max-width:640px; margin:0 auto; overflow:hidden;">
+
+  <div id="progress-wrap" style="height:3px; background:#E4D8C4;">
+    <div id="progress-bar" style="height:100%; width:20%; background:#0F766E; transition:width .25s;"></div>
+  </div>
+
+  <div id="header-wrap" style="padding:16px 22px 0;">
+    <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:16px;">
+      <span id="step-label" style="font-size:11.5px; font-weight:600; color:#0F766E; background:#E3EEEC; padding:4px 10px; border-radius:100px;">Etapa 1 de 5 · Identificação</span>
+      <i class="ti ti-x" style="font-size:16px; color:#5B665F; cursor:pointer;" aria-hidden="true"></i>
+    </div>
+  </div>
+
+  <div id="content-wrap" style="padding:0 22px 24px; min-height:340px;">
+
+    <!-- STEP 1 -->
+    <div class="step" data-step="1">
+      <div style="font-family:'Fraunces',serif; font-weight:600; font-size:20px; margin-bottom:18px;">Identificação</div>
+      <div style="margin-bottom:16px;">
+        <label style="display:block; font-size:12.5px; color:#5B665F; margin-bottom:6px;">Nome completo</label>
+        <input type="text" placeholder="Nome do paciente" style="width:100%; border:none; border-bottom:1px solid #E4D8C4; background:transparent; font-size:14.5px; padding:8px 2px; font-family:'Inter',sans-serif; outline:none; color:#24312E;">
+      </div>
+      <div style="display:flex; gap:14px; margin-bottom:16px;">
+        <div style="flex:1;">
+          <label style="display:block; font-size:12.5px; color:#5B665F; margin-bottom:6px;">Data de nascimento</label>
+          <input type="date" style="width:100%; border:none; border-bottom:1px solid #E4D8C4; background:transparent; font-size:14px; padding:8px 2px; font-family:'Inter',sans-serif; outline:none; color:#24312E;">
+        </div>
+        <div style="flex:1;">
+          <label style="display:block; font-size:12.5px; color:#5B665F; margin-bottom:6px;">Telefone / WhatsApp</label>
+          <input type="tel" placeholder="(00) 00000-0000" style="width:100%; border:none; border-bottom:1px solid #E4D8C4; background:transparent; font-size:14px; padding:8px 2px; font-family:'Inter',sans-serif; outline:none; color:#24312E;">
+        </div>
+      </div>
+      <div>
+        <label style="display:block; font-size:12.5px; color:#5B665F; margin-bottom:8px;">Sexo / gênero</label>
+        <div style="display:flex; gap:8px; flex-wrap:wrap;">
+          <button class="pill-select" data-group="sexo" style="border:1px solid #E4D8C4; background:#FFFDF9; color:#5B665F; font-size:12.5px; padding:8px 14px; border-radius:100px; cursor:pointer; font-family:'Inter',sans-serif;">Feminino</button>
+          <button class="pill-select" data-group="sexo" style="border:1px solid #E4D8C4; background:#FFFDF9; color:#5B665F; font-size:12.5px; padding:8px 14px; border-radius:100px; cursor:pointer; font-family:'Inter',sans-serif;">Masculino</button>
+          <button class="pill-select" data-group="sexo" style="border:1px solid #E4D8C4; background:#FFFDF9; color:#5B665F; font-size:12.5px; padding:8px 14px; border-radius:100px; cursor:pointer; font-family:'Inter',sans-serif;">Outro</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- STEP 2 -->
+    <div class="step" data-step="2" style="display:none;">
+      <div style="font-family:'Fraunces',serif; font-weight:600; font-size:20px; margin-bottom:6px;">Histórico de saúde</div>
+      <div style="font-size:12.5px; color:#5B665F; margin-bottom:16px;">Ative as condições registradas pelo paciente</div>
+
+      <div class="toggle-row" style="display:flex; align-items:center; justify-content:space-between; padding:12px 0; border-bottom:1px solid #E4D8C4;">
+        <span style="font-size:13.5px;">Diabetes</span>
+        <label class="switch"><input type="checkbox"><span class="slider"></span></label>
+      </div>
+      <div class="toggle-row" style="display:flex; align-items:center; justify-content:space-between; padding:12px 0; border-bottom:1px solid #E4D8C4;">
+        <span style="font-size:13.5px;">Hipertensão</span>
+        <label class="switch"><input type="checkbox"><span class="slider"></span></label>
+      </div>
+      <div class="toggle-row" style="display:flex; align-items:center; justify-content:space-between; padding:12px 0; border-bottom:1px solid #E4D8C4;">
+        <span style="font-size:13.5px;">Alteração circulatória</span>
+        <label class="switch"><input type="checkbox"><span class="slider"></span></label>
+      </div>
+      <div class="toggle-row" style="display:flex; align-items:center; justify-content:space-between; padding:12px 0; border-bottom:1px solid #E4D8C4;">
+        <span style="font-size:13.5px;">Uso de anticoagulante</span>
+        <label class="switch"><input type="checkbox"><span class="slider"></span></label>
+      </div>
+
+      <div style="margin-top:18px;">
+        <label style="display:block; font-size:12.5px; color:#5B665F; margin-bottom:8px;">Alergias conhecidas</label>
+        <div style="display:flex; gap:8px; flex-wrap:wrap;">
+          <button class="pill-toggle" style="border:1px solid #E4D8C4; background:#FFFDF9; color:#5B665F; font-size:12px; padding:7px 12px; border-radius:100px; cursor:pointer; font-family:'Inter',sans-serif;">Látex</button>
+          <button class="pill-toggle" style="border:1px solid #E4D8C4; background:#FFFDF9; color:#5B665F; font-size:12px; padding:7px 12px; border-radius:100px; cursor:pointer; font-family:'Inter',sans-serif;">Iodo</button>
+          <button class="pill-toggle" style="border:1px solid #E4D8C4; background:#FFFDF9; color:#5B665F; font-size:12px; padding:7px 12px; border-radius:100px; cursor:pointer; font-family:'Inter',sans-serif;">Anestésico local</button>
+          <button class="pill-toggle" style="border:1px solid #E4D8C4; background:#FFFDF9; color:#5B665F; font-size:12px; padding:7px 12px; border-radius:100px; cursor:pointer; font-family:'Inter',sans-serif;">Níquel</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- STEP 3 -->
+    <div class="step" data-step="3" style="display:none;">
+      <div style="font-family:'Fraunces',serif; font-weight:600; font-size:20px; margin-bottom:16px;">Queixa principal</div>
+      <label style="display:block; font-size:12.5px; color:#5B665F; margin-bottom:8px;">Motivo da consulta</label>
+      <div style="display:flex; gap:8px; flex-wrap:wrap; margin-bottom:20px;">
+        <button class="pill-toggle" style="border:1px solid #E4D8C4; background:#FFFDF9; color:#5B665F; font-size:12px; padding:7px 12px; border-radius:100px; cursor:pointer; font-family:'Inter',sans-serif;">Unha encravada</button>
+        <button class="pill-toggle" style="border:1px solid #E4D8C4; background:#FFFDF9; color:#5B665F; font-size:12px; padding:7px 12px; border-radius:100px; cursor:pointer; font-family:'Inter',sans-serif;">Calo/calosidade</button>
+        <button class="pill-toggle" style="border:1px solid #E4D8C4; background:#FFFDF9; color:#5B665F; font-size:12px; padding:7px 12px; border-radius:100px; cursor:pointer; font-family:'Inter',sans-serif;">Micose</button>
+        <button class="pill-toggle" style="border:1px solid #E4D8C4; background:#FFFDF9; color:#5B665F; font-size:12px; padding:7px 12px; border-radius:100px; cursor:pointer; font-family:'Inter',sans-serif;">Pé diabético</button>
+      </div>
+
+      <label style="display:block; font-size:12.5px; color:#5B665F; margin-bottom:10px;">Escala de dor (EVA)</label>
+      <div style="text-align:center; background:#FFFDF9; border:1px solid #E4D8C4; border-radius:14px; padding:18px;">
+        <div id="pain-emoji" style="font-size:24px;">🙂</div>
+        <div id="pain-value" style="font-size:26px; font-weight:600; color:#0F766E; margin:2px 0;">0</div>
+        <div id="pain-caption" style="font-size:12px; color:#5B665F; margin-bottom:10px;">Sem dor</div>
+        <input id="pain-range" type="range" min="0" max="10" value="0" style="width:100%; accent-color:#0F766E;">
+        <div style="display:flex; justify-content:space-between; font-size:10.5px; color:#9b9280; margin-top:2px;"><span>0</span><span>10</span></div>
+      </div>
+    </div>
+
+    <!-- STEP 4 -->
+    <div class="step" data-step="4" style="display:none;">
+      <div style="font-family:'Fraunces',serif; font-weight:600; font-size:20px; margin-bottom:16px;">Mapa podal & conduta</div>
+      <label style="display:block; font-size:12.5px; color:#5B665F; margin-bottom:8px;">Procedimentos realizados</label>
+      <div style="display:flex; gap:8px; flex-wrap:wrap; margin-bottom:20px;">
+        <button class="pill-toggle" style="border:1px solid #E4D8C4; background:#FFFDF9; color:#5B665F; font-size:12px; padding:7px 12px; border-radius:100px; cursor:pointer; font-family:'Inter',sans-serif;">Corte técnico das unhas</button>
+        <button class="pill-toggle" style="border:1px solid #E4D8C4; background:#FFFDF9; color:#5B665F; font-size:12px; padding:7px 12px; border-radius:100px; cursor:pointer; font-family:'Inter',sans-serif;">Curetagem</button>
+        <button class="pill-toggle" style="border:1px solid #E4D8C4; background:#FFFDF9; color:#5B665F; font-size:12px; padding:7px 12px; border-radius:100px; cursor:pointer; font-family:'Inter',sans-serif;">Órtese ungueal</button>
+        <button class="pill-toggle" style="border:1px solid #E4D8C4; background:#FFFDF9; color:#5B665F; font-size:12px; padding:7px 12px; border-radius:100px; cursor:pointer; font-family:'Inter',sans-serif;">Hidratação</button>
+      </div>
+
+      <div style="background:#E7EFE6; border:1px solid #5B7A63; border-radius:12px; padding:12px 14px; margin-bottom:10px;">
+        <div style="font-size:12.5px; font-weight:600; color:#3F5645;">Categoria 0 — Risco muito baixo</div>
+        <div style="font-size:11.5px; color:#5B7A63; margin-top:3px;">Sem perda de sensibilidade protetora. Sem sinais de doença arterial periférica.</div>
+      </div>
+      <div style="background:#F6E4DA; border:1px solid #B5542B; border-radius:10px; padding:10px 12px; margin-bottom:8px;">
+        <div style="font-size:12px; font-weight:600; color:#8a3a1f;">Redobrar cuidado com instrumentos cortantes</div>
+        <div style="font-size:11px; color:#8a3a1f; margin-top:2px;">Paciente relatou uso de anticoagulante.</div>
+      </div>
+      <div style="background:#F3E6D2; border:1px solid #C8A45A; border-radius:10px; padding:10px 12px;">
+        <div style="font-size:12px; font-weight:600; color:#8B5E1F;">Atenção na escolha de produtos</div>
+        <div style="font-size:11px; color:#8B5E1F; margin-top:2px;">Paciente relatou alergia a látex.</div>
+      </div>
+    </div>
+
+    <!-- STEP 5 -->
+    <div class="step" data-step="5" style="display:none;">
+      <div style="font-family:'Fraunces',serif; font-weight:600; font-size:20px; margin-bottom:8px;">Assinaturas</div>
+      <div style="font-size:12.5px; color:#5B665F; margin-bottom:18px;">Confirme o consentimento antes de concluir o atendimento</div>
+
+      <label style="display:flex; align-items:flex-start; gap:8px; font-size:12.5px; color:#24312E; margin-bottom:14px; cursor:pointer;">
+        <input type="checkbox" style="margin-top:3px; accent-color:#0F766E;">
+        <span>Declaro que as informações prestadas são verdadeiras e autorizo o registro deste atendimento no prontuário clínico, conforme o Termo de Consentimento.</span>
+      </label>
+      <label style="display:flex; align-items:flex-start; gap:8px; font-size:12.5px; color:#24312E; margin-bottom:20px; cursor:pointer;">
+        <input type="checkbox" style="margin-top:3px; accent-color:#0F766E;">
+        <span>Autorizo o registro fotográfico dos pés para acompanhamento da evolução clínica.</span>
+      </label>
+
+      <label style="display:block; font-size:12.5px; color:#5B665F; margin-bottom:6px;">Assinatura do paciente</label>
+      <div style="border:1px dashed #E4D8C4; border-radius:10px; height:64px; display:flex; align-items:center; justify-content:center; font-size:12px; color:#9b9280; margin-bottom:8px;">Assine com o dedo</div>
+    </div>
+
+    <!-- STEP 6: CONCLUSÃO -->
+    <div class="step" data-step="6" style="display:none; padding-top:8px;">
+      <div style="text-align:center; margin-bottom:18px;">
+        <div style="width:48px; height:48px; border-radius:50%; background:#E7EFE6; color:#5B7A63; display:flex; align-items:center; justify-content:center; margin:0 auto 12px;">
+          <i class="ti ti-check" style="font-size:24px;" aria-hidden="true"></i>
+        </div>
+        <div style="font-family:'Fraunces',serif; font-weight:600; font-size:19px; color:#24312E;">Atendimento concluído</div>
+        <div style="font-size:12px; color:#5B665F; margin-top:4px;">Protocolo <b style="color:#24312E;">20260905-QZL7</b></div>
+      </div>
+
+      <div style="background:#FFFDF9; border:1px solid #E4D8C4; border-radius:12px; padding:14px; margin-bottom:14px;">
+        <div style="font-size:12.5px; font-weight:600; color:#24312E; margin-bottom:3px;">Esta ficha não foi guardada no aparelho</div>
+        <div style="font-size:11.5px; color:#5B665F; margin-bottom:10px;">Ative o prontuário para manter várias fichas salvas com segurança. Baixe o PDF antes de sair.</div>
+        <button style="width:100%; border:none; background:#0F766E; color:#FFFDF9; font-size:12.5px; font-weight:500; padding:10px; border-radius:10px; cursor:pointer; font-family:'Inter',sans-serif;">Ativar prontuário</button>
+      </div>
+
+      <div style="display:flex; flex-direction:column; gap:8px;">
+        <button style="display:flex; align-items:center; justify-content:center; gap:7px; border:none; background:#0F766E; color:#FFFDF9; font-size:13px; font-weight:500; padding:11px; border-radius:10px; cursor:pointer; font-family:'Inter',sans-serif;">
+          <i class="ti ti-download" style="font-size:15px;" aria-hidden="true"></i>Baixar ficha completa (PDF)
+        </button>
+        <button style="display:flex; align-items:center; justify-content:center; gap:7px; border:1px solid #E4D8C4; background:#FFFDF9; color:#24312E; font-size:13px; font-weight:500; padding:11px; border-radius:10px; cursor:pointer; font-family:'Inter',sans-serif;">
+          <i class="ti ti-share-2" style="font-size:15px;" aria-hidden="true"></i>Enviar para o paciente
+        </button>
+        <button style="display:flex; align-items:center; justify-content:center; gap:7px; border:1px solid #E4D8C4; background:#FFFDF9; color:#24312E; font-size:13px; font-weight:500; padding:11px; border-radius:10px; cursor:pointer; font-family:'Inter',sans-serif;">
+          <i class="ti ti-brand-whatsapp" style="font-size:15px;" aria-hidden="true"></i>Abrir conversa no WhatsApp
+        </button>
+        <div style="text-align:center; font-size:11px; color:#5B665F; margin:4px 0;">O arquivo sai do seu aparelho apenas quando você escolhe enviar.</div>
+        <button style="display:flex; align-items:center; justify-content:center; gap:7px; border:1px solid #E4D8C4; background:#FFFDF9; color:#24312E; font-size:13px; font-weight:500; padding:11px; border-radius:10px; cursor:pointer; font-family:'Inter',sans-serif;">
+          <i class="ti ti-file-text" style="font-size:15px;" aria-hidden="true"></i>Baixar resumo de 1 página
+        </button>
+        <button id="btn-restart" style="border:1px solid #E4D8C4; background:#FFFDF9; color:#24312E; font-size:13px; font-weight:500; padding:11px; border-radius:10px; cursor:pointer; font-family:'Inter',sans-serif;">Iniciar outra ficha</button>
+        <button style="display:flex; align-items:center; justify-content:center; gap:6px; border:none; background:transparent; color:#5B665F; font-size:12.5px; padding:6px; cursor:pointer; font-family:'Inter',sans-serif;">
+          <i class="ti ti-home" style="font-size:14px;" aria-hidden="true"></i>Voltar ao início
+        </button>
+      </div>
+    </div>
+
+  </div>
+
+  <div id="footer-nav" style="display:flex; align-items:center; justify-content:space-between; padding:16px 22px; border-top:1px solid #E4D8C4; background:#FFFDF9;">
+    <button id="btn-back" style="border:1px solid #E4D8C4; background:#FFFDF9; color:#5B665F; font-size:12.5px; font-weight:500; padding:9px 16px; border-radius:10px; cursor:pointer; font-family:'Inter',sans-serif; display:flex; align-items:center; gap:5px; opacity:0.4;">
+      <i class="ti ti-chevron-left" style="font-size:14px;" aria-hidden="true"></i>Voltar
+    </button>
+    <span style="font-size:11px; color:#9b9280;">Rascunho salvo automaticamente</span>
+    <button id="btn-next" style="border:none; background:#0F766E; color:#FFFDF9; font-size:12.5px; font-weight:500; padding:9px 18px; border-radius:10px; cursor:pointer; font-family:'Inter',sans-serif; display:flex; align-items:center; gap:5px;">
+      Continuar<i class="ti ti-chevron-right" style="font-size:14px;" aria-hidden="true"></i>
+    </button>
+  </div>
+
+</div>
+<style>
+  .switch { position:relative; display:inline-block; width:38px; height:22px; flex-shrink:0; }
+  .switch input { opacity:0; width:0; height:0; }
+  .slider { position:absolute; cursor:pointer; inset:0; background-color:#E4D8C4; transition:.2s; border-radius:999px; }
+  .slider:before { position:absolute; content:""; height:16px; width:16px; left:3px; bottom:3px; background-color:#FFFDF9; transition:.2s; border-radius:50%; }
+  .switch input:checked + .slider { background-color:#0F766E; }
+  .switch input:checked + .slider:before { transform:translateX(16px); }
+</style>
+<script>
+var fillSteps = 5;
+var currentStep = 1;
+var stepTitles = ['Identificação','Histórico de saúde','Queixa principal','Mapa podal & conduta','Assinaturas'];
+
+function renderStep() {
+  document.querySelectorAll('.step').forEach(function (s) {
+    s.style.display = (parseInt(s.getAttribute('data-step')) === currentStep) ? 'block' : 'none';
+  });
+
+  var isConclusion = currentStep === 6;
+  document.getElementById('progress-wrap').style.display = isConclusion ? 'none' : 'block';
+  document.getElementById('header-wrap').style.display = isConclusion ? 'none' : 'block';
+  document.getElementById('footer-nav').style.display = isConclusion ? 'none' : 'flex';
+
+  if (!isConclusion) {
+    document.getElementById('progress-bar').style.width = (currentStep / fillSteps * 100) + '%';
+    document.getElementById('step-label').textContent = 'Etapa ' + currentStep + ' de ' + fillSteps + ' · ' + stepTitles[currentStep - 1];
+    document.getElementById('btn-back').style.opacity = currentStep === 1 ? '0.4' : '1';
+    document.getElementById('btn-next').innerHTML = currentStep === fillSteps
+      ? 'Concluir atendimento<i class="ti ti-check" style="font-size:14px;"></i>'
+      : 'Continuar<i class="ti ti-chevron-right" style="font-size:14px;"></i>';
+  }
+}
+
+document.getElementById('btn-next').addEventListener('click', function () {
+  if (currentStep < 6) { currentStep++; renderStep(); }
+});
+document.getElementById('btn-back').addEventListener('click', function () {
+  if (currentStep > 1) { currentStep--; renderStep(); }
+});
+document.getElementById('btn-restart').addEventListener('click', function () {
+  currentStep = 1; renderStep();
+});
+
+document.querySelectorAll('.pill-select').forEach(function (btn) {
+  btn.addEventListener('click', function () {
+    var group = btn.getAttribute('data-group');
+    document.querySelectorAll('.pill-select[data-group="' + group + '"]').forEach(function (b) {
+      b.style.background = '#FFFDF9'; b.style.borderColor = '#E4D8C4'; b.style.color = '#5B665F';
+    });
+    btn.style.background = '#0F766E'; btn.style.borderColor = '#0F766E'; btn.style.color = '#FFFDF9';
+  });
+});
+
+document.querySelectorAll('.pill-toggle').forEach(function (btn) {
+  btn.addEventListener('click', function () {
+    var active = btn.style.background === 'rgb(15, 118, 110)';
+    if (active) {
+      btn.style.background = '#FFFDF9'; btn.style.borderColor = '#E4D8C4'; btn.style.color = '#5B665F';
+    } else {
+      btn.style.background = '#0F766E'; btn.style.borderColor = '#0F766E'; btn.style.color = '#FFFDF9';
+    }
+  });
+});
+
+var painCaptions = ['Sem dor','Muito leve','Leve','Leve','Moderada','Moderada','Moderada','Forte','Forte','Muito forte','Insuportável'];
+var painEmojis = ['😀','🙂','🙂','😐','😐','😕','😕','😣','😣','😖','😭'];
+document.getElementById('pain-range').addEventListener('input', function () {
+  var v = parseInt(this.value);
+  document.getElementById('pain-value').textContent = v;
+  document.getElementById('pain-caption').textContent = painCaptions[v];
+  document.getElementById('pain-emoji').textContent = painEmojis[v];
+});
+
+renderStep();
+</script>
