@@ -146,14 +146,6 @@ export const ClientPortal: React.FC<ClientPortalProps> = ({
               </select>
             </div>
 
-            <button
-              type="button"
-              onClick={onBackToClinic}
-              className="hidden sm:flex items-center gap-1.5 text-xs font-semibold text-[#0F766E] hover:underline"
-            >
-              <span>Voltar ao Consultório</span>
-              <ChevronRight size={14} />
-            </button>
           </div>
         </div>
       </header>
