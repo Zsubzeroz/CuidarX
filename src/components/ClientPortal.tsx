@@ -51,6 +51,7 @@ export const ClientPortal: React.FC<ClientPortalProps> = ({
   const [verifiedPhone, setVerifiedPhone] = useState('');
   const [phoneInput, setPhoneInput] = useState('');
   const [phoneError, setPhoneError] = useState('');
+  const [entryMode, setEntryMode] = useState<'booking' | 'account'>('account');
 
   const clientUrl = 'https://cuidarx-20052026.web.app/cliente';
 
@@ -59,13 +60,14 @@ export const ClientPortal: React.FC<ClientPortalProps> = ({
     ? patients.find((p) => p.phone === verifiedPhone) || null
     : null;
 
-  const handleVerifyPhone = () => {
+  const handleVerifyPhone = (mode: 'booking' | 'account') => {
     const clean = phoneInput.replace(/\D/g, '');
     if (clean.length < 10) {
       setPhoneError('Informe um número de telefone válido');
       return;
     }
     setPhoneError('');
+    setEntryMode(mode);
     setVerifiedPhone(phoneInput.trim());
   };
 
@@ -136,7 +138,7 @@ export const ClientPortal: React.FC<ClientPortalProps> = ({
                     placeholder="(11) 98888-7777"
                     value={phoneInput}
                     onChange={(e) => { setPhoneInput(e.target.value); setPhoneError(''); }}
-                    onKeyDown={(e) => { if (e.key === 'Enter') handleVerifyPhone(); }}
+                    onKeyDown={(e) => { if (e.key === 'Enter') handleVerifyPhone('account'); }}
                     className={`w-full bg-[#FAF8F5] border rounded-xl px-4 py-3 text-[14px] text-[#14261C] placeholder-[#9CA3AF] focus:outline-none focus:ring-1 ${
                       phoneError
                         ? 'border-[#DC2626] focus:border-[#DC2626] focus:ring-[#DC2626]'
@@ -148,13 +150,22 @@ export const ClientPortal: React.FC<ClientPortalProps> = ({
                   )}
                 </div>
 
-                <button
-                  type="button"
-                  onClick={handleVerifyPhone}
-                  className="w-full bg-[#133023] hover:bg-[#1A402F] text-white py-3.5 rounded-xl text-[14px] font-bold shadow-sm transition-all active:scale-[0.98] cursor-pointer"
-                >
-                  Primeiro Agendamento / Acessar Minha Conta
-                </button>
+                <div className="flex gap-2">
+                  <button
+                    type="button"
+                    onClick={() => { setPhoneError(''); handleVerifyPhone('booking'); }}
+                    className="flex-1 bg-[#133023] hover:bg-[#1A402F] text-white py-3.5 rounded-xl text-[13px] font-bold shadow-sm transition-all active:scale-[0.98] cursor-pointer"
+                  >
+                    Primeiro Agendamento
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => { setPhoneError(''); handleVerifyPhone('account'); }}
+                    className="flex-1 bg-[#0F766E] hover:bg-[#0B5D56] text-white py-3.5 rounded-xl text-[13px] font-bold shadow-sm transition-all active:scale-[0.98] cursor-pointer"
+                  >
+                    Acessar Minha Conta
+                  </button>
+                </div>
               </div>
 
               <p className="text-[11px] text-[#738178] mt-4 leading-relaxed">
@@ -173,8 +184,72 @@ export const ClientPortal: React.FC<ClientPortalProps> = ({
     );
   }
 
-  // Patient not found — still allow booking
+  // Patient not found — account mode shows error, booking mode shows booking
   if (!currentPatient) {
+    if (entryMode === 'account') {
+      return (
+        <div className="min-h-screen bg-[#FBF3E7] text-[#24312E] flex flex-col font-inter selection:bg-[#0F766E] selection:text-white">
+          <header className="bg-[#FFFDF9]/95 backdrop-blur-md border-b border-[#E4D8C4] px-4 sm:px-8 py-3.5">
+            <div className="max-w-6xl mx-auto flex items-center justify-between">
+              <div className="flex items-center gap-3">
+                <BrandLogo />
+                <div className="border-l border-[#E4D8C4] pl-3 hidden sm:block">
+                  <span className="text-[11px] uppercase tracking-wider font-bold text-[#0F766E] block">
+                    Portal do Paciente
+                  </span>
+                  <span className="text-[12px] text-[#5B665F]">
+                    Acompanhamento & Agendamento Online
+                  </span>
+                </div>
+              </div>
+            </div>
+          </header>
+
+          <main className="flex-1 flex items-center justify-center px-4 py-12">
+            <div className="w-full max-w-md">
+              <div className="bg-[#FFFDF9] border border-[#E4D8C4] rounded-[24px] p-6 sm:p-8 shadow-xs text-center">
+                <div className="w-16 h-16 rounded-2xl bg-[#FEE2E2] text-[#DC2626] flex items-center justify-center mx-auto mb-4">
+                  <AlertCircle size={28} />
+                </div>
+                <h1 className="font-fraunces text-[20px] font-bold text-[#24312E] mb-1">
+                  Cadastro não encontrado
+                </h1>
+                <p className="text-[13px] text-[#5B665F] mb-4">
+                  O número <b>{verifiedPhone}</b> não está cadastrado na clínica.
+                </p>
+                <p className="text-[12px] text-[#5B665F] mb-5">
+                  Entre em contato com a clínica para realizar seu cadastro, ou realize seu primeiro agendamento.
+                </p>
+                <div className="flex flex-col gap-2">
+                  <button
+                    type="button"
+                    onClick={() => { setVerifiedPhone(''); setPhoneInput(''); }}
+                    className="w-full bg-[#133023] hover:bg-[#1A402F] text-white py-3 rounded-xl text-[13px] font-bold transition-all cursor-pointer"
+                  >
+                    Tentar outro número
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setEntryMode('booking')}
+                    className="w-full bg-[#0F766E] hover:bg-[#0B5D56] text-white py-3 rounded-xl text-[13px] font-bold transition-all cursor-pointer"
+                  >
+                    Fazer Primeiro Agendamento
+                  </button>
+                </div>
+              </div>
+            </div>
+          </main>
+
+          <footer className="max-w-6xl mx-auto px-4 sm:px-8 pt-8 pb-4 text-center text-[12px] text-[#55695E] border-t border-[#E4D8C4]/60 mt-8 w-full">
+            <p>
+              © 2026 CuidarX Podologia Clínica. Todos os direitos reservados.
+            </p>
+          </footer>
+        </div>
+      );
+    }
+
+    // booking mode — show booking directly
     return (
       <div className="min-h-screen bg-[#FBF3E7] text-[#24312E] flex flex-col font-inter selection:bg-[#0F766E] selection:text-white pb-16">
         {/* Top Banner */}
