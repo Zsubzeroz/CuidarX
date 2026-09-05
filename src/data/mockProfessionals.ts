@@ -6,8 +6,8 @@ export const INITIAL_PROFESSIONALS: Professional[] = [
     name: 'Dra. Fabrícia Rodrigues',
     title: 'Podóloga Especialista & Fundadora',
     crpo: 'CRPO/SP 48.912',
-    avatar: 'https://images.unsplash.com/photo-1594824813575-52b821437190?auto=format&fit=crop&w=400&q=80',
-    color: '#0F766E', // Emerald / Verde Clínico
+    avatar: 'https://ui-avatars.com/api/?name=Fabr%C3%ADcia+Rodrigues&background=E3EEEC&color=0F766E&bold=true&size=200',
+    color: '#0F766E',
     email: 'fabricia@cuidarx.com.br',
     phone: '(19) 99722-2694',
     specialties: [
@@ -28,8 +28,8 @@ export const INITIAL_PROFESSIONALS: Professional[] = [
     name: 'Dra. Renata Pires',
     title: 'Podóloga Clínica & Especialista em Pé Diabético',
     crpo: 'CRPO/SP 51.304',
-    avatar: 'https://images.unsplash.com/photo-1559839734-2b71ea197ec2?auto=format&fit=crop&w=400&q=80',
-    color: '#1E40AF', // Azul Real
+    avatar: 'https://ui-avatars.com/api/?name=Renata+Pires&background=E3EEEC&color=0F766E&bold=true&size=200',
+    color: '#1E40AF',
     email: 'renata@cuidarx.com.br',
     phone: '(19) 98451-2093',
     specialties: [
@@ -50,8 +50,8 @@ export const INITIAL_PROFESSIONALS: Professional[] = [
     name: 'Dr. Carlos Eduardo Lima',
     title: 'Podologista Esportivo & Ortopodologia',
     crpo: 'CRPO/SP 54.890',
-    avatar: 'https://images.unsplash.com/photo-1622253692010-333f2da6031d?auto=format&fit=crop&w=400&q=80',
-    color: '#B45309', // Âmbar Dourado
+    avatar: 'https://ui-avatars.com/api/?name=Carlos+Eduardo+Lima&background=E3EEEC&color=0F766E&bold=true&size=200',
+    color: '#B45309',
     email: 'carlos@cuidarx.com.br',
     phone: '(19) 99123-7788',
     specialties: [
@@ -72,8 +72,8 @@ export const INITIAL_PROFESSIONALS: Professional[] = [
     name: 'Dra. Mariana Santos',
     title: 'Podopediatria & Laserterapia',
     crpo: 'CRPO/SP 58.120',
-    avatar: 'https://images.unsplash.com/photo-1573496359142-b8d87734a5a2?auto=format&fit=crop&w=400&q=80',
-    color: '#6D28D9', // Violeta Nobre
+    avatar: 'https://ui-avatars.com/api/?name=Mariana+Santos&background=E3EEEC&color=0F766E&bold=true&size=200',
+    color: '#6D28D9',
     email: 'mariana@cuidarx.com.br',
     phone: '(19) 98844-3322',
     specialties: [

@@ -26,6 +26,7 @@ import {
   Star,
   UserCheck,
 } from 'lucide-react';
+import { Avatar } from './Avatar';
 
 interface ProcedureOption {
   id: string;
@@ -464,10 +465,12 @@ export const ClientBookingSection: React.FC<ClientBookingSectionProps> = ({
               >
                 <div className="flex items-start gap-2.5">
                   <div className="relative shrink-0">
-                    <img
+                    <Avatar
                       src={prof.avatar}
-                      alt={prof.name}
-                      className="w-10 h-10 rounded-full object-cover border-2 border-white/60 shadow-xs"
+                      name={prof.name}
+                      size="md"
+                      rounded="full"
+                      borderColor="border-2 border-white/60"
                     />
                     {isSelected && (
                       <span className="absolute -top-1 -right-1 w-3.5 h-3.5 bg-[#4ADE80] text-black rounded-full flex items-center justify-center text-[9px] font-bold">

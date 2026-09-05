@@ -21,6 +21,7 @@ import { IaTab } from './components/IaTab';
 import { ConfiguracoesTab } from './components/ConfiguracoesTab';
 import { ProfessionalLoginModal } from './components/ProfessionalLoginModal';
 import { LoginScreen } from './components/LoginScreen';
+import { Avatar } from './components/Avatar';
 import {
   firebaseConfig,
   subscribeToPatients,
@@ -694,17 +695,15 @@ export default function App() {
                 className="flex items-center gap-2 bg-[#FBF3E7] hover:bg-[#F3E6D2] border border-[#E4D8C4] rounded-xl px-2.5 py-1.5 transition-all text-left cursor-pointer group"
                 title="Clique para alternar o profissional logado"
               >
-                {currentProfessional?.avatar ? (
-                  <img
-                    src={currentProfessional.avatar}
-                    alt=""
-                    className="w-7 h-7 rounded-full object-cover ring-1 ring-[#0F766E]"
-                  />
-                ) : (
-                  <div className="w-7 h-7 rounded-lg bg-[#E3EEEC] text-[#0F766E] flex items-center justify-center font-bold text-xs">
-                    {currentProfessional ? currentProfessional.name.slice(0, 2).toUpperCase() : 'CX'}
-                  </div>
-                )}
+                <Avatar
+                  src={currentProfessional?.avatar}
+                  name={currentProfessional?.name || 'Entrar'}
+                  size="xs"
+                  rounded="lg"
+                  ring="ring-1 ring-[#0F766E]"
+                  bgColor="#E3EEEC"
+                  textColor="#0F766E"
+                />
                 <div className="hidden lg:block text-left text-xs leading-tight">
                   <div className="font-bold text-[#24312E] group-hover:text-[#0F766E] flex items-center gap-1">
                     <span>{currentProfessional ? currentProfessional.name : 'Entrar'}</span>

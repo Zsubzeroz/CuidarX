@@ -13,6 +13,7 @@ import {
   Plus,
   X,
 } from 'lucide-react';
+import { Avatar } from './Avatar';
 
 interface LoginScreenProps {
   professionals: Professional[];
@@ -152,17 +153,13 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({
                   onClick={() => onLogin(prof)}
                   className="w-full p-4 rounded-xl border border-[#E4D8C4] bg-[#FFFDF9] hover:border-[#0F766E] hover:bg-[#FAF8F5] transition-all cursor-pointer text-left flex items-center gap-3.5 group"
                 >
-                  {prof.avatar ? (
-                    <img
-                      src={prof.avatar}
-                      alt={prof.name}
-                      className="w-12 h-12 rounded-xl object-cover border border-[#E4D8C4]"
-                    />
-                  ) : (
-                    <div className="w-12 h-12 rounded-xl bg-[#E3EEEC] text-[#0F766E] flex items-center justify-center font-bold text-sm">
-                      {prof.name.slice(0, 2).toUpperCase()}
-                    </div>
-                  )}
+                  <Avatar
+                    src={prof.avatar}
+                    name={prof.name}
+                    size="lg"
+                    rounded="xl"
+                    borderColor="border border-[#E4D8C4]"
+                  />
                   <div className="flex-1 min-w-0">
                     <div className="text-[11px] font-semibold text-[#5B665F] uppercase tracking-wider">
                       {prof.crpo}

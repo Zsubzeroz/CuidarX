@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { Appointment, Professional, Patient } from '../types';
 import { INITIAL_PROFESSIONALS } from '../data/mockProfessionals';
+import { Avatar } from './Avatar';
 import {
   Clock,
   CheckCircle2,
@@ -195,17 +196,12 @@ export const AgendaTab: React.FC<AgendaTabProps> = ({
       {/* Professional Bar */}
       {selectedProf && (
         <div className="flex items-center gap-3 pb-4 mb-4 border-b border-[#E4D8C4]">
-          {selectedProf.avatar ? (
-            <img
-              src={selectedProf.avatar}
-              alt={selectedProf.name}
-              className="w-8 h-8 rounded-full object-cover"
-            />
-          ) : (
-            <div className="w-8 h-8 rounded-full bg-[#0F766E] text-white flex items-center justify-center text-xs font-semibold shrink-0">
-              {selectedProf.name.slice(0, 2).toUpperCase()}
-            </div>
-          )}
+          <Avatar
+            src={selectedProf.avatar}
+            name={selectedProf.name}
+            size="sm"
+            rounded="full"
+          />
           <div>
             <div className="text-xs font-medium text-[#24312E]">{selectedProf.name}</div>
             <div className="text-[11px] text-[#5B665F]">{filtered.length} agendamentos</div>

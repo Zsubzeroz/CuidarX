@@ -17,6 +17,7 @@ import {
   ChevronRight,
   Plus,
 } from 'lucide-react';
+import { Avatar } from './Avatar';
 
 interface ProfessionalLoginModalProps {
   isOpen: boolean;
@@ -135,10 +136,12 @@ export const ProfessionalLoginModal: React.FC<ProfessionalLoginModalProps> = ({
         {currentProfessional && (
           <div className="bg-[#E6F4EA] border-b border-[#A7F3D0] px-6 py-3 flex items-center justify-between">
             <div className="flex items-center gap-3">
-              <img
+              <Avatar
                 src={currentProfessional.avatar}
-                alt={currentProfessional.name}
-                className="w-9 h-9 rounded-full object-cover border-2 border-[#0F766E]"
+                name={currentProfessional.name}
+                size="md"
+                rounded="full"
+                borderColor="border-2 border-[#0F766E]"
               />
               <div>
                 <div className="text-[11px] font-bold text-[#0F766E] uppercase tracking-wider">
@@ -228,10 +231,12 @@ export const ProfessionalLoginModal: React.FC<ProfessionalLoginModalProps> = ({
                     >
                       <div className="flex items-start gap-3">
                         <div className="relative">
-                          <img
+                          <Avatar
                             src={prof.avatar}
-                            alt={prof.name}
-                            className="w-14 h-14 rounded-2xl object-cover border border-[#E4D8C4] shadow-xs"
+                            name={prof.name}
+                            size="xl"
+                            rounded="xl"
+                            borderColor="border border-[#E4D8C4]"
                           />
                           <span
                             className="absolute -bottom-1 -right-1 w-4 h-4 rounded-full border-2 border-white"
