@@ -111,6 +111,7 @@ interface ClientBookingSectionProps {
   professionals?: Professional[];
   onBookAppointment: (appointment: Appointment) => void;
   onViewRecord?: () => void;
+  initialPhone?: string;
 }
 
 export const ClientBookingSection: React.FC<ClientBookingSectionProps> = ({
@@ -119,6 +120,7 @@ export const ClientBookingSection: React.FC<ClientBookingSectionProps> = ({
   professionals = INITIAL_PROFESSIONALS,
   onBookAppointment,
   onViewRecord,
+  initialPhone,
 }) => {
   // Stepper state: 1: Dados | 2: Procedimento | 3: Data e Horário
   const [currentStep, setCurrentStep] = useState<1 | 2 | 3>(1);
@@ -128,7 +130,7 @@ export const ClientBookingSection: React.FC<ClientBookingSectionProps> = ({
 
   // Step 1: Patient Details
   const [patientName, setPatientName] = useState(currentPatient?.name || '');
-  const [phone, setPhone] = useState(currentPatient?.phone || '');
+  const [phone, setPhone] = useState(initialPhone || currentPatient?.phone || '');
   const [birthDate, setBirthDate] = useState('');
   const [gender, setGender] = useState<'Feminino' | 'Masculino' | 'Outro'>('Feminino');
   const [hasDiabetes, setHasDiabetes] = useState<boolean>(currentPatient?.isDiabetic || false);

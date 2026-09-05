@@ -52,6 +52,7 @@ export const ClientPortal: React.FC<ClientPortalProps> = ({
   const [phoneInput, setPhoneInput] = useState('');
   const [phoneError, setPhoneError] = useState('');
   const [entryMode, setEntryMode] = useState<'booking' | 'account'>('account');
+  const [firstAccess, setFirstAccess] = useState(false);
 
   const clientUrl = 'https://cuidarx-20052026.web.app/cliente';
 
@@ -93,8 +94,8 @@ export const ClientPortal: React.FC<ClientPortalProps> = ({
     currentPatient?.photos?.[1] ||
     currentPatient?.photos?.[0];
 
-  // If phone not verified, show phone entry screen
-  if (!verifiedPhone) {
+  // If phone not verified and not first access, show phone entry screen
+  if (!verifiedPhone && !firstAccess) {
     return (
       <div className="min-h-screen bg-[#FBF3E7] text-[#24312E] flex flex-col font-inter selection:bg-[#0F766E] selection:text-white">
         {/* Header */}
@@ -153,7 +154,7 @@ export const ClientPortal: React.FC<ClientPortalProps> = ({
                 <div className="flex gap-2">
                   <button
                     type="button"
-                    onClick={() => { setPhoneError(''); handleVerifyPhone('booking'); }}
+                    onClick={() => setFirstAccess(true)}
                     className="flex-1 bg-[#133023] hover:bg-[#1A402F] text-white py-3.5 rounded-xl text-[13px] font-bold shadow-sm transition-all active:scale-[0.98] cursor-pointer"
                   >
                     Primeiro Agendamento
@@ -305,7 +306,9 @@ export const ClientPortal: React.FC<ClientPortalProps> = ({
                     Bem-vindo(a)!
                   </h1>
                   <p className="text-[13.5px] text-[#5B665F] mt-1">
-                    Seu número <b>{verifiedPhone}</b> foi reconhecido. Você pode agendar sua consulta abaixo.
+                    {firstAccess
+                      ? 'Preencha seus dados abaixo para realizar seu primeiro agendamento.'
+                      : <>Seu número <b>{verifiedPhone}</b> foi reconhecido. Você pode agendar sua consulta abaixo.</>}
                   </p>
                 </div>
               </div>
@@ -321,6 +324,7 @@ export const ClientPortal: React.FC<ClientPortalProps> = ({
                 onBookAppointment(newApp);
               }
             }}
+            initialPhone={phoneInput || verifiedPhone}
           />
         </main>
 
