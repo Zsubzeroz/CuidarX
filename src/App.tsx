@@ -24,7 +24,7 @@ import { LoginScreen } from './components/LoginScreen';
 import { Avatar } from './components/Avatar';
 import {
   firebaseConfig,
-  subscribeToPatients,
+  subscribeToPatientsForProfessional,
   savePatientToFirestore,
   checkAndSeedFirestore,
   testFirestoreConnection,
@@ -72,7 +72,9 @@ export default function App() {
   });
 
   const [appointments, setAppointments] = useState<Appointment[]>(() => {
-    const saved = localStorage.getItem('cuidarx_appointments');
+    const profId = currentProfessional?.id;
+    if (!profId) return INITIAL_APPOINTMENTS;
+    const saved = localStorage.getItem(`cuidarx_appointments_${profId}`);
     if (saved) {
       try {
         return JSON.parse(saved);
@@ -86,7 +88,8 @@ export default function App() {
   const handleBookAppointment = (newApp: Appointment) => {
     setAppointments((prev) => {
       const updated = [newApp, ...prev];
-      localStorage.setItem('cuidarx_appointments', JSON.stringify(updated));
+      const profId = currentProfessional?.id;
+      if (profId) localStorage.setItem(`cuidarx_appointments_${profId}`, JSON.stringify(updated));
       return updated;
     });
 
@@ -118,7 +121,8 @@ export default function App() {
   const handleUpdateAppointmentStatus = (id: string, nextStatus: Appointment['status']) => {
     setAppointments((prev) => {
       const updated = prev.map((app) => (app.id === id ? { ...app, status: nextStatus } : app));
-      localStorage.setItem('cuidarx_appointments', JSON.stringify(updated));
+      const profId = currentProfessional?.id;
+      if (profId) localStorage.setItem(`cuidarx_appointments_${profId}`, JSON.stringify(updated));
       return updated;
     });
   };
@@ -233,17 +237,17 @@ export default function App() {
   // Real-time Firebase Firestore Sync state
   const [isFirebaseSynced, setIsFirebaseSynced] = useState(false);
 
-  // Initialize Firebase connection and live Firestore subscription
+  // Initialize Firebase connection and live Firestore subscription (per professional)
   useEffect(() => {
-    testFirestoreConnection();
-    checkAndSeedFirestore(INITIAL_PATIENTS);
+    if (!currentProfessional?.id) return;
 
-    const unsubscribe = subscribeToPatients(
+    testFirestoreConnection();
+
+    const unsubscribe = subscribeToPatientsForProfessional(
+      currentProfessional.id,
       (firestorePatients) => {
-        if (firestorePatients && firestorePatients.length > 0) {
-          setPatients(firestorePatients);
-          setIsFirebaseSynced(true);
-        }
+        setPatients(firestorePatients);
+        setIsFirebaseSynced(true);
       },
       (err) => {
         console.warn('Firebase sync notice:', err);
@@ -253,7 +257,13 @@ export default function App() {
     return () => {
       unsubscribe();
     };
-  }, []);
+  }, [currentProfessional?.id]);
+
+  // Clear patients when switching professional (before new subscription data arrives)
+  useEffect(() => {
+    setPatients([]);
+    setIsFirebaseSynced(false);
+  }, [currentProfessional?.id]);
 
   // Restore session on page refresh — check Firebase Auth current user once on mount
   useEffect(() => {
@@ -1038,21 +1048,21 @@ export default function App() {
         {/* ===================== TAB: FINANCEIRO (CAIXA) ===================== */}
         {activeTab === 'financeiro' && (
           <div className="flex-1 bg-[#FFFDF9] border border-[#E4D8C4] rounded-[24px] p-4 sm:p-6 shadow-xs">
-            <FinanceiroTab />
+            <FinanceiroTab professionalId={currentProfessional?.id} />
           </div>
         )}
 
         {/* ===================== TAB: SERVIÇOS & PREÇOS ===================== */}
         {activeTab === 'servicos' && (
           <div className="flex-1 bg-[#FFFDF9] border border-[#E4D8C4] rounded-[24px] p-4 sm:p-6 shadow-xs">
-            <ServicosTab />
+            <ServicosTab professionalId={currentProfessional?.id} />
           </div>
         )}
 
         {/* ===================== TAB: ESTOQUE & AUTOCLAVE ===================== */}
         {activeTab === 'estoque' && (
           <div className="flex-1 bg-[#FFFDF9] border border-[#E4D8C4] rounded-[24px] p-4 sm:p-6 shadow-xs">
-            <EstoqueTab />
+            <EstoqueTab professionalId={currentProfessional?.id} />
           </div>
         )}
 

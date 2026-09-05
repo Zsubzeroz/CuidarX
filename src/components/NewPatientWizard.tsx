@@ -152,10 +152,6 @@ export const NewPatientWizard: React.FC<NewPatientWizardProps> = ({ isOpen, onCl
   const [assinaturaProfissional, setAssinaturaProfissional] = useState('');
   const [localAtendimento, setLocalAtendimento] = useState('');
 
-  if (!isOpen) return null;
-
-  const progress = (currentStep / TOTAL_STEPS) * 100;
-
   const now = new Date();
   const autosaveTime = `${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`;
 
@@ -176,6 +172,10 @@ export const NewPatientWizard: React.FC<NewPatientWizardProps> = ({ isOpen, onCl
     document.addEventListener('mousedown', handleClickOutside);
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, []);
+
+  if (!isOpen) return null;
+
+  const progress = (currentStep / TOTAL_STEPS) * 100;
 
   const toggleInArray = (arr: string[], setArr: (v: string[]) => void, val: string) => {
     setArr(arr.includes(val) ? arr.filter((v) => v !== val) : [...arr, val]);

@@ -24,74 +24,30 @@ interface StockItem {
   lotNumber?: string;
 }
 
-const INITIAL_STOCK: StockItem[] = [
-  {
-    id: 'st-1',
-    name: 'Lâminas de Bisturi Descartáveis nº 15 (Carbono)',
-    category: 'Descartáveis',
-    quantity: 140,
-    minQuantity: 50,
-    unit: 'unidades',
-    expiryDate: '12/2028',
-    autoclaveStatus: 'Não Requer',
-    lotNumber: 'L-98412',
-  },
-  {
-    id: 'st-2',
-    name: 'Alicates de Cutícula & Espícula em Inox Cirúrgico',
-    category: 'Instrumentais',
-    quantity: 18,
-    minQuantity: 10,
-    unit: 'unidades',
-    autoclaveStatus: 'Esterilizado',
-    lotNumber: 'Ciclo Auto-04',
-  },
-  {
-    id: 'st-3',
-    name: 'Envelopes de Grau Cirúrgico com Indicador Térmico',
-    category: 'Descartáveis',
-    quantity: 350,
-    minQuantity: 100,
-    unit: 'unidades',
-    expiryDate: '06/2029',
-    autoclaveStatus: 'Não Requer',
-  },
-  {
-    id: 'st-4',
-    name: 'Órteses de Titânio & Fita com Memória Elástica',
-    category: 'Instrumentais',
-    quantity: 8,
-    minQuantity: 15,
-    unit: 'kits',
-    autoclaveStatus: 'Não Requer',
-    lotNumber: 'ORT-2026',
-  },
-  {
-    id: 'st-5',
-    name: 'Sulfadiazina de Prata 1% & Pomada Cicatrizante',
-    category: 'Medicamentos / Tópicos',
-    quantity: 4,
-    minQuantity: 5,
-    unit: 'bisnagas',
-    expiryDate: '08/2027',
-    autoclaveStatus: 'Não Requer',
-    lotNumber: 'MED-771',
-  },
-  {
-    id: 'st-6',
-    name: 'Monofilamento de Semmes-Weinstein 10g (Rastreio)',
-    category: 'Instrumentais',
-    quantity: 6,
-    minQuantity: 2,
-    unit: 'estojos',
-    autoclaveStatus: 'Esterilizado',
-  },
-];
+const INITIAL_STOCK: StockItem[] = [];
 
-export const EstoqueTab: React.FC = () => {
-  const [stock, setStock] = useState<StockItem[]>(INITIAL_STOCK);
+export const EstoqueTab: React.FC<{professionalId?: string}> = ({professionalId}) => {
+  const [stock, setStock] = useState<StockItem[]>(() => {
+    const key = `cuidarx_estoque_${professionalId || 'global'}`;
+    const saved = localStorage.getItem(key);
+    if (saved) {
+      try {
+        return JSON.parse(saved);
+      } catch (e) {
+        console.error('Failed to parse saved stock', e);
+      }
+    }
+    return INITIAL_STOCK;
+  });
+
   const [search, setSearch] = useState('');
+
   const [categoryFilter, setCategoryFilter] = useState<string>('all');
+
+  useEffect(() => {
+    const key = `cuidarx_estoque_${professionalId || 'global'}`;
+    localStorage.setItem(key, JSON.stringify(stock));
+  }, [stock, professionalId]);
 
   const lowStockCount = stock.filter((s) => s.quantity <= s.minQuantity).length;
   const sterilizedCount = stock.filter((s) => s.autoclaveStatus === 'Esterilizado').length;

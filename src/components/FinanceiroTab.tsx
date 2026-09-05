@@ -24,61 +24,30 @@ interface Transaction {
   date: string;
 }
 
-const INITIAL_TRANSACTIONS: Transaction[] = [
-  {
-    id: 'tx-1',
-    type: 'income',
-    category: 'Procedimento Clínico',
-    description: 'Tratamento de Onicocriptose — Marina Alves',
-    value: 160,
-    date: '26 de Maio, 2026',
-  },
-  {
-    id: 'tx-2',
-    type: 'income',
-    category: 'Procedimento Clínico',
-    description: 'Desbastamento mecânico — João Pedro',
-    value: 130,
-    date: '26 de Maio, 2026',
-  },
-  {
-    id: 'tx-3',
-    type: 'expense',
-    category: 'Materiais & Descartáveis',
-    description: 'Lâminas Bisturi Descartáveis nº 15 (Caixa 100un)',
-    value: 85,
-    date: '25 de Maio, 2026',
-  },
-  {
-    id: 'tx-4',
-    type: 'expense',
-    category: 'Esterilização & Autoclave',
-    description: 'Bobinas de Grau Cirúrgico e Fitas Termossensíveis',
-    value: 120,
-    date: '24 de Maio, 2026',
-  },
-  {
-    id: 'tx-5',
-    type: 'income',
-    category: 'Procedimento Clínico',
-    description: 'Avaliação Pé Diabético — Carlos Mendes',
-    value: 150,
-    date: '24 de Maio, 2026',
-  },
-  {
-    id: 'tx-6',
-    type: 'income',
-    category: 'Produtos Podológicos',
-    description: 'Venda de Emoliente Hidratante Ureia 10%',
-    value: 65,
-    date: '23 de Maio, 2026',
-  },
-];
+const INITIAL_TRANSACTIONS: Transaction[] = [];
 
-export const FinanceiroTab: React.FC = () => {
-  const [transactions, setTransactions] = useState<Transaction[]>(INITIAL_TRANSACTIONS);
+export const FinanceiroTab: React.FC<{professionalId?: string}> = ({professionalId}) => {
+  const [transactions, setTransactions] = useState<Transaction[]>(() => {
+    const key = `cuidarx_transactions_${professionalId || 'global'}`;
+    const saved = localStorage.getItem(key);
+    if (saved) {
+      try {
+        return JSON.parse(saved);
+      } catch (e) {
+        console.error('Failed to parse saved transactions', e);
+      }
+    }
+    return INITIAL_TRANSACTIONS;
+  });
+
   const [search, setSearch] = useState('');
+
   const [filterType, setFilterType] = useState<'all' | 'income' | 'expense'>('all');
+
+  useEffect(() => {
+    const key = `cuidarx_transactions_${professionalId || 'global'}`;
+    localStorage.setItem(key, JSON.stringify(transactions));
+  }, [transactions, professionalId]);
 
   // Form state
   const [isFormOpen, setIsFormOpen] = useState(false);

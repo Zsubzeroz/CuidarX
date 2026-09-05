@@ -23,76 +23,34 @@ interface ServiceItem {
   description: string;
 }
 
-const INITIAL_SERVICES: ServiceItem[] = [
-  {
-    id: 's-1',
-    name: 'Podologia Geral & Higienização Completa',
-    category: 'Profilaxia',
-    duration: '45 min',
-    price: 150,
-    active: true,
-    description: 'Corte profilático correto das unhas, limpeza de sulcos periungueais, desbaste e hidratação.',
-  },
-  {
-    id: 's-2',
-    name: 'Tratamento de Onicocriptose (Unha Encravada)',
-    category: 'Procedimento Clínico',
-    duration: '50 min',
-    price: 160,
-    active: true,
-    description: 'Desobstrução técnica e alívio imediato da espícula ungueal, assepsia e curativo oclusivo.',
-  },
-  {
-    id: 's-3',
-    name: 'Avaliação & Podogeriatria (Pé Diabético)',
-    category: 'Atenção Especial',
-    duration: '50 min',
-    price: 150,
-    active: true,
-    description: 'Rastreio com monofilamento de Semmes-Weinstein, corte seguro e hidratação preventiva.',
-  },
-  {
-    id: 's-4',
-    name: 'Tratamento de Órtese Ungueal',
-    category: 'Correção Biomecânica',
-    duration: '40 min',
-    price: 120,
-    active: true,
-    description: 'Aplicação de órtese metálica ou fibra elástica para correção de curvatura ungueal.',
-  },
-  {
-    id: 's-5',
-    name: 'Tratamento de Verruga Plantar (Olho de Peixe)',
-    category: 'Tecnologia Aplicada',
-    duration: '45 min',
-    price: 180,
-    active: true,
-    description: 'Cauterização com laser terapêutico e queratolítico seguro sem dor ou sangramento.',
-  },
-  {
-    id: 's-6',
-    name: 'Tratamento de Calosidades & Fissuras',
-    category: 'Dermatopodologia',
-    duration: '45 min',
-    price: 130,
-    active: true,
-    description: 'Desbastamento indolor de calosidades de atrito e oclusão emoliente com ureia de alta densidade.',
-  },
-  {
-    id: 's-7',
-    name: 'Laserterapia Pós-Procedimento / ILIB',
-    category: 'Tecnologia Aplicada',
-    duration: '30 min',
-    price: 90,
-    active: false,
-    description: 'Fotobiomodulação a laser para cicatrização acelerada de fissuras e redução de inflamação.',
-  },
-];
+const INITIAL_SERVICES: ServiceItem[] = [];
 
-export const ServicosTab: React.FC = () => {
-  const [services, setServices] = useState<ServiceItem[]>(INITIAL_SERVICES);
+interface ServiceItemProps {
+  professionalId?: string;
+}
+
+export const ServicosTab: React.FC<{professionalId?: string}> = ({professionalId}) => {
+  const [services, setServices] = useState<ServiceItem[]>(() => {
+    const key = `cuidarx_services_${professionalId || 'global'}`;
+    const saved = localStorage.getItem(key);
+    if (saved) {
+      try {
+        return JSON.parse(saved);
+      } catch (e) {
+        console.error('Failed to parse saved services', e);
+      }
+    }
+    return INITIAL_SERVICES;
+  });
+
   const [search, setSearch] = useState('');
+
   const [statusFilter, setStatusFilter] = useState<'all' | 'active' | 'inactive'>('all');
+
+  useEffect(() => {
+    const key = `cuidarx_services_${professionalId || 'global'}`;
+    localStorage.setItem(key, JSON.stringify(services));
+  }, [services, professionalId]);
 
   // New Service Modal
   const [isModalOpen, setIsModalOpen] = useState(false);
