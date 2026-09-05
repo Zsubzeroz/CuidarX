@@ -27,6 +27,7 @@ import {
   UserCheck,
 } from 'lucide-react';
 import { Avatar } from './Avatar';
+import { AiAssistant } from './AiAssistant';
 
 interface ProcedureOption {
   id: string;
@@ -1145,16 +1146,8 @@ export const ClientBookingSection: React.FC<ClientBookingSectionProps> = ({
         </div>
       )}
 
-      {/* FLOATING WHATSAPP BUTTON (MATCHING USER'S SCREENSHOT 1) */}
-      <a
-        href="https://wa.me/5519997222694?text=Ol%C3%A1!%20Gostaria%20de%20tirar%20d%C3%BAvidas%20sobre%20o%20atendimento%20podol%C3%B3gico%20na%20CuidarX."
-        target="_blank"
-        rel="noopener noreferrer"
-        aria-label="Atendimento via WhatsApp"
-        className="fixed bottom-6 right-6 z-40 w-14 h-14 rounded-full bg-[#25D366] hover:bg-[#1EBE5D] text-white shadow-xl flex items-center justify-center transition-all hover:scale-110 active:scale-95"
-      >
-        <MessageSquare size={28} />
-      </a>
+      {/* FLOATING AI ASSISTANT BUTTON */}
+      <AiAssistant />
     </div>
   );
 };
