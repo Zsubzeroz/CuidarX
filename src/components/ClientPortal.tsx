@@ -14,7 +14,6 @@ import {
   Copy,
   ExternalLink,
   QrCode,
-  ArrowLeft,
   Sparkles,
   Share2,
   HeartHandshake,
@@ -108,14 +107,7 @@ export const ClientPortal: React.FC<ClientPortalProps> = ({
               <QrCode size={12} />
               <span>QR Code</span>
             </button>
-            <button
-              type="button"
-              onClick={onBackToClinic}
-              className="bg-[#B5542B] hover:bg-[#9a4521] text-white px-2.5 py-1 rounded-lg text-[11px] font-medium transition-all flex items-center gap-1 cursor-pointer ml-1 shadow-xs"
-            >
-              <ArrowLeft size={12} />
-              <span>Painel da Podóloga</span>
-            </button>
+
           </div>
         </div>
       </div>

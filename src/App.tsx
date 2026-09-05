@@ -20,6 +20,7 @@ import { EstoqueTab } from './components/EstoqueTab';
 import { IaTab } from './components/IaTab';
 import { ConfiguracoesTab } from './components/ConfiguracoesTab';
 import { ProfessionalLoginModal } from './components/ProfessionalLoginModal';
+import { LoginScreen } from './components/LoginScreen';
 import {
   firebaseConfig,
   subscribeToPatients,
@@ -140,10 +141,27 @@ export default function App() {
   });
 
   const [isLoginModalOpen, setIsLoginModalOpen] = useState(false);
+  const [isAuthenticated, setIsAuthenticated] = useState<boolean>(() => {
+    return localStorage.getItem('cuidarx_authenticated') === 'true';
+  });
 
   const handleSelectProfessional = (prof: Professional) => {
     setCurrentProfessional(prof);
     localStorage.setItem('cuidarx_logged_prof_id', prof.id);
+  };
+
+  const handleLogin = (prof: Professional) => {
+    setCurrentProfessional(prof);
+    localStorage.setItem('cuidarx_logged_prof_id', prof.id);
+    setIsAuthenticated(true);
+    localStorage.setItem('cuidarx_authenticated', 'true');
+  };
+
+  const handleLogout = () => {
+    setIsAuthenticated(false);
+    localStorage.removeItem('cuidarx_authenticated');
+    localStorage.removeItem('cuidarx_logged_prof_id');
+    setCurrentProfessional(null);
   };
 
   const [activeTab, setActiveTab] = useState<TabType>('inicio');
@@ -364,6 +382,19 @@ export default function App() {
         onSelectPatientId={(id) => setSelectedPatientId(id)}
         onBackToClinic={handleBackToClinic}
         onBookAppointment={handleBookAppointment}
+      />
+    );
+  }
+
+  /* =======================================================================
+     AUTH GATE: Show login screen if not authenticated
+     ======================================================================= */
+  if (!isAuthenticated) {
+    return (
+      <LoginScreen
+        professionals={professionals}
+        onLogin={handleLogin}
+        onAddProfessional={(newProf) => setProfessionals((prev) => [...prev, newProf])}
       />
     );
   }
@@ -731,6 +762,20 @@ export default function App() {
                       <div>
                         <div className="text-xs font-semibold text-[#24312E]">Área do Cliente</div>
                         <div className="text-[11px] text-[#5B665F] font-mono">/cliente</div>
+                      </div>
+                    </button>
+                    {/* Divider */}
+                    <div className="border-t border-[#E4D8C4] my-1" />
+                    {/* Logout */}
+                    <button
+                      type="button"
+                      onClick={() => { handleLogout(); setIsMoreMenuOpen(false); }}
+                      className="w-full px-3.5 py-2.5 flex items-center gap-2.5 hover:bg-red-50 transition-colors text-left cursor-pointer"
+                    >
+                      <LogIn size={14} className="text-red-600 shrink-0" />
+                      <div>
+                        <div className="text-xs font-semibold text-red-700">Sair da conta</div>
+                        <div className="text-[11px] text-[#5B665F]">Voltar para a tela de login</div>
                       </div>
                     </button>
                   </div>
