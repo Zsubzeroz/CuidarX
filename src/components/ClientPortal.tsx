@@ -123,7 +123,7 @@ export const ClientPortal: React.FC<ClientPortalProps> = ({
                 Área do Cliente
               </h1>
               <p className="text-[13px] text-[#5B665F] mb-6">
-                Informe seu número de telefone para acessar seu prontuário e agendamentos.
+                Primeiro agendamento ou já é paciente? Informe seu número de telefone para continuar.
               </p>
 
               <div className="space-y-3">
@@ -153,7 +153,7 @@ export const ClientPortal: React.FC<ClientPortalProps> = ({
                   onClick={handleVerifyPhone}
                   className="w-full bg-[#133023] hover:bg-[#1A402F] text-white py-3.5 rounded-xl text-[14px] font-bold shadow-sm transition-all active:scale-[0.98] cursor-pointer"
                 >
-                  Acessar Minha Conta
+                  Primeiro Agendamento / Acessar Minha Conta
                 </button>
               </div>
 
