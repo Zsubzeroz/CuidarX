@@ -634,7 +634,7 @@ export default function App() {
   return (
     <div className="min-h-screen bg-[#FBF3E7] text-[#24312E] flex flex-col font-inter selection:bg-[#0F766E] selection:text-white">
       {/* RESPONSIVE TOPBAR HEADER — Two-row layout */}
-      <header className="sticky top-0 z-30 bg-[#FFFDF9]/95 backdrop-blur-md border-b border-[#E4D8C4] transition-all">
+      <header className="hidden md:block sticky top-0 z-30 bg-[#FFFDF9]/95 backdrop-blur-md border-b border-[#E4D8C4] transition-all">
         {/* ── Row 1: Brand + Actions ── */}
         <div className="max-w-7xl mx-auto flex items-center justify-between gap-3 px-4 sm:px-6 lg:px-8 py-2.5">
           {/* Left: Brand Logo & Clinical Subtitle */}
