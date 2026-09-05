@@ -30,7 +30,6 @@ interface ClientPortalProps {
   selectedPatientId: string | null;
   appointments?: Appointment[];
   professionals?: Professional[];
-  onSelectPatientId: (id: string) => void;
   onBackToClinic: () => void;
   onBookAppointment?: (appointment: Appointment) => void;
 }
@@ -40,7 +39,6 @@ export const ClientPortal: React.FC<ClientPortalProps> = ({
   selectedPatientId,
   appointments = [],
   professionals = [],
-  onSelectPatientId,
   onBackToClinic,
   onBookAppointment,
 }) => {
@@ -125,27 +123,6 @@ export const ClientPortal: React.FC<ClientPortalProps> = ({
                 Acompanhamento & Agendamento Online
               </span>
             </div>
-          </div>
-
-          {/* Patient profile selector */}
-          <div className="flex items-center gap-3">
-            <div className="flex items-center gap-2 bg-[#FBF3E7] border border-[#E4D8C4] rounded-xl px-3 py-1.5">
-              <span className="text-[11.5px] text-[#5B665F] hidden sm:inline">
-                Paciente:
-              </span>
-              <select
-                value={currentPatient?.id}
-                onChange={(e) => onSelectPatientId(e.target.value)}
-                className="bg-transparent text-[12.5px] font-semibold text-[#24312E] focus:outline-none cursor-pointer"
-              >
-                {patients.map((p) => (
-                  <option key={p.id} value={p.id}>
-                    {p.name} ({p.condition.split(' ')[0]})
-                  </option>
-                ))}
-              </select>
-            </div>
-
           </div>
         </div>
       </header>

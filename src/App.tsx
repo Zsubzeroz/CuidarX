@@ -380,7 +380,6 @@ export default function App() {
         selectedPatientId={selectedPatientId}
         appointments={appointments}
         professionals={professionals}
-        onSelectPatientId={(id) => setSelectedPatientId(id)}
         onBackToClinic={handleBackToClinic}
         onBookAppointment={handleBookAppointment}
       />
