@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
-import { Patient, TimelineItem } from '../types';
+import { Patient, TimelineItem, Appointment, Professional } from '../types';
 import { BrandLogo } from './BrandLogo';
+import { ClientBookingSection } from './ClientBookingSection';
 import {
   Calendar,
   Clock,
@@ -22,21 +23,29 @@ import {
   Info,
   CalendarCheck,
   ChevronRight,
+  CalendarPlus,
 } from 'lucide-react';
 
 interface ClientPortalProps {
   patients: Patient[];
   selectedPatientId: string | null;
+  appointments?: Appointment[];
+  professionals?: Professional[];
   onSelectPatientId: (id: string) => void;
   onBackToClinic: () => void;
+  onBookAppointment?: (appointment: Appointment) => void;
 }
 
 export const ClientPortal: React.FC<ClientPortalProps> = ({
   patients,
   selectedPatientId,
+  appointments = [],
+  professionals = [],
   onSelectPatientId,
   onBackToClinic,
+  onBookAppointment,
 }) => {
+  const [activePortalTab, setActivePortalTab] = useState<'evolution' | 'booking'>('evolution');
   const [copied, setCopied] = useState(false);
   const [showQrModal, setShowQrModal] = useState(false);
   const [sliderPosition, setSliderPosition] = useState(52);
@@ -46,6 +55,12 @@ export const ClientPortal: React.FC<ClientPortalProps> = ({
 
   const currentPatient =
     patients.find((p) => p.id === selectedPatientId) || patients[0];
+
+  const currentAppointment = appointments.find(
+    (app) =>
+      app.patientId === currentPatient?.id ||
+      app.patientName.toLowerCase() === currentPatient?.name.toLowerCase()
+  );
 
   const handleCopyLink = () => {
     navigator.clipboard.writeText(clientUrl);
@@ -115,7 +130,7 @@ export const ClientPortal: React.FC<ClientPortalProps> = ({
                 Portal do Paciente
               </span>
               <span className="text-[12px] text-[#5B665F]">
-                Acompanhamento & Evolução Clínica
+                Acompanhamento & Agendamento Online
               </span>
             </div>
           </div>
@@ -199,18 +214,27 @@ export const ClientPortal: React.FC<ClientPortalProps> = ({
               </div>
             </div>
 
-            {/* Quick Contact Buttons */}
+            {/* Quick Action Buttons (Including Direct Booking) */}
             <div className="flex flex-wrap items-center gap-2 sm:self-start md:self-center">
+              <button
+                type="button"
+                onClick={() => setActivePortalTab('booking')}
+                className="bg-[#0F766E] hover:bg-[#0B5D56] text-white px-4 py-2.5 rounded-xl text-xs font-semibold flex items-center gap-2 shadow-xs transition-all active:scale-95 cursor-pointer"
+              >
+                <CalendarCheck size={15} />
+                <span>Agendar Consulta</span>
+              </button>
+
               <a
                 href={`https://wa.me/5511998765432?text=Olá,%20Drª%20Renata!%20Sou%20${encodeURIComponent(
                   currentPatient.name
                 )}%20e%20estou%20acessando%20minha%20Área%20do%20Cliente%20CuidarX.`}
                 target="_blank"
                 rel="noreferrer"
-                className="bg-[#25D366] hover:bg-[#1EBE5D] text-white px-4 py-2.5 rounded-xl text-xs font-semibold flex items-center gap-2 shadow-xs transition-all active:scale-95"
+                className="bg-[#25D366] hover:bg-[#1EBE5D] text-white px-3.5 py-2.5 rounded-xl text-xs font-semibold flex items-center gap-1.5 shadow-xs transition-all active:scale-95"
               >
-                <MessageSquare size={15} />
-                <span>Falar no WhatsApp</span>
+                <MessageSquare size={14} />
+                <span className="hidden sm:inline">WhatsApp</span>
               </a>
 
               {currentPatient.phone && (
@@ -226,86 +250,166 @@ export const ClientPortal: React.FC<ClientPortalProps> = ({
           </div>
         </div>
 
-        {/* Bento Grid: 2 Columns on Desktop */}
-        <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
-          {/* LEFT COLUMN: NEXT APPOINTMENT & EVOLUTION PHOTO COMPARATOR */}
-          <div className="lg:col-span-7 space-y-6">
-            {/* Next Appointment Card */}
-            <div className="bg-[#FFFDF9] border border-[#E4D8C4] rounded-[22px] p-5 shadow-2xs">
-              <div className="flex items-center justify-between pb-3 border-b border-[#E4D8C4]/60">
-                <div className="flex items-center gap-2">
-                  <div className="w-8 h-8 rounded-lg bg-[#E3EEEC] text-[#0F766E] flex items-center justify-center">
-                    <CalendarCheck size={18} />
+        {/* Navigation Tabs between Evolution & Online Booking */}
+        <div className="flex items-center gap-2 mb-6 border-b border-[#E4D8C4] pb-2 overflow-x-auto no-scrollbar">
+          <button
+            type="button"
+            onClick={() => setActivePortalTab('evolution')}
+            className={`flex items-center gap-2 px-4 py-2.5 rounded-xl text-xs font-bold transition-all cursor-pointer shrink-0 ${
+              activePortalTab === 'evolution'
+                ? 'bg-[#0F766E] text-white shadow-xs'
+                : 'bg-[#FFFDF9] text-[#5B665F] hover:bg-[#F3E6D2] border border-[#E4D8C4]'
+            }`}
+          >
+            <Sparkles size={15} />
+            <span>Minha Evolução & Prontuário</span>
+          </button>
+
+          <button
+            type="button"
+            onClick={() => setActivePortalTab('booking')}
+            className={`flex items-center gap-2 px-4 py-2.5 rounded-xl text-xs font-bold transition-all cursor-pointer relative shrink-0 ${
+              activePortalTab === 'booking'
+                ? 'bg-[#0F766E] text-white shadow-xs'
+                : 'bg-[#FFFDF9] text-[#5B665F] hover:bg-[#F3E6D2] border border-[#E4D8C4]'
+            }`}
+          >
+            <CalendarCheck size={15} />
+            <span>Agendar Consulta Online</span>
+            <span className="w-2 h-2 rounded-full bg-[#52D396] animate-pulse" />
+          </button>
+        </div>
+
+        {/* CONDITIONAL CONTENT: BOOKING OR EVOLUTION */}
+        {activePortalTab === 'booking' ? (
+          <ClientBookingSection
+            currentPatient={currentPatient}
+            existingAppointments={appointments}
+            professionals={professionals}
+            onBookAppointment={(newApp) => {
+              if (onBookAppointment) {
+                onBookAppointment(newApp);
+              }
+            }}
+            onViewRecord={() => setActivePortalTab('evolution')}
+          />
+        ) : (
+          /* Bento Grid: 2 Columns on Desktop */
+          <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
+            {/* LEFT COLUMN: NEXT APPOINTMENT & EVOLUTION PHOTO COMPARATOR */}
+            <div className="lg:col-span-7 space-y-6">
+              {/* Next Appointment Card (Dynamic & Interactive) */}
+              <div className="bg-[#FFFDF9] border border-[#E4D8C4] rounded-[22px] p-5 shadow-2xs">
+                <div className="flex items-center justify-between pb-3 border-b border-[#E4D8C4]/60">
+                  <div className="flex items-center gap-2">
+                    <div className="w-8 h-8 rounded-lg bg-[#E3EEEC] text-[#0F766E] flex items-center justify-center">
+                      <CalendarCheck size={18} />
+                    </div>
+                    <div>
+                      <h2 className="text-[14px] font-bold text-[#24312E]">
+                        {currentAppointment ? 'Sua Consulta Agendada' : 'Próxima Sessão'}
+                      </h2>
+                      <p className="text-[11.5px] text-[#5B665F]">
+                        {currentAppointment?.type || currentPatient.condition}
+                      </p>
+                    </div>
                   </div>
-                  <div>
-                    <h2 className="text-[14px] font-bold text-[#24312E]">
-                      Próxima Sessão Agendada
-                    </h2>
-                    <p className="text-[11.5px] text-[#5B665F]">
-                      Acompanhamento e curativo oclusivo
+
+                  <div className="flex items-center gap-2">
+                    {currentAppointment?.bookedOnline && (
+                      <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-[#E3EEEC] text-[#0F766E]">
+                        Agendado Online
+                      </span>
+                    )}
+                    <span className="text-[11px] font-bold px-2.5 py-1 rounded-lg bg-[#FBF3E7] text-[#0F766E] border border-[#E4D8C4]">
+                      {currentAppointment
+                        ? currentAppointment.status === 'completed'
+                          ? 'Concluída'
+                          : 'Confirmada'
+                        : 'Disponível para agendamento'}
+                    </span>
+                  </div>
+                </div>
+
+                {currentAppointment ? (
+                  <>
+                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 my-4">
+                      <div className="bg-[#FBF3E7] p-3 rounded-xl">
+                        <span className="text-[11px] text-[#5B665F] flex items-center gap-1">
+                          <Calendar size={13} className="text-[#0F766E]" />
+                          Data
+                        </span>
+                        <span className="text-[13px] font-bold text-[#24312E] mt-0.5 block">
+                          {currentAppointment.date || '10 de Setembro'}
+                        </span>
+                      </div>
+                      <div className="bg-[#FBF3E7] p-3 rounded-xl">
+                        <span className="text-[11px] text-[#5B665F] flex items-center gap-1">
+                          <Clock size={13} className="text-[#0F766E]" />
+                          Horário
+                        </span>
+                        <span className="text-[13px] font-bold text-[#0F766E] mt-0.5 block">
+                          {currentAppointment.time} ({currentAppointment.duration || '45 min'})
+                        </span>
+                      </div>
+                      <div className="bg-[#FBF3E7] p-3 rounded-xl">
+                        <span className="text-[11px] text-[#5B665F] flex items-center gap-1">
+                          <MapPin size={13} className="text-[#0F766E]" />
+                          Local
+                        </span>
+                        <span className="text-[13px] font-bold text-[#24312E] mt-0.5 block truncate">
+                          Sala 304 - Cuidar+
+                        </span>
+                      </div>
+                    </div>
+
+                    <div className="flex flex-wrap items-center justify-between gap-3 pt-2">
+                      <button
+                        type="button"
+                        onClick={() => setActivePortalTab('booking')}
+                        className="text-xs font-semibold text-[#0F766E] hover:underline flex items-center gap-1 cursor-pointer"
+                      >
+                        <CalendarPlus size={13} />
+                        <span>Remarcar ou agendar outro horário</span>
+                      </button>
+
+                      <button
+                        type="button"
+                        onClick={() => setConfirmedAppointment(!confirmedAppointment)}
+                        className={`px-3.5 py-2 rounded-xl text-xs font-semibold flex items-center gap-1.5 transition-all cursor-pointer ${
+                          confirmedAppointment
+                            ? 'bg-[#EAF3EC] text-[#5B7A63] border border-[#5B7A63]/30'
+                            : 'bg-[#0F766E] hover:bg-[#0B5D56] text-white shadow-xs active:scale-95'
+                        }`}
+                      >
+                        <CheckCircle2 size={15} />
+                        <span>
+                          {confirmedAppointment
+                            ? 'Presença Confirmada!'
+                            : 'Confirmar Presença'}
+                        </span>
+                      </button>
+                    </div>
+                  </>
+                ) : (
+                  <div className="py-4 my-2 text-center bg-[#FBF3E7]/60 rounded-xl p-4 border border-[#E4D8C4]/60">
+                    <p className="text-[13px] font-semibold text-[#24312E] mb-1">
+                      Você não possui sessão agendada no momento
                     </p>
+                    <p className="text-[12px] text-[#5B665F] mb-3.5 max-w-sm mx-auto">
+                      Mantenha seu tratamento em dia para garantir a cicatrização correta e o alívio das dores.
+                    </p>
+                    <button
+                      type="button"
+                      onClick={() => setActivePortalTab('booking')}
+                      className="bg-[#0F766E] hover:bg-[#0B5D56] text-white px-5 py-2.5 rounded-xl text-xs font-bold inline-flex items-center gap-2 shadow-xs transition-all active:scale-95 cursor-pointer"
+                    >
+                      <CalendarCheck size={15} />
+                      <span>Agendar Consulta Agora</span>
+                    </button>
                   </div>
-                </div>
-
-                <span className="text-[11px] font-bold px-2.5 py-1 rounded-lg bg-[#FBF3E7] text-[#0F766E] border border-[#E4D8C4]">
-                  Confirmada
-                </span>
+                )}
               </div>
-
-              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 my-4">
-                <div className="bg-[#FBF3E7] p-3 rounded-xl">
-                  <span className="text-[11px] text-[#5B665F] block flex items-center gap-1">
-                    <Calendar size={13} className="text-[#0F766E]" />
-                    Data
-                  </span>
-                  <span className="text-[13px] font-bold text-[#24312E] mt-0.5 block">
-                    10 de Setembro
-                  </span>
-                </div>
-                <div className="bg-[#FBF3E7] p-3 rounded-xl">
-                  <span className="text-[11px] text-[#5B665F] block flex items-center gap-1">
-                    <Clock size={13} className="text-[#0F766E]" />
-                    Horário
-                  </span>
-                  <span className="text-[13px] font-bold text-[#0F766E] mt-0.5 block">
-                    14:30 (45 min)
-                  </span>
-                </div>
-                <div className="bg-[#FBF3E7] p-3 rounded-xl">
-                  <span className="text-[11px] text-[#5B665F] block flex items-center gap-1">
-                    <MapPin size={13} className="text-[#0F766E]" />
-                    Sala
-                  </span>
-                  <span className="text-[13px] font-bold text-[#24312E] mt-0.5 block">
-                    Sala 304 - Cuidar+
-                  </span>
-                </div>
-              </div>
-
-              <div className="flex flex-wrap items-center justify-between gap-3 pt-2">
-                <div className="text-xs text-[#5B665F] flex items-center gap-1.5">
-                  <Info size={14} className="text-[#B5542B]" />
-                  <span>Chegue com 10 minutos de antecedência.</span>
-                </div>
-
-                <button
-                  type="button"
-                  onClick={() => setConfirmedAppointment(!confirmedAppointment)}
-                  className={`px-3.5 py-2 rounded-xl text-xs font-semibold flex items-center gap-1.5 transition-all cursor-pointer ${
-                    confirmedAppointment
-                      ? 'bg-[#EAF3EC] text-[#5B7A63] border border-[#5B7A63]/30'
-                      : 'bg-[#0F766E] hover:bg-[#0B5D56] text-white shadow-xs active:scale-95'
-                  }`}
-                >
-                  <CheckCircle2 size={15} />
-                  <span>
-                    {confirmedAppointment
-                      ? 'Presença Confirmada!'
-                      : 'Confirmar Presença'}
-                  </span>
-                </button>
-              </div>
-            </div>
 
             {/* Interactive Before & After Photo Comparator */}
             <div className="bg-[#FFFDF9] border border-[#E4D8C4] rounded-[22px] p-5 shadow-2xs">
@@ -432,6 +536,31 @@ export const ClientPortal: React.FC<ClientPortalProps> = ({
 
           {/* RIGHT COLUMN: HOME CARE GUIDELINES, EMERGENCY TIPS & CLINIC INFO */}
           <div className="lg:col-span-5 space-y-6">
+            {/* Quick Online Booking Banner */}
+            <div className="bg-[#E3EEEC] border border-[#0F766E]/20 rounded-[22px] p-5 shadow-2xs">
+              <div className="flex items-start gap-3">
+                <div className="w-10 h-10 rounded-xl bg-[#0F766E] text-white flex items-center justify-center shrink-0 shadow-xs">
+                  <CalendarCheck size={20} />
+                </div>
+                <div className="flex-1">
+                  <h3 className="text-[14px] font-bold text-[#0F766E]">
+                    Agendamento Online 24 Horas
+                  </h3>
+                  <p className="text-[12px] text-[#24312E] mt-1 leading-relaxed">
+                    Precisa de alívio rápido ou deseja garantir seu retorno preventivo? Escolha o horário sem complicação.
+                  </p>
+                  <button
+                    type="button"
+                    onClick={() => setActivePortalTab('booking')}
+                    className="mt-3 bg-[#0F766E] hover:bg-[#0B5D56] text-white px-4 py-2 rounded-xl text-xs font-semibold inline-flex items-center gap-1.5 transition-all shadow-2xs active:scale-95 cursor-pointer"
+                  >
+                    <span>Agendar Nova Consulta</span>
+                    <ChevronRight size={13} />
+                  </button>
+                </div>
+              </div>
+            </div>
+
             {/* Home Care Instructions (Orientações Domiciliares) */}
             <div className="bg-[#FFFDF9] border border-[#E4D8C4] rounded-[22px] p-5 shadow-2xs">
               <div className="flex items-center gap-2 pb-3 border-b border-[#E4D8C4]/60 mb-3.5">
@@ -555,7 +684,15 @@ export const ClientPortal: React.FC<ClientPortalProps> = ({
             </div>
           </div>
         </div>
+      )}
       </main>
+
+      {/* Footer matching user's SaaS reference */}
+      <footer className="max-w-6xl mx-auto px-4 sm:px-8 pt-8 pb-4 text-center text-[12px] text-[#55695E] border-t border-[#E4D8C4]/60 mt-8 w-full">
+        <p>
+          © 2026 CuidarX Podologia Clínica. Todos os direitos reservados. • Desenvolvido por <b>Luan Estifer Rodrigues Pereira</b> (Software Engineer).
+        </p>
+      </footer>
 
       {/* QR Code Modal */}
       {showQrModal && (

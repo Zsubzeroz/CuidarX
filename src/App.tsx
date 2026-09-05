@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
-import { Patient, TabType, TimelineItem } from './types';
+import { Patient, TabType, TimelineItem, Appointment, Professional } from './types';
 import { INITIAL_PATIENTS, INITIAL_APPOINTMENTS } from './data/mockPatients';
+import { INITIAL_PROFESSIONALS } from './data/mockProfessionals';
 import { BrandLogo } from './components/BrandLogo';
 import { PatientCard } from './components/PatientCard';
 import { DetailScreen } from './components/DetailScreen';
@@ -13,6 +14,12 @@ import { ProfileTab } from './components/ProfileTab';
 import { NotificationsModal } from './components/NotificationsModal';
 import { ClientPortal } from './components/ClientPortal';
 import { ClientShareModal } from './components/ClientShareModal';
+import { FinanceiroTab } from './components/FinanceiroTab';
+import { ServicosTab } from './components/ServicosTab';
+import { EstoqueTab } from './components/EstoqueTab';
+import { IaTab } from './components/IaTab';
+import { ConfiguracoesTab } from './components/ConfiguracoesTab';
+import { ProfessionalLoginModal } from './components/ProfessionalLoginModal';
 import {
   firebaseConfig,
   subscribeToPatients,
@@ -39,6 +46,11 @@ import {
   Share2,
   ExternalLink,
   Cloud,
+  DollarSign,
+  Package,
+  Settings,
+  LogIn,
+  Sliders,
 } from 'lucide-react';
 
 export default function App() {
@@ -54,7 +66,85 @@ export default function App() {
     return INITIAL_PATIENTS;
   });
 
-  const [appointments] = useState(INITIAL_APPOINTMENTS);
+  const [appointments, setAppointments] = useState<Appointment[]>(() => {
+    const saved = localStorage.getItem('cuidarx_appointments');
+    if (saved) {
+      try {
+        return JSON.parse(saved);
+      } catch (e) {
+        console.error('Failed to parse saved appointments', e);
+      }
+    }
+    return INITIAL_APPOINTMENTS;
+  });
+
+  const handleBookAppointment = (newApp: Appointment) => {
+    setAppointments((prev) => {
+      const updated = [newApp, ...prev];
+      localStorage.setItem('cuidarx_appointments', JSON.stringify(updated));
+      return updated;
+    });
+
+    // Also link to patient timeline history if patient matches
+    const targetPatient = patients.find(
+      (p) =>
+        p.id === newApp.patientId ||
+        p.name.toLowerCase() === newApp.patientName.toLowerCase()
+    );
+    if (targetPatient) {
+      const updatedPatient: Patient = {
+        ...targetPatient,
+        timeline: [
+          {
+            id: `tl-${Date.now()}`,
+            date: newApp.date || 'Hoje',
+            description: `Agendamento Online Confirmado: ${newApp.type} às ${newApp.time}`,
+            procedure: newApp.type,
+            status: 'completed',
+          },
+          ...targetPatient.timeline,
+        ],
+      };
+      handleUpdatePatient(updatedPatient);
+    }
+  };
+
+  const handleUpdateAppointmentStatus = (id: string, nextStatus: Appointment['status']) => {
+    setAppointments((prev) => {
+      const updated = prev.map((app) => (app.id === id ? { ...app, status: nextStatus } : app));
+      localStorage.setItem('cuidarx_appointments', JSON.stringify(updated));
+      return updated;
+    });
+  };
+
+  const [professionals, setProfessionals] = useState<Professional[]>(() => {
+    const saved = localStorage.getItem('cuidarx_professionals');
+    if (saved) {
+      try {
+        return JSON.parse(saved);
+      } catch {
+        // fallback
+      }
+    }
+    return INITIAL_PROFESSIONALS;
+  });
+
+  const [currentProfessional, setCurrentProfessional] = useState<Professional | null>(() => {
+    const savedId = localStorage.getItem('cuidarx_logged_prof_id');
+    if (savedId) {
+      const found = INITIAL_PROFESSIONALS.find((p) => p.id === savedId);
+      if (found) return found;
+    }
+    return INITIAL_PROFESSIONALS[0];
+  });
+
+  const [isLoginModalOpen, setIsLoginModalOpen] = useState(false);
+
+  const handleSelectProfessional = (prof: Professional) => {
+    setCurrentProfessional(prof);
+    localStorage.setItem('cuidarx_logged_prof_id', prof.id);
+  };
+
   const [activeTab, setActiveTab] = useState<TabType>('inicio');
   const [selectedPatientId, setSelectedPatientId] = useState<string | null>(() => {
     return INITIAL_PATIENTS[0]?.id || null;
@@ -238,6 +328,16 @@ export default function App() {
     );
   };
 
+  const handleUpdatePatient = (updatedPatient: Patient) => {
+    setPatients((prev) =>
+      prev.map((pat) => (pat.id === updatedPatient.id ? updatedPatient : pat))
+    );
+    // Persist to Firebase Firestore
+    savePatientToFirestore(updatedPatient).catch((err) => {
+      console.warn('Could not sync updated patient to Firestore:', err);
+    });
+  };
+
   // Filtered patients for home screen search
   const filteredHomePatients = patients.filter((p) => {
     if (!homeSearchTerm.trim()) return true;
@@ -257,8 +357,11 @@ export default function App() {
       <ClientPortal
         patients={patients}
         selectedPatientId={selectedPatientId}
+        appointments={appointments}
+        professionals={professionals}
         onSelectPatientId={(id) => setSelectedPatientId(id)}
         onBackToClinic={handleBackToClinic}
+        onBookAppointment={handleBookAppointment}
       />
     );
   }
@@ -370,6 +473,7 @@ export default function App() {
               <AgendaTab
                 appointments={appointments}
                 onSelectPatient={handleSelectPatientById}
+                onUpdateStatus={handleUpdateAppointmentStatus}
               />
             )}
 
@@ -454,6 +558,7 @@ export default function App() {
               onOpenPhotoGallery={() => setIsPhotoGalleryOpen(true)}
               onToggleTimelineItem={handleToggleTimelineItem}
               onOpenClientShare={() => setIsClientShareOpen(true)}
+              onUpdatePatient={handleUpdatePatient}
             />
           </div>
         </div>
@@ -511,22 +616,22 @@ export default function App() {
             </div>
           </div>
 
-          {/* Desktop Navigation Tabs (Hidden on small mobile, visible md+) */}
-          <nav className="hidden md:flex items-center gap-1 bg-[#FBF3E7] p-1 rounded-xl border border-[#E4D8C4]">
+          {/* Desktop Navigation Tabs (8-module suite matching reference SaaS) */}
+          <nav className="hidden lg:flex items-center gap-1 bg-[#FBF3E7] p-1 rounded-xl border border-[#E4D8C4] overflow-x-auto">
             <button
               type="button"
               onClick={() => {
                 setActiveTab('inicio');
                 setIsDetailOpen(false);
               }}
-              className={`flex items-center gap-2 px-3.5 py-1.5 rounded-lg text-[13px] font-semibold transition-all cursor-pointer ${
+              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-[12.5px] font-semibold transition-all cursor-pointer ${
                 activeTab === 'inicio'
                   ? 'bg-white text-[#0F766E] shadow-2xs'
                   : 'text-[#5B665F] hover:text-[#24312E]'
               }`}
             >
-              <Home size={15} />
-              Início
+              <Home size={14} />
+              <span>Início</span>
             </button>
             <button
               type="button"
@@ -534,15 +639,15 @@ export default function App() {
                 setActiveTab('agenda');
                 setIsDetailOpen(false);
               }}
-              className={`flex items-center gap-2 px-3.5 py-1.5 rounded-lg text-[13px] font-semibold transition-all cursor-pointer ${
+              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-[12.5px] font-semibold transition-all cursor-pointer ${
                 activeTab === 'agenda'
                   ? 'bg-white text-[#0F766E] shadow-2xs'
                   : 'text-[#5B665F] hover:text-[#24312E]'
               }`}
             >
-              <CalendarIcon size={15} />
-              Agenda
-              <span className="bg-[#E3EEEC] text-[#0F766E] text-[10.5px] px-1.5 py-0.2 rounded-full font-bold">
+              <CalendarIcon size={14} />
+              <span>Agenda</span>
+              <span className="bg-[#E3EEEC] text-[#0F766E] text-[10px] px-1.5 py-0.2 rounded-full font-bold">
                 {appointments.length}
               </span>
             </button>
@@ -552,32 +657,92 @@ export default function App() {
                 setActiveTab('fichas');
                 setIsDetailOpen(false);
               }}
-              className={`flex items-center gap-2 px-3.5 py-1.5 rounded-lg text-[13px] font-semibold transition-all cursor-pointer ${
+              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-[12.5px] font-semibold transition-all cursor-pointer ${
                 activeTab === 'fichas'
                   ? 'bg-white text-[#0F766E] shadow-2xs'
                   : 'text-[#5B665F] hover:text-[#24312E]'
               }`}
             >
-              <FileText size={15} />
-              Fichas
-              <span className="bg-[#F3E6D2] text-[#5B665F] text-[10.5px] px-1.5 py-0.2 rounded-full font-bold">
+              <FileText size={14} />
+              <span>Fichas</span>
+              <span className="bg-[#F3E6D2] text-[#5B665F] text-[10px] px-1.5 py-0.2 rounded-full font-bold">
                 {patients.length}
               </span>
             </button>
             <button
               type="button"
               onClick={() => {
-                setActiveTab('perfil');
+                setActiveTab('financeiro');
                 setIsDetailOpen(false);
               }}
-              className={`flex items-center gap-2 px-3.5 py-1.5 rounded-lg text-[13px] font-semibold transition-all cursor-pointer ${
-                activeTab === 'perfil'
+              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-[12.5px] font-semibold transition-all cursor-pointer ${
+                activeTab === 'financeiro'
                   ? 'bg-white text-[#0F766E] shadow-2xs'
                   : 'text-[#5B665F] hover:text-[#24312E]'
               }`}
             >
-              <User size={15} />
-              Perfil
+              <DollarSign size={14} />
+              <span>Financeiro</span>
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                setActiveTab('servicos');
+                setIsDetailOpen(false);
+              }}
+              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-[12.5px] font-semibold transition-all cursor-pointer ${
+                activeTab === 'servicos'
+                  ? 'bg-white text-[#0F766E] shadow-2xs'
+                  : 'text-[#5B665F] hover:text-[#24312E]'
+              }`}
+            >
+              <Sliders size={14} />
+              <span>Serviços</span>
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                setActiveTab('estoque');
+                setIsDetailOpen(false);
+              }}
+              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-[12.5px] font-semibold transition-all cursor-pointer ${
+                activeTab === 'estoque'
+                  ? 'bg-white text-[#0F766E] shadow-2xs'
+                  : 'text-[#5B665F] hover:text-[#24312E]'
+              }`}
+            >
+              <Package size={14} />
+              <span>Estoque</span>
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                setActiveTab('ia');
+                setIsDetailOpen(false);
+              }}
+              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-[12.5px] font-semibold transition-all cursor-pointer ${
+                activeTab === 'ia'
+                  ? 'bg-white text-[#0F766E] shadow-2xs'
+                  : 'text-[#5B665F] hover:text-[#24312E]'
+              }`}
+            >
+              <Sparkles size={14} />
+              <span>IA</span>
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                setActiveTab('configuracoes');
+                setIsDetailOpen(false);
+              }}
+              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-[12.5px] font-semibold transition-all cursor-pointer ${
+                activeTab === 'configuracoes'
+                  ? 'bg-white text-[#0F766E] shadow-2xs'
+                  : 'text-[#5B665F] hover:text-[#24312E]'
+              }`}
+            >
+              <Settings size={14} />
+              <span>Ajustes</span>
             </button>
           </nav>
 
@@ -652,15 +817,35 @@ export default function App() {
               <span>Simular Celular</span>
             </button>
 
-            {/* Practitioner Profile Summary */}
-            <div className="hidden md:flex items-center gap-2 pl-2 border-l border-[#E4D8C4]">
-              <div className="w-8 h-8 rounded-lg bg-[#E3EEEC] text-[#0F766E] flex items-center justify-center font-bold text-xs">
-                RS
-              </div>
-              <div className="text-left text-xs leading-tight">
-                <div className="font-semibold text-[#24312E]">Drª. Renata</div>
-                <div className="text-[10px] text-[#5B665F]">Podóloga CRPO</div>
-              </div>
+            {/* Multi-user Professional Selector & Login */}
+            <div className="flex items-center gap-2 pl-2 border-l border-[#E4D8C4]">
+              <button
+                type="button"
+                onClick={() => setIsLoginModalOpen(true)}
+                className="flex items-center gap-2 bg-[#FBF3E7] hover:bg-[#F3E6D2] border border-[#E4D8C4] rounded-xl px-2.5 py-1.5 transition-all text-left cursor-pointer group"
+                title="Clique para alternar o profissional logado"
+              >
+                {currentProfessional?.avatar ? (
+                  <img
+                    src={currentProfessional.avatar}
+                    alt=""
+                    className="w-7 h-7 rounded-full object-cover ring-1 ring-[#0F766E]"
+                  />
+                ) : (
+                  <div className="w-7 h-7 rounded-lg bg-[#E3EEEC] text-[#0F766E] flex items-center justify-center font-bold text-xs">
+                    {currentProfessional ? currentProfessional.name.slice(0, 2).toUpperCase() : 'CX'}
+                  </div>
+                )}
+                <div className="hidden sm:block text-left text-xs leading-tight">
+                  <div className="font-bold text-[#24312E] group-hover:text-[#0F766E] flex items-center gap-1">
+                    <span>{currentProfessional ? currentProfessional.name : 'Entrar'}</span>
+                    <ChevronRight size={12} className="text-[#5B665F] group-hover:translate-x-0.5 transition-transform" />
+                  </div>
+                  <div className="text-[10px] text-[#5B665F]">
+                    {currentProfessional ? currentProfessional.title.split('&')[0] : 'Profissional'}
+                  </div>
+                </div>
+              </button>
             </div>
           </div>
         </div>
@@ -681,6 +866,7 @@ export default function App() {
                   onOpenPhotoGallery={() => setIsPhotoGalleryOpen(true)}
                   onToggleTimelineItem={handleToggleTimelineItem}
                   onOpenClientShare={() => setIsClientShareOpen(true)}
+                  onUpdatePatient={handleUpdatePatient}
                 />
               </div>
             ) : (
@@ -805,6 +991,7 @@ export default function App() {
                       onOpenPhotoGallery={() => setIsPhotoGalleryOpen(true)}
                       onToggleTimelineItem={handleToggleTimelineItem}
                       onOpenClientShare={() => setIsClientShareOpen(true)}
+                      onUpdatePatient={handleUpdatePatient}
                     />
                   ) : (
                     <div className="flex-1 flex flex-col items-center justify-center p-8 text-center">
@@ -830,10 +1017,16 @@ export default function App() {
           <div className="flex-1 bg-[#FFFDF9] border border-[#E4D8C4] rounded-[24px] p-4 sm:p-6 shadow-xs">
             <AgendaTab
               appointments={appointments}
+              patients={patients}
+              professionals={professionals}
+              currentProfessional={currentProfessional}
               onSelectPatient={(id) => {
                 handleSelectPatientById(id);
                 setActiveTab('inicio');
               }}
+              onUpdateStatus={handleUpdateAppointmentStatus}
+              onAddAppointment={handleBookAppointment}
+              onOpenLoginModal={() => setIsLoginModalOpen(true)}
             />
           </div>
         )}
@@ -852,6 +1045,44 @@ export default function App() {
           </div>
         )}
 
+        {/* ===================== TAB: FINANCEIRO (CAIXA) ===================== */}
+        {activeTab === 'financeiro' && (
+          <div className="flex-1 bg-[#FFFDF9] border border-[#E4D8C4] rounded-[24px] p-4 sm:p-6 shadow-xs">
+            <FinanceiroTab />
+          </div>
+        )}
+
+        {/* ===================== TAB: SERVIÇOS & PREÇOS ===================== */}
+        {activeTab === 'servicos' && (
+          <div className="flex-1 bg-[#FFFDF9] border border-[#E4D8C4] rounded-[24px] p-4 sm:p-6 shadow-xs">
+            <ServicosTab />
+          </div>
+        )}
+
+        {/* ===================== TAB: ESTOQUE & AUTOCLAVE ===================== */}
+        {activeTab === 'estoque' && (
+          <div className="flex-1 bg-[#FFFDF9] border border-[#E4D8C4] rounded-[24px] p-4 sm:p-6 shadow-xs">
+            <EstoqueTab />
+          </div>
+        )}
+
+        {/* ===================== TAB: IA PODOLOGIA ===================== */}
+        {activeTab === 'ia' && (
+          <div className="flex-1 bg-[#FFFDF9] border border-[#E4D8C4] rounded-[24px] p-4 sm:p-6 shadow-xs">
+            <IaTab
+              patients={patients}
+              selectedPatientId={selectedPatientId}
+            />
+          </div>
+        )}
+
+        {/* ===================== TAB: CONFIGURAÇÕES ===================== */}
+        {activeTab === 'configuracoes' && (
+          <div className="flex-1 bg-[#FFFDF9] border border-[#E4D8C4] rounded-[24px] p-4 sm:p-6 shadow-xs">
+            <ConfiguracoesTab />
+          </div>
+        )}
+
         {/* ===================== TAB: PERFIL ===================== */}
         {activeTab === 'perfil' && (
           <div className="flex-1 bg-[#FFFDF9] border border-[#E4D8C4] rounded-[24px] p-4 sm:p-6 shadow-xs">
@@ -861,19 +1092,19 @@ export default function App() {
       </main>
 
       {/* MOBILE BOTTOM NAVIGATION (Visible only on screens < md) */}
-      <div className="md:hidden sticky bottom-0 left-0 right-0 bg-[#FFFDF9]/95 backdrop-blur-md border-t border-[#E4D8C4] flex justify-around items-center px-2 py-2.5 z-20">
+      <div className="md:hidden sticky bottom-0 left-0 right-0 bg-[#FFFDF9]/95 backdrop-blur-md border-t border-[#E4D8C4] flex justify-around items-center px-1 py-2 z-20 overflow-x-auto no-scrollbar">
         <button
           type="button"
           onClick={() => {
             setActiveTab('inicio');
             setIsDetailOpen(false);
           }}
-          className={`flex flex-col items-center gap-1 text-[11px] font-medium transition-colors ${
-            activeTab === 'inicio' ? 'text-[#0F766E] font-semibold' : 'text-[#86918a]'
+          className={`flex flex-col items-center gap-0.5 text-[10.5px] font-medium transition-colors px-1 ${
+            activeTab === 'inicio' ? 'text-[#0F766E] font-bold' : 'text-[#86918a]'
           }`}
         >
-          <Home size={19} />
-          Início
+          <Home size={18} />
+          <span>Início</span>
         </button>
         <button
           type="button"
@@ -881,12 +1112,12 @@ export default function App() {
             setActiveTab('agenda');
             setIsDetailOpen(false);
           }}
-          className={`flex flex-col items-center gap-1 text-[11px] font-medium transition-colors ${
-            activeTab === 'agenda' ? 'text-[#0F766E] font-semibold' : 'text-[#86918a]'
+          className={`flex flex-col items-center gap-0.5 text-[10.5px] font-medium transition-colors px-1 ${
+            activeTab === 'agenda' ? 'text-[#0F766E] font-bold' : 'text-[#86918a]'
           }`}
         >
-          <CalendarIcon size={19} />
-          Agenda
+          <CalendarIcon size={18} />
+          <span>Agenda</span>
         </button>
         <button
           type="button"
@@ -894,25 +1125,51 @@ export default function App() {
             setActiveTab('fichas');
             setIsDetailOpen(false);
           }}
-          className={`flex flex-col items-center gap-1 text-[11px] font-medium transition-colors ${
-            activeTab === 'fichas' ? 'text-[#0F766E] font-semibold' : 'text-[#86918a]'
+          className={`flex flex-col items-center gap-0.5 text-[10.5px] font-medium transition-colors px-1 ${
+            activeTab === 'fichas' ? 'text-[#0F766E] font-bold' : 'text-[#86918a]'
           }`}
         >
-          <FileText size={19} />
-          Fichas
+          <FileText size={18} />
+          <span>Fichas</span>
         </button>
         <button
           type="button"
           onClick={() => {
-            setActiveTab('perfil');
+            setActiveTab('financeiro');
             setIsDetailOpen(false);
           }}
-          className={`flex flex-col items-center gap-1 text-[11px] font-medium transition-colors ${
-            activeTab === 'perfil' ? 'text-[#0F766E] font-semibold' : 'text-[#86918a]'
+          className={`flex flex-col items-center gap-0.5 text-[10.5px] font-medium transition-colors px-1 ${
+            activeTab === 'financeiro' ? 'text-[#0F766E] font-bold' : 'text-[#86918a]'
           }`}
         >
-          <User size={19} />
-          Perfil
+          <DollarSign size={18} />
+          <span>Caixa</span>
+        </button>
+        <button
+          type="button"
+          onClick={() => {
+            setActiveTab('ia');
+            setIsDetailOpen(false);
+          }}
+          className={`flex flex-col items-center gap-0.5 text-[10.5px] font-medium transition-colors px-1 ${
+            activeTab === 'ia' ? 'text-[#0F766E] font-bold' : 'text-[#86918a]'
+          }`}
+        >
+          <Sparkles size={18} />
+          <span>IA</span>
+        </button>
+        <button
+          type="button"
+          onClick={() => {
+            setActiveTab('configuracoes');
+            setIsDetailOpen(false);
+          }}
+          className={`flex flex-col items-center gap-0.5 text-[10.5px] font-medium transition-colors px-1 ${
+            activeTab === 'configuracoes' ? 'text-[#0F766E] font-bold' : 'text-[#86918a]'
+          }`}
+        >
+          <Settings size={18} />
+          <span>Ajustes</span>
         </button>
       </div>
 
@@ -956,6 +1213,20 @@ export default function App() {
         onClose={() => setIsClientShareOpen(false)}
         patient={selectedPatient}
         onOpenClientPortal={() => handleOpenClientPortal(selectedPatient?.id)}
+      />
+      <ProfessionalLoginModal
+        isOpen={isLoginModalOpen}
+        onClose={() => setIsLoginModalOpen(false)}
+        professionals={professionals}
+        currentProfessional={currentProfessional}
+        onSelectProfessional={handleSelectProfessional}
+        onAddProfessional={(newProf) => {
+          setProfessionals((prev) => {
+            const updated = [...prev, newProf];
+            localStorage.setItem('cuidarx_professionals', JSON.stringify(updated));
+            return updated;
+          });
+        }}
       />
     </div>
   );

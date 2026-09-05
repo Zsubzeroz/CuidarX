@@ -59,13 +59,28 @@ export const PatientCard: React.FC<PatientCardProps> = ({ patient, onClick, isSe
       </div>
 
       <div className="flex-1 min-w-0">
-        <div className="text-[15px] font-semibold text-[#24312E] mb-[2px] truncate">
-          {patient.name}
+        <div className="flex items-center gap-1.5 mb-[2px]">
+          <span className="text-[15px] font-semibold text-[#24312E] truncate">
+            {patient.name}
+          </span>
+          {patient.isDiabetic && (
+            <span className="text-[9.5px] font-bold px-1.5 py-0.2 rounded bg-[#F6E4DA] text-[#B5542B] shrink-0">
+              Diabético
+            </span>
+          )}
         </div>
         <div className="text-[12.5px] text-[#5B665F] flex items-center gap-[6px] truncate">
           <span>{patient.condition}</span>
           <span className="w-[3px] h-[3px] rounded-full bg-[#c9c0ab] shrink-0" />
           <span className="text-[#86918a]">{patient.timeAgo}</span>
+          {patient.footMarkers && patient.footMarkers.length > 0 && (
+            <>
+              <span className="w-[3px] h-[3px] rounded-full bg-[#c9c0ab] shrink-0" />
+              <span className="text-[11px] text-[#0F766E] font-medium">
+                {patient.footMarkers.length} {patient.footMarkers.length === 1 ? 'ponto' : 'pontos'}
+              </span>
+            </>
+          )}
         </div>
       </div>
 
