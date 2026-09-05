@@ -173,11 +173,27 @@ export const ClientPortal: React.FC<ClientPortalProps> = ({
     );
   }
 
-  // Patient not found
+  // Patient not found — still allow booking
   if (!currentPatient) {
     return (
-      <div className="min-h-screen bg-[#FBF3E7] text-[#24312E] flex flex-col font-inter selection:bg-[#0F766E] selection:text-white">
-        <header className="bg-[#FFFDF9]/95 backdrop-blur-md border-b border-[#E4D8C4] px-4 sm:px-8 py-3.5">
+      <div className="min-h-screen bg-[#FBF3E7] text-[#24312E] flex flex-col font-inter selection:bg-[#0F766E] selection:text-white pb-16">
+        {/* Top Banner */}
+        <div className="bg-[#0B5D56] text-white text-xs py-2 px-4 shadow-sm">
+          <div className="max-w-6xl mx-auto flex flex-col sm:flex-row items-center justify-between gap-2 text-center sm:text-left">
+            <div className="flex items-center gap-2">
+              <span className="w-2 h-2 rounded-full bg-[#52D396] animate-pulse" />
+              <span className="font-semibold tracking-wide">
+                Área do Cliente Podológico:
+              </span>
+              <span className="font-mono bg-white/10 px-2 py-0.5 rounded text-[11.5px] select-all">
+                {clientUrl}
+              </span>
+            </div>
+          </div>
+        </div>
+
+        {/* Header */}
+        <header className="sticky top-0 z-20 bg-[#FFFDF9]/95 backdrop-blur-md border-b border-[#E4D8C4] px-4 sm:px-8 py-3.5">
           <div className="max-w-6xl mx-auto flex items-center justify-between">
             <div className="flex items-center gap-3">
               <BrandLogo />
@@ -190,43 +206,47 @@ export const ClientPortal: React.FC<ClientPortalProps> = ({
                 </span>
               </div>
             </div>
+            <button
+              type="button"
+              onClick={() => { setVerifiedPhone(''); setPhoneInput(''); }}
+              className="text-xs font-semibold text-[#0F766E] hover:underline cursor-pointer"
+            >
+              Trocar número
+            </button>
           </div>
         </header>
 
-        <main className="flex-1 flex items-center justify-center px-4 py-12">
-          <div className="w-full max-w-md">
-            <div className="bg-[#FFFDF9] border border-[#E4D8C4] rounded-[24px] p-6 sm:p-8 shadow-xs text-center">
-              <div className="w-16 h-16 rounded-2xl bg-[#FEE2E2] text-[#DC2626] flex items-center justify-center mx-auto mb-4">
-                <AlertCircle size={28} />
-              </div>
-              <h1 className="font-fraunces text-[20px] font-bold text-[#24312E] mb-1">
-                Cadastro não encontrado
-              </h1>
-              <p className="text-[13px] text-[#5B665F] mb-4">
-                O número <b>{verifiedPhone}</b> não está cadastrado na clínica.
-              </p>
-              <p className="text-[12px] text-[#5B665F] mb-5">
-                Entre em contato com a clínica para realizar seu cadastro, ou tente outro número.
-              </p>
-              <div className="flex flex-col gap-2">
-                <button
-                  type="button"
-                  onClick={() => { setVerifiedPhone(''); setPhoneInput(''); }}
-                  className="w-full bg-[#133023] hover:bg-[#1A402F] text-white py-3 rounded-xl text-[13px] font-bold transition-all cursor-pointer"
-                >
-                  Tentar outro número
-                </button>
-                <a
-                  href="https://wa.me/5511998765432?text=Olá,%20gostaria%20de%20realizar%20meu%20cadastro%20na%20CuidarX."
-                  target="_blank"
-                  rel="noreferrer"
-                  className="w-full bg-[#25D366] hover:bg-[#1EBE5D] text-white py-3 rounded-xl text-[13px] font-bold transition-all text-center"
-                >
-                  Cadastrar via WhatsApp
-                </a>
+        <main className="max-w-6xl mx-auto px-4 sm:px-8 pt-6 w-full flex-1">
+          {/* Welcome for new patient */}
+          <div className="bg-[#FFFDF9] border border-[#E4D8C4] rounded-[24px] p-5 sm:p-7 shadow-xs mb-6 relative overflow-hidden">
+            <div className="absolute top-0 right-0 w-64 h-64 bg-[#E3EEEC]/40 rounded-full blur-3xl pointer-events-none -mr-20 -mt-20" />
+            <div className="flex flex-col md:flex-row md:items-center justify-between gap-5 relative z-10">
+              <div className="flex items-start gap-4">
+                <div className="w-14 h-14 sm:w-16 sm:h-16 rounded-2xl bg-[#E3EEEC] text-[#0F766E] border-2 border-[#0F766E]/30 flex items-center justify-center shrink-0 shadow-2xs">
+                  <User size={24} />
+                </div>
+                <div>
+                  <h1 className="font-fraunces text-[22px] sm:text-[26px] font-bold text-[#24312E] leading-tight">
+                    Bem-vindo(a)!
+                  </h1>
+                  <p className="text-[13.5px] text-[#5B665F] mt-1">
+                    Seu número <b>{verifiedPhone}</b> foi reconhecido. Você pode agendar sua consulta abaixo.
+                  </p>
+                </div>
               </div>
             </div>
           </div>
+
+          {/* Only Booking tab for new patients */}
+          <ClientBookingSection
+            existingAppointments={appointments}
+            professionals={professionals}
+            onBookAppointment={(newApp) => {
+              if (onBookAppointment) {
+                onBookAppointment(newApp);
+              }
+            }}
+          />
         </main>
 
         <footer className="max-w-6xl mx-auto px-4 sm:px-8 pt-8 pb-4 text-center text-[12px] text-[#55695E] border-t border-[#E4D8C4]/60 mt-8 w-full">
