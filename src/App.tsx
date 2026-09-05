@@ -51,6 +51,7 @@ import {
   Settings,
   LogIn,
   Sliders,
+  MoreVertical,
 } from 'lucide-react';
 
 export default function App() {
@@ -160,6 +161,7 @@ export default function App() {
   const [isPhotoGalleryOpen, setIsPhotoGalleryOpen] = useState(false);
   const [isNotificationsOpen, setIsNotificationsOpen] = useState(false);
   const [isClientShareOpen, setIsClientShareOpen] = useState(false);
+  const [isMoreMenuOpen, setIsMoreMenuOpen] = useState(false);
 
   // Client portal view state (URL https://cuidarx-20052026.web.app/cliente)
   const [isClientPortal, setIsClientPortal] = useState<boolean>(() => {
@@ -600,190 +602,36 @@ export default function App() {
      ======================================================================= */
   return (
     <div className="min-h-screen bg-[#FBF3E7] text-[#24312E] flex flex-col font-inter selection:bg-[#0F766E] selection:text-white">
-      {/* RESPONSIVE TOPBAR HEADER */}
-      <header className="sticky top-0 z-30 bg-[#FFFDF9]/95 backdrop-blur-md border-b border-[#E4D8C4] px-4 sm:px-6 lg:px-8 py-3 transition-all">
-        <div className="max-w-7xl mx-auto flex items-center justify-between gap-4">
-          {/* Brand Logo & Clinical Subtitle */}
-          <div className="flex items-center gap-3">
+      {/* RESPONSIVE TOPBAR HEADER — Two-row layout */}
+      <header className="sticky top-0 z-30 bg-[#FFFDF9]/95 backdrop-blur-md border-b border-[#E4D8C4] transition-all">
+        {/* ── Row 1: Brand + Actions ── */}
+        <div className="max-w-7xl mx-auto flex items-center justify-between gap-3 px-4 sm:px-6 lg:px-8 py-2.5">
+          {/* Left: Brand Logo & Clinical Subtitle */}
+          <div className="flex items-center gap-3 shrink-0">
             <BrandLogo />
             <div className="hidden sm:block border-l border-[#E4D8C4] pl-3">
-              <span className="text-[11.5px] uppercase tracking-wider font-semibold text-[#0F766E] block">
+              <span className="text-xs uppercase tracking-wider font-semibold text-[#0F766E] block">
                 Prontuário Podológico
               </span>
-              <span className="text-[12px] text-[#5B665F]">
+              <span className="text-xs text-[#5B665F]">
                 Gestão Clínica & Biossegurança
               </span>
             </div>
           </div>
 
-          {/* Desktop Navigation Tabs (8-module suite matching reference SaaS) */}
-          <nav className="hidden lg:flex items-center gap-1 bg-[#FBF3E7] p-1 rounded-xl border border-[#E4D8C4] overflow-x-auto">
-            <button
-              type="button"
-              onClick={() => {
-                setActiveTab('inicio');
-                setIsDetailOpen(false);
-              }}
-              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-[12.5px] font-semibold transition-all cursor-pointer ${
-                activeTab === 'inicio'
-                  ? 'bg-white text-[#0F766E] shadow-2xs'
-                  : 'text-[#5B665F] hover:text-[#24312E]'
-              }`}
-            >
-              <Home size={14} />
-              <span>Início</span>
-            </button>
-            <button
-              type="button"
-              onClick={() => {
-                setActiveTab('agenda');
-                setIsDetailOpen(false);
-              }}
-              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-[12.5px] font-semibold transition-all cursor-pointer ${
-                activeTab === 'agenda'
-                  ? 'bg-white text-[#0F766E] shadow-2xs'
-                  : 'text-[#5B665F] hover:text-[#24312E]'
-              }`}
-            >
-              <CalendarIcon size={14} />
-              <span>Agenda</span>
-              <span className="bg-[#E3EEEC] text-[#0F766E] text-[10px] px-1.5 py-0.2 rounded-full font-bold">
-                {appointments.length}
-              </span>
-            </button>
-            <button
-              type="button"
-              onClick={() => {
-                setActiveTab('fichas');
-                setIsDetailOpen(false);
-              }}
-              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-[12.5px] font-semibold transition-all cursor-pointer ${
-                activeTab === 'fichas'
-                  ? 'bg-white text-[#0F766E] shadow-2xs'
-                  : 'text-[#5B665F] hover:text-[#24312E]'
-              }`}
-            >
-              <FileText size={14} />
-              <span>Fichas</span>
-              <span className="bg-[#F3E6D2] text-[#5B665F] text-[10px] px-1.5 py-0.2 rounded-full font-bold">
-                {patients.length}
-              </span>
-            </button>
-            <button
-              type="button"
-              onClick={() => {
-                setActiveTab('financeiro');
-                setIsDetailOpen(false);
-              }}
-              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-[12.5px] font-semibold transition-all cursor-pointer ${
-                activeTab === 'financeiro'
-                  ? 'bg-white text-[#0F766E] shadow-2xs'
-                  : 'text-[#5B665F] hover:text-[#24312E]'
-              }`}
-            >
-              <DollarSign size={14} />
-              <span>Financeiro</span>
-            </button>
-            <button
-              type="button"
-              onClick={() => {
-                setActiveTab('servicos');
-                setIsDetailOpen(false);
-              }}
-              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-[12.5px] font-semibold transition-all cursor-pointer ${
-                activeTab === 'servicos'
-                  ? 'bg-white text-[#0F766E] shadow-2xs'
-                  : 'text-[#5B665F] hover:text-[#24312E]'
-              }`}
-            >
-              <Sliders size={14} />
-              <span>Serviços</span>
-            </button>
-            <button
-              type="button"
-              onClick={() => {
-                setActiveTab('estoque');
-                setIsDetailOpen(false);
-              }}
-              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-[12.5px] font-semibold transition-all cursor-pointer ${
-                activeTab === 'estoque'
-                  ? 'bg-white text-[#0F766E] shadow-2xs'
-                  : 'text-[#5B665F] hover:text-[#24312E]'
-              }`}
-            >
-              <Package size={14} />
-              <span>Estoque</span>
-            </button>
-            <button
-              type="button"
-              onClick={() => {
-                setActiveTab('ia');
-                setIsDetailOpen(false);
-              }}
-              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-[12.5px] font-semibold transition-all cursor-pointer ${
-                activeTab === 'ia'
-                  ? 'bg-white text-[#0F766E] shadow-2xs'
-                  : 'text-[#5B665F] hover:text-[#24312E]'
-              }`}
-            >
-              <Sparkles size={14} />
-              <span>IA</span>
-            </button>
-            <button
-              type="button"
-              onClick={() => {
-                setActiveTab('configuracoes');
-                setIsDetailOpen(false);
-              }}
-              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-[12.5px] font-semibold transition-all cursor-pointer ${
-                activeTab === 'configuracoes'
-                  ? 'bg-white text-[#0F766E] shadow-2xs'
-                  : 'text-[#5B665F] hover:text-[#24312E]'
-              }`}
-            >
-              <Settings size={14} />
-              <span>Ajustes</span>
-            </button>
-          </nav>
-
-          {/* Right Action Tools */}
-          <div className="flex items-center gap-2.5">
+          {/* Right: Primary Actions */}
+          <div className="flex items-center gap-2">
             {/* Quick Search on Desktop */}
-            <div className="hidden xl:flex items-center gap-2 bg-[#FBF3E7] border border-[#E4D8C4] rounded-xl px-3 py-1.5 text-xs text-[#24312E]">
+            <div className="hidden md:flex items-center gap-2 bg-[#FBF3E7] border border-[#E4D8C4] rounded-xl px-3 py-1.5 text-xs text-[#24312E]">
               <Search size={14} className="text-[#5B665F]" />
               <input
                 type="text"
-                placeholder="Buscar ficha (ex: Camila)"
+                placeholder="Buscar ficha..."
                 value={homeSearchTerm}
                 onChange={(e) => setHomeSearchTerm(e.target.value)}
-                className="bg-transparent border-none outline-none w-36 text-[12px] placeholder-[#8b8272]"
+                className="bg-transparent border-none outline-none w-32 text-xs placeholder-[#8b8272]"
               />
             </div>
-
-            {/* Client Portal Link (https://cuidarx-20052026.web.app/cliente) */}
-            <button
-              type="button"
-              onClick={() => handleOpenClientPortal(selectedPatientId || undefined)}
-              title="Acessar Área do Cliente: https://cuidarx-20052026.web.app/cliente"
-              className="flex items-center gap-1.5 bg-[#E3EEEC] hover:bg-[#0F766E] text-[#0F766E] hover:text-white border border-[#0F766E]/20 rounded-xl px-2.5 sm:px-3 py-1.5 sm:py-2 text-[12px] sm:text-[12.5px] font-semibold transition-all cursor-pointer shadow-2xs"
-            >
-              <ExternalLink size={13} />
-              <span>Área do Cliente</span>
-              <span className="text-[10px] bg-white text-[#0F766E] px-1.5 py-0.2 rounded font-mono hidden md:inline">
-                /cliente
-              </span>
-            </button>
-
-            {/* Primary Action: + Nova Ficha */}
-            <button
-              type="button"
-              onClick={() => setIsNewPatientOpen(true)}
-              className="bg-[#0F766E] hover:bg-[#0B5D56] text-white px-3 sm:px-4 py-2 rounded-xl text-[12.5px] sm:text-[13px] font-semibold flex items-center gap-1.5 shadow-sm transition-all cursor-pointer active:scale-95"
-            >
-              <Plus size={15} strokeWidth={2.4} />
-              <span className="hidden sm:inline">Nova Ficha</span>
-              <span className="sm:hidden">Nova</span>
-            </button>
 
             {/* Notifications Bell */}
             <button
@@ -796,29 +644,19 @@ export default function App() {
               <span className="absolute top-2 right-2 w-2 h-2 rounded-full bg-[#B5542B] ring-2 ring-[#F3E6D2]" />
             </button>
 
-            {/* Firebase Project Status Indicator */}
-            <div
-              className="hidden xl:flex items-center gap-1.5 px-2.5 py-1 rounded-xl bg-[#E7EFE6] border border-[#5B7A63]/25 text-[11px] font-medium text-[#24312E]"
-              title={`Firebase Projeto: ${firebaseConfig.projectId}`}
-            >
-              <Cloud size={13} className="text-[#0F766E]" />
-              <span className={`w-2 h-2 rounded-full ${isFirebaseSynced ? 'bg-emerald-600' : 'bg-emerald-500 animate-pulse'}`} />
-              <span className="font-semibold text-[#0B5D56] text-[11px] font-mono">cuidarx-20052026</span>
-            </div>
-
-            {/* View Mode Toggle: PC vs Phone Mockup */}
+            {/* Primary Action: + Nova Ficha */}
             <button
               type="button"
-              onClick={() => setIsPhoneMockup(true)}
-              title="Simular visualização de celular (390px)"
-              className="hidden lg:flex items-center gap-1.5 bg-[#FFFDF9] hover:bg-[#F3E6D2] border border-[#E4D8C4] rounded-xl px-2.5 py-1.5 text-[11.5px] font-medium text-[#5B665F] transition-all cursor-pointer"
+              onClick={() => setIsNewPatientOpen(true)}
+              className="bg-[#0F766E] hover:bg-[#0B5D56] text-white px-3 py-1.5 rounded-xl text-xs font-semibold flex items-center gap-1.5 shadow-sm transition-all cursor-pointer active:scale-95"
             >
-              <Smartphone size={13} className="text-[#0F766E]" />
-              <span>Simular Celular</span>
+              <Plus size={14} strokeWidth={2.4} />
+              <span className="hidden sm:inline">Nova Ficha</span>
+              <span className="sm:hidden">+</span>
             </button>
 
             {/* Multi-user Professional Selector & Login */}
-            <div className="flex items-center gap-2 pl-2 border-l border-[#E4D8C4]">
+            <div className="hidden sm:flex items-center gap-2 pl-2 border-l border-[#E4D8C4]">
               <button
                 type="button"
                 onClick={() => setIsLoginModalOpen(true)}
@@ -836,19 +674,107 @@ export default function App() {
                     {currentProfessional ? currentProfessional.name.slice(0, 2).toUpperCase() : 'CX'}
                   </div>
                 )}
-                <div className="hidden sm:block text-left text-xs leading-tight">
+                <div className="hidden lg:block text-left text-xs leading-tight">
                   <div className="font-bold text-[#24312E] group-hover:text-[#0F766E] flex items-center gap-1">
                     <span>{currentProfessional ? currentProfessional.name : 'Entrar'}</span>
                     <ChevronRight size={12} className="text-[#5B665F] group-hover:translate-x-0.5 transition-transform" />
                   </div>
-                  <div className="text-[10px] text-[#5B665F]">
+                  <div className="text-[11px] text-[#5B665F]">
                     {currentProfessional ? currentProfessional.title.split('&')[0] : 'Profissional'}
                   </div>
                 </div>
               </button>
             </div>
+
+            {/* Mais Opções dropdown (Firebase, Simular Celular, Área do Cliente) */}
+            <div className="relative">
+              <button
+                type="button"
+                onClick={() => setIsMoreMenuOpen(!isMoreMenuOpen)}
+                className="w-9 h-9 rounded-xl bg-[#FBF3E7] hover:bg-[#F3E6D2] border border-[#E4D8C4] flex items-center justify-center text-[#5B665F] transition-all cursor-pointer"
+                title="Mais opções"
+              >
+                <MoreVertical size={16} />
+              </button>
+              {isMoreMenuOpen && (
+                <>
+                  <div className="fixed inset-0 z-40" onClick={() => setIsMoreMenuOpen(false)} />
+                  <div className="absolute right-0 top-full mt-1.5 z-50 w-64 bg-[#FFFDF9] border border-[#E4D8C4] rounded-xl shadow-lg py-1.5 overflow-hidden">
+                    {/* Firebase Status */}
+                    <div className="px-3.5 py-2.5 flex items-center gap-2.5 border-b border-[#E4D8C4]">
+                      <Cloud size={14} className="text-[#0F766E] shrink-0" />
+                      <div className="flex-1 min-w-0">
+                        <div className="text-xs font-semibold text-[#24312E]">Firebase</div>
+                        <div className="text-[11px] text-[#5B665F] font-mono truncate">{firebaseConfig.projectId}</div>
+                      </div>
+                      <span className={`w-2 h-2 rounded-full shrink-0 ${isFirebaseSynced ? 'bg-emerald-600' : 'bg-emerald-500 animate-pulse'}`} />
+                    </div>
+                    {/* Simular Celular */}
+                    <button
+                      type="button"
+                      onClick={() => { setIsPhoneMockup(true); setIsMoreMenuOpen(false); }}
+                      className="w-full px-3.5 py-2.5 flex items-center gap-2.5 hover:bg-[#FBF3E7] transition-colors text-left cursor-pointer"
+                    >
+                      <Smartphone size={14} className="text-[#0F766E] shrink-0" />
+                      <div>
+                        <div className="text-xs font-semibold text-[#24312E]">Simular Celular</div>
+                        <div className="text-[11px] text-[#5B665F]">Visualizar em 390px</div>
+                      </div>
+                    </button>
+                    {/* Área do Cliente */}
+                    <button
+                      type="button"
+                      onClick={() => { handleOpenClientPortal(selectedPatientId || undefined); setIsMoreMenuOpen(false); }}
+                      className="w-full px-3.5 py-2.5 flex items-center gap-2.5 hover:bg-[#FBF3E7] transition-colors text-left cursor-pointer"
+                    >
+                      <ExternalLink size={14} className="text-[#0F766E] shrink-0" />
+                      <div>
+                        <div className="text-xs font-semibold text-[#24312E]">Área do Cliente</div>
+                        <div className="text-[11px] text-[#5B665F] font-mono">/cliente</div>
+                      </div>
+                    </button>
+                  </div>
+                </>
+              )}
+            </div>
           </div>
         </div>
+
+        {/* ── Row 2: Navigation Tabs ── */}
+        <nav className="max-w-7xl mx-auto flex items-center gap-1 px-4 sm:px-6 lg:px-8 py-1.5 border-t border-[#E4D8C4]/50 overflow-x-auto no-scrollbar">
+          {([
+            { key: 'inicio' as TabType, icon: Home, label: 'Inicio', badge: null },
+            { key: 'agenda' as TabType, icon: CalendarIcon, label: 'Agenda', badge: { count: appointments.length, color: 'bg-[#E3EEEC] text-[#0F766E]' } },
+            { key: 'fichas' as TabType, icon: FileText, label: 'Fichas', badge: { count: patients.length, color: 'bg-[#F3E6D2] text-[#5B665F]' } },
+            { key: 'financeiro' as TabType, icon: DollarSign, label: 'Financeiro', badge: null },
+            { key: 'servicos' as TabType, icon: Sliders, label: 'Servicos', badge: null },
+            { key: 'estoque' as TabType, icon: Package, label: 'Estoque', badge: null },
+            { key: 'ia' as TabType, icon: Sparkles, label: 'IA', badge: null },
+            { key: 'configuracoes' as TabType, icon: Settings, label: 'Ajustes', badge: null },
+          ]).map(({ key, icon: Icon, label, badge }) => (
+            <button
+              key={key}
+              type="button"
+              onClick={() => {
+                setActiveTab(key);
+                setIsDetailOpen(false);
+              }}
+              className={`flex items-center gap-1.5 px-3.5 py-1.5 rounded-lg text-xs font-semibold whitespace-nowrap transition-all cursor-pointer ${
+                activeTab === key
+                  ? 'bg-white text-[#0F766E] shadow-2xs'
+                  : 'text-[#5B665F] hover:text-[#24312E] hover:bg-[#FBF3E7]'
+              }`}
+            >
+              <Icon size={14} />
+              <span>{label}</span>
+              {badge && (
+                <span className={`${badge.color} text-[10px] px-1.5 py-0.2 rounded-full font-bold`}>
+                  {badge.count}
+                </span>
+              )}
+            </button>
+          ))}
+        </nav>
       </header>
 
       {/* MAIN RESPONSIVE CONTENT CONTAINER */}
