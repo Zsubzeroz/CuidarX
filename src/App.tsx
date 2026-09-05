@@ -255,25 +255,30 @@ export default function App() {
     };
   }, []);
 
-  // Firebase Auth state listener — use ref to avoid re-subscribing on professionals change
+  // Firebase Auth state listener — only for session restore on page refresh
   const professionalsRef = useRef(professionals);
   professionalsRef.current = professionals;
+  const authReady = useRef(false);
 
   useEffect(() => {
     const unsubscribe = onAuthChange((user) => {
-      if (user) {
-        const found = professionalsRef.current.find((p) => p.authUid === user.uid);
-        if (found) {
-          setCurrentProfessional(found);
-          setIsAuthenticated(true);
-          localStorage.setItem('cuidarx_logged_prof_id', found.id);
-          localStorage.setItem('cuidarx_authenticated', 'true');
-        } else {
-          // Auth user exists but no professional profile yet — stay on login
-          setCurrentProfessional(null);
-          setIsAuthenticated(false);
+      // Skip the first emission (initial value) — let explicit login handle it
+      if (!authReady.current) {
+        authReady.current = true;
+        // On first emission, if user is already logged in (page refresh), restore session
+        if (user) {
+          const found = professionalsRef.current.find((p) => p.authUid === user.uid);
+          if (found) {
+            setCurrentProfessional(found);
+            setIsAuthenticated(true);
+            localStorage.setItem('cuidarx_logged_prof_id', found.id);
+            localStorage.setItem('cuidarx_authenticated', 'true');
+          }
         }
-      } else {
+        return;
+      }
+      // After first emission, only handle logout (sign out from another tab, etc.)
+      if (!user) {
         setCurrentProfessional(null);
         setIsAuthenticated(false);
         localStorage.removeItem('cuidarx_logged_prof_id');
