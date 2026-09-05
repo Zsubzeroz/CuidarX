@@ -223,7 +223,7 @@ export const ClientPortal: React.FC<ClientPortalProps> = ({
                 <div className="flex flex-col gap-2">
                   <button
                     type="button"
-                    onClick={() => { setVerifiedPhone(''); setPhoneInput(''); }}
+                    onClick={() => { setVerifiedPhone(''); }}
                     className="w-full bg-[#133023] hover:bg-[#1A402F] text-white py-3 rounded-xl text-[13px] font-bold transition-all cursor-pointer"
                   >
                     Tentar outro número
@@ -283,7 +283,7 @@ export const ClientPortal: React.FC<ClientPortalProps> = ({
             </div>
             <button
               type="button"
-              onClick={() => { setVerifiedPhone(''); setPhoneInput(''); }}
+              onClick={() => { setVerifiedPhone(''); }}
               className="text-xs font-semibold text-[#0F766E] hover:underline cursor-pointer"
             >
               Trocar número
