@@ -1,201 +1,111 @@
-# CuidarX - Sistema de Gestao Clinica
+# 🦶 CuidarX — Prontuário Podológico & Portal do Paciente
 
-Sistema multiplataforma (Web, Mobile e Tablet) para gestao completa de clinica de podologia.
+[![GitHub Repo](https://img.shields.io/badge/GitHub-Zsubzeroz%2FCuidarX-181717?style=flat&logo=github)](https://github.com/Zsubzeroz/CuidarX)
+[![React](https://img.shields.io/badge/React-19-61DAFB?style=flat&logo=react)](https://react.dev/)
+[![TypeScript](https://img.shields.io/badge/TypeScript-5.8-3178C6?style=flat&logo=typescript)](https://www.typescriptlang.org/)
+[![Tailwind CSS](https://img.shields.io/badge/Tailwind_CSS-4.0-38B2AC?style=flat&logo=tailwind-css)](https://tailwindcss.com/)
+[![Firebase](https://img.shields.io/badge/Firebase-Firestore-FFCA28?style=flat&logo=firebase)](https://firebase.google.com/)
 
-Sistema SaaS de gestao clinica multi-tenant — gestao de agendamentos, fichas de anamnese com assinatura digital, financeiro, e sincronizacao em tempo real com Google Agenda.
+**CuidarX** é uma aplicação web moderna e responsiva projetada especificamente para consultórios e clínicas de podologia. O sistema integra um prontuário clínico detalhado com anamnese, acompanhamento de sessões e galeria de fotos, além de uma **Área do Cliente** exclusiva para o paciente acompanhar sua evolução podológica.
 
-## Funcionalidades
+- 🌐 **Repositório:** [https://github.com/Zsubzeroz/CuidarX](https://github.com/Zsubzeroz/CuidarX)
+- 📱 **Portal do Cliente:** [https://cuidarx-20052026.web.app/cliente](https://cuidarx-20052026.web.app/cliente)
 
-- **Agenda em tempo real** — sincronizacao instantanea entre Painel Web, App Mobile/Tablet e Google Agenda
-- **Bloqueio de horarios** — almoço, faxina clinica, ferias, feriados (recorrencia semanal e datas especificas)
-- **Fichas de anamnese** — formulario completo com suporte a caneta stylus (tablet) e assinatura digital
-- **Mapa podal** — mapeamento interativo de patologias nos pes (SVG)
-- **Portal de agendamento online** — pagina publica para clientes agendarem sozinhos
-- **Controle financeiro** — caixa, categorias, analise de fluxo mensal/anual
-- **Produtos e servicos** — catalogo com precos e duracao
-- **Assistente clinico IA** — integracao com Google Gemini para anotacoes e sugestoes
-- **Google Agenda** — sincronizacao bidirecional via OAuth2
+---
 
-## Arquitetura
+## 📸 Principais Funcionalidades
 
-```
-               ┌────────────────────────┐
-               │    GOOGLE AGENDA       │
-               └───────────┬────────────┘
-                           │
-             ┌             │             ┌
-             │             ▼             │
-┌────────────┴───────────┐     ┌─────────┴──────────────┐
-│  PAINEL WEB ADMIN /    │ ◄─► │   APP MOBILE / TABLET  │
-│  SITE DO CLIENTE       │     │   (Capacitor Android)  │
-└────────────────────────┘     └────────────────────────┘
-         │                               │
-         └───────────┬───────────────────┘
-                     ▼
-            Firebase Firestore
-            (banco de dados)
-```
+### 🩺 1. Painel Clínico da Podóloga
+- **Prontuário e Ficha do Paciente:** Cadastro completo, anamnese, diagnósticos (onicocriptose, calosidades, verrugas plantares, etc.) e dados de contato.
+- **Linha do Tempo de Tratamento:** Registro cronológico de sessões, procedimentos aplicados e curativos.
+- **Evolução Fotográfica com Comparador:** Registro fotográfico de *Antes*, *Depois* e *Progresso* para acompanhamento clínico.
+- **Agenda & Triagem:** Visualização dos agendamentos diários com status de atendimento.
+- **Compartilhamento Rápido:** Geração de QR Code e mensagens formatadas para WhatsApp direcionando o paciente ao seu prontuário digital.
+- **Modo Responsivo Completo:** Interface adaptada para computadores, tablets e smartphones (com alternador de simulação móvel).
 
-O **mesmo codigo-fonte** (React + TypeScript) alimenta todas as plataformas:
-- **Web**: deploy automatico via Firebase Hosting
-- **Mobile/Tablet**: compilado via Capacitor para Android (APK)
-- **Dados**: Firebase Firestore com listeners `onSnapshot` (tempo real)
+### 🤳 2. Portal do Paciente (`/cliente`)
+- **Comparador Fotográfico Interativo (Antes x Depois):** Controle deslizante que permite ao paciente visualizar a regeneração da lâmina ungueal ou tecido.
+- **Próximas Consultas:** Detalhes de dia, horário e confirmação de presença.
+- **Orientações Pós-Consulta (*Home Care*):** Recomendações personalizadas para assepsia, secagem, corte adequado e troca de curativos.
+- **Canais de Emergência:** Contato direto via WhatsApp e chamada telefônica para a clínica.
 
-## Colecoes Firestore
+---
 
-| Colecao | Descricao |
-|---------|-----------|
-| `patients` | Prontuarios de clientes |
-| `appointments` | Agendamentos (data YYYY-MM-DD, hora HH:MM) |
-| `finances` | Registros financeiros (entradas/saidas) |
-| `services` | Catalogo de produtos e servicos |
-| `appData/blockedDays` | Bloqueios de horarios (compativel com Painel Web Admin) |
+## 🛠️ Tecnologias Utilizadas
 
-## Stack Tecnica
+- **Interface & Interação:** [React 19](https://react.dev/), [TypeScript](https://www.typescriptlang.org/), [Vite](https://vitejs.dev/)
+- **Estilização & Design System:** [Tailwind CSS 4](https://tailwindcss.com/), tipografia editorial (Fraunces + Inter)
+- **Ícones & Animações:** [Lucide React](https://lucide.dev/), [Motion](https://motion.dev/)
+- **Nuvem & Banco de Dados:** [Firebase SDK](https://firebase.google.com/) (Cloud Firestore em tempo real, Firebase Auth e Analytics)
+- **Segurança:** Regras de segurança estruturadas (`firestore.rules`) e especificação de entidades (`firebase-blueprint.json`)
 
-| Camada | Tecnologia |
-|--------|-----------|
-| Frontend | React 19, TypeScript, Tailwind CSS 4 |
-| Build | Vite 6 |
-| Mobile | Capacitor 8 (Android) |
-| Backend/DB | Firebase Firestore (realtime) |
-| Hosting | Firebase Hosting |
-| IA | Google Gemini (Assistente Clinico) |
-| Calendar | Google Calendar API (OAuth2) |
-| Icons | Lucide React |
+---
 
-## Pre-requisitos
+## 📁 Estrutura do Projeto
 
-- [Node.js](https://nodejs.org/) >= 18
-- npm ou yarn
-- Android Studio + SDK (para gerar APK)
-- Java 17 (JDK)
-
-## Instalacao
-
-```bash
-# Clonar o repositorio
-git clone https://github.com/Zsubzeroz/cuidarx.git
-cd cuidarx
-
-# Instalar dependencias
-npm install
-```
-
-## Execucao Local
-
-```bash
-# Criar arquivo .env com suas credenciais Firebase
-cp .env.example .env
-# Edite .env com suas chaves
-
-# Iniciar servidor de desenvolvimento
-npm run dev
-```
-
-Acesse `http://localhost:3000` no navegador.
-
-### Variaveis de Ambiente (.env)
-
-```env
-# Firebase (necessario)
-FIREBASE_API_KEY=...
-FIREBASE_AUTH_DOMAIN=...
-FIREBASE_PROJECT_ID=...
-FIREBASE_STORAGE_BUCKET=...
-FIREBASE_MESSAGING_SENDER_ID=...
-FIREBASE_APP_ID=...
-
-# Firebase Client-side (VITE_*)
-VITE_FIREBASE_API_KEY=...
-VITE_FIREBASE_AUTH_DOMAIN=...
-VITE_FIREBASE_PROJECT_ID=...
-VITE_FIREBASE_STORAGE_BUCKET=...
-VITE_FIREBASE_MESSAGING_SENDER_ID=...
-VITE_FIREBASE_APP_ID=...
-
-# Google Calendar (opcional)
-VITE_GOOGLE_CALENDAR_CLIENT_ID=...
-
-# Gemini AI (opcional)
-GEMINI_API_KEY=...
-VITE_GEMINI_API_KEY=...
-```
-
-## Build para Producao
-
-```bash
-# Build estatico (para Firebase Hosting)
-npm run build:static
-
-# Deploy para Firebase Hosting
-firebase deploy --only hosting
-```
-
-## Gerar APK Android
-
-```bash
-# Sincronizar assets web com projeto Android
-npx cap sync android
-
-# IMPORTANTE: Apos cap sync, corrigir Java version em:
-#   android/app/capacitor.build.gradle
-#   Alterar VERSION_21 para VERSION_17 (compatibilidade com JDK 17)
-
-# Gerar APK debug
-ANDROID_HOME=$ANDROID_HOME JAVA_HOME=/usr/lib/jvm/java-17-openjdk-amd64 \
-  ./gradlew assembleDebug
-
-# Instalar em dispositivo conectado via USB
-adb install -r android/app/build/outputs/apk/debug/app-debug.apk
-```
-
-O APK gerado esta em:
-```
-android/app/build/outputs/apk/debug/app-debug.apk
-```
-
-## Estrutura do Projeto
-
-```
+```text
 cuidarx/
 ├── src/
-│   ├── components/
-│   │   ├── CalendarView.tsx      # Agenda diaria com bloqueios
-│   │   ├── PatientView.tsx       # Cadastro de clientes
-│   │   ├── AnamneseView.tsx      # Fichas de anamnese + assinatura
-│   │   ├── FinanceView.tsx       # Controle financeiro
-│   │   ├── ServicesView.tsx      # Catalogo de servicos
-│   │   ├── AiAssistantView.tsx   # Assistente IA (Gemini)
-│   │   ├── BookingPortalView.tsx # Portal publico de agendamento
-│   │   ├── DashboardView.tsx     # Painel inicial
-│   │   └── FootMap.tsx           # Mapa podal SVG interativo
-│   ├── hooks/
-│   │   ├── useRealtimeData.ts    # Listeners Firestore (5 colecoes)
-│   │   └── useResponsive.ts      # Detecao responsiva
-│   ├── services/
-│   │   ├── firebase.ts           # Config Firebase client
-│   │   ├── firestoreService.ts   # CRUD Firestore + blockedDays
-│   │   └── googleCalendar.ts     # Integracao Google Calendar API
-│   ├── types.ts                  # Interfaces TypeScript
-│   ├── App.tsx                   # Shell principal + auto-sync Calendar
-│   └── main.tsx                  # Entry point
-├── android/                      # Projeto Capacitor Android
-├── firebase-server.ts            # Server-side Firestore
-├── server.ts                     # Express server (dev)
-├── .env                          # Credenciais (nao versionado)
-└── package.json
+│   ├── components/            # Componentes modulares
+│   │   ├── AgendaTab.tsx       # Controle de agendamentos diários
+│   │   ├── ClientPortal.tsx    # Portal exclusivo do paciente (/cliente)
+│   │   ├── ClientShareModal.tsx# Compartilhamento via QR Code e WhatsApp
+│   │   ├── DetailScreen.tsx    # Prontuário detalhado e linha do tempo
+│   │   ├── NewPatientModal.tsx # Cadastro de novos pacientes
+│   │   ├── NewSessionModal.tsx # Registro de nova sessão e fotos
+│   │   ├── PatientCard.tsx     # Cartão resumido na lista clínica
+│   │   ├── PhotoInspectionModal.tsx # Galeria de evolução
+│   │   ├── ProfileTab.tsx      # Configurações do profissional
+│   │   └── RecordsTab.tsx      # Listagem e filtragem de fichas
+│   ├── data/                  # Dados iniciais e mocks de demonstração
+│   ├── firebase.ts            # Inicialização e persistência no Firebase
+│   ├── types.ts               # Tipagens TypeScript compartilhadas
+│   ├── App.tsx                # Roteador principal e layout responsivo
+│   └── main.tsx               # Ponto de entrada React
+├── firebase-blueprint.json    # Esquema intermediário de coleções Firestore
+├── firestore.rules            # Regras de segurança do Firestore
+└── package.json               # Dependências e scripts
 ```
 
-## Comandos Uteis
+---
 
-| Comando | Descricao |
-|---------|-----------|
-| `npm run dev` | Servidor de desenvolvimento |
-| `npm run build:static` | Build estatico para hosting |
-| `npm run lint` | Verificacao TypeScript |
-| `npx cap sync android` | Sincronizar web assets com Android |
+## 🚀 Como Executar Localmente
 
-## Licenca
+### Pré-requisitos
+- [Node.js](https://nodejs.org/) (versão 18 ou superior)
+- `npm` ou `yarn`
 
-Projeto privado — CuidarX. Todos os direitos reservados. Desenvolvido por Luan Estifer Rodrigues Pereira (Software Engineer).
+### Passo a passo
+
+1. **Clonar o repositório:**
+   ```bash
+   git clone https://github.com/Zsubzeroz/CuidarX.git
+   cd CuidarX
+   ```
+
+2. **Instalar as dependências:**
+   ```bash
+   npm install
+   ```
+
+3. **Executar em ambiente de desenvolvimento:**
+   ```bash
+   npm run dev
+   ```
+
+4. **Acessar a aplicação no navegador:**
+   - **Painel Clínico:** [http://localhost:3000/](http://localhost:3000/)
+   - **Área do Paciente:** [http://localhost:3000/cliente](http://localhost:3000/cliente)
+
+---
+
+## ☁️ Configuração do Firebase
+
+O projeto está conectado ao Firebase sob o ID **`cuidarx-20052026`**:
+- **Firestore Database:** Armazena as fichas clínicas (`patients/{patientId}`) e sessões de tratamento.
+- **Regras de Segurança:** Configuradas no arquivo `firestore.rules`.
+
+---
+
+## 📄 Licença
+Este projeto está sob a licença MIT.

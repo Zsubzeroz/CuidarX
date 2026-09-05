@@ -1,0 +1,31 @@
+{
+  "entities": {
+    "Patient": {
+      "title": "Patient",
+      "description": "Prontuário e dados clínicos do paciente de podologia",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "description": "Identificador único do paciente" },
+        "name": { "type": "string", "description": "Nome completo do paciente", "maxLength": 100 },
+        "age": { "type": "number", "description": "Idade do paciente" },
+        "condition": { "type": "string", "description": "Patologia principal (ex: Onicocriptose)" },
+        "locationDetails": { "type": "string", "description": "Localização anatômica (ex: Hálux direito)" },
+        "timeAgo": { "type": "string", "description": "Última sessão ou tempo de retorno" },
+        "tagColor": { "type": "string", "enum": ["teal", "clay", "sage"] },
+        "status": { "type": "string", "enum": ["active", "completed", "in-progress"] },
+        "phone": { "type": "string", "description": "Telefone / WhatsApp para contato" },
+        "cpf": { "type": "string", "description": "Documento CPF" },
+        "notes": { "type": "string", "description": "Observações clínicas gerais" },
+        "timeline": { "type": "array", "description": "Histórico de sessões e procedimentos" },
+        "photos": { "type": "array", "description": "Registros fotográficos de evolução clínica" }
+      },
+      "required": ["id", "name", "condition", "status"]
+    }
+  },
+  "firestore": {
+    "/patients/{patientId}": {
+      "schema": "Patient",
+      "description": "Armazenamento dos prontuários clínicos e evolução dos pacientes CuidarX"
+    }
+  }
+}

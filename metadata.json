@@ -1,6 +1,6 @@
 {
   "name": "CuidarX",
-  "description": "Sistema de gestao clinica e prontuarios eletronicos multi-tenant.",
+  "description": "Aplicativo de prontuário e acompanhamento podológico para profissionais de saúde.",
   "requestFramePermissions": [],
   "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
 }
