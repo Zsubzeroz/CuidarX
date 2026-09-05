@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { Patient, TabType, TimelineItem, Appointment, Professional } from './types';
 import { INITIAL_PATIENTS, INITIAL_APPOINTMENTS } from './data/mockPatients';
 import { INITIAL_PROFESSIONALS } from './data/mockProfessionals';
@@ -255,20 +255,25 @@ export default function App() {
     };
   }, []);
 
-  // Firebase Auth state listener
+  // Firebase Auth state listener — use ref to avoid re-subscribing on professionals change
+  const professionalsRef = useRef(professionals);
+  professionalsRef.current = professionals;
+
   useEffect(() => {
     const unsubscribe = onAuthChange((user) => {
       if (user) {
-        // Find professional by authUid
-        const found = professionals.find((p) => p.authUid === user.uid);
+        const found = professionalsRef.current.find((p) => p.authUid === user.uid);
         if (found) {
           setCurrentProfessional(found);
           setIsAuthenticated(true);
           localStorage.setItem('cuidarx_logged_prof_id', found.id);
           localStorage.setItem('cuidarx_authenticated', 'true');
+        } else {
+          // Auth user exists but no professional profile yet — stay on login
+          setCurrentProfessional(null);
+          setIsAuthenticated(false);
         }
       } else {
-        // No user logged in
         setCurrentProfessional(null);
         setIsAuthenticated(false);
         localStorage.removeItem('cuidarx_logged_prof_id');
@@ -276,7 +281,7 @@ export default function App() {
       }
     });
     return () => unsubscribe();
-  }, [professionals]);
+  }, []);
 
   // Save patients to localStorage as fast offline cache
   useEffect(() => {
