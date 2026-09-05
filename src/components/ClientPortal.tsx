@@ -23,11 +23,11 @@ import {
   CalendarCheck,
   ChevronRight,
   CalendarPlus,
+  User,
 } from 'lucide-react';
 
 interface ClientPortalProps {
   patients: Patient[];
-  selectedPatientId: string | null;
   appointments?: Appointment[];
   professionals?: Professional[];
   onBackToClinic: () => void;
@@ -36,7 +36,6 @@ interface ClientPortalProps {
 
 export const ClientPortal: React.FC<ClientPortalProps> = ({
   patients,
-  selectedPatientId,
   appointments = [],
   professionals = [],
   onBackToClinic,
@@ -48,16 +47,35 @@ export const ClientPortal: React.FC<ClientPortalProps> = ({
   const [sliderPosition, setSliderPosition] = useState(52);
   const [confirmedAppointment, setConfirmedAppointment] = useState(false);
 
+  // Phone verification state
+  const [verifiedPhone, setVerifiedPhone] = useState('');
+  const [phoneInput, setPhoneInput] = useState('');
+  const [phoneError, setPhoneError] = useState('');
+
   const clientUrl = 'https://cuidarx-20052026.web.app/cliente';
 
-  const currentPatient =
-    patients.find((p) => p.id === selectedPatientId) || patients[0];
+  // Find patient by verified phone
+  const currentPatient = verifiedPhone
+    ? patients.find((p) => p.phone === verifiedPhone) || null
+    : null;
 
-  const currentAppointment = appointments.find(
-    (app) =>
-      app.patientId === currentPatient?.id ||
-      app.patientName.toLowerCase() === currentPatient?.name.toLowerCase()
-  );
+  const handleVerifyPhone = () => {
+    const clean = phoneInput.replace(/\D/g, '');
+    if (clean.length < 10) {
+      setPhoneError('Informe um número de telefone válido');
+      return;
+    }
+    setPhoneError('');
+    setVerifiedPhone(phoneInput.trim());
+  };
+
+  const currentAppointment = currentPatient
+    ? appointments.find(
+        (app) =>
+          app.patientId === currentPatient.id ||
+          app.patientName.toLowerCase() === currentPatient.name.toLowerCase()
+      )
+    : null;
 
   const handleCopyLink = () => {
     navigator.clipboard.writeText(clientUrl);
@@ -72,6 +90,153 @@ export const ClientPortal: React.FC<ClientPortalProps> = ({
     currentPatient?.photos?.find((p) => p.type === 'after') ||
     currentPatient?.photos?.[1] ||
     currentPatient?.photos?.[0];
+
+  // If phone not verified, show phone entry screen
+  if (!verifiedPhone) {
+    return (
+      <div className="min-h-screen bg-[#FBF3E7] text-[#24312E] flex flex-col font-inter selection:bg-[#0F766E] selection:text-white">
+        {/* Header */}
+        <header className="bg-[#FFFDF9]/95 backdrop-blur-md border-b border-[#E4D8C4] px-4 sm:px-8 py-3.5">
+          <div className="max-w-6xl mx-auto flex items-center justify-between">
+            <div className="flex items-center gap-3">
+              <BrandLogo />
+              <div className="border-l border-[#E4D8C4] pl-3 hidden sm:block">
+                <span className="text-[11px] uppercase tracking-wider font-bold text-[#0F766E] block">
+                  Portal do Paciente
+                </span>
+                <span className="text-[12px] text-[#5B665F]">
+                  Acompanhamento & Agendamento Online
+                </span>
+              </div>
+            </div>
+          </div>
+        </header>
+
+        {/* Phone Entry Screen */}
+        <main className="flex-1 flex items-center justify-center px-4 py-12">
+          <div className="w-full max-w-md">
+            <div className="bg-[#FFFDF9] border border-[#E4D8C4] rounded-[24px] p-6 sm:p-8 shadow-xs text-center">
+              <div className="w-16 h-16 rounded-2xl bg-[#E3EEEC] text-[#0F766E] flex items-center justify-center mx-auto mb-4">
+                <User size={28} />
+              </div>
+              <h1 className="font-fraunces text-[22px] font-bold text-[#24312E] mb-1">
+                Área do Cliente
+              </h1>
+              <p className="text-[13px] text-[#5B665F] mb-6">
+                Informe seu número de telefone para acessar seu prontuário e agendamentos.
+              </p>
+
+              <div className="space-y-3">
+                <div>
+                  <label className="block text-[11.5px] font-bold text-[#14261C] uppercase tracking-wider mb-1.5 text-left">
+                    CELULAR / WHATSAPP *
+                  </label>
+                  <input
+                    type="text"
+                    placeholder="(11) 98888-7777"
+                    value={phoneInput}
+                    onChange={(e) => { setPhoneInput(e.target.value); setPhoneError(''); }}
+                    onKeyDown={(e) => { if (e.key === 'Enter') handleVerifyPhone(); }}
+                    className={`w-full bg-[#FAF8F5] border rounded-xl px-4 py-3 text-[14px] text-[#14261C] placeholder-[#9CA3AF] focus:outline-none focus:ring-1 ${
+                      phoneError
+                        ? 'border-[#DC2626] focus:border-[#DC2626] focus:ring-[#DC2626]'
+                        : 'border-[#E4D8C4] focus:border-[#0F766E] focus:ring-[#0F766E]'
+                    }`}
+                  />
+                  {phoneError && (
+                    <p className="text-[11px] text-[#DC2626] mt-1 font-medium text-left">{phoneError}</p>
+                  )}
+                </div>
+
+                <button
+                  type="button"
+                  onClick={handleVerifyPhone}
+                  className="w-full bg-[#133023] hover:bg-[#1A402F] text-white py-3.5 rounded-xl text-[14px] font-bold shadow-sm transition-all active:scale-[0.98] cursor-pointer"
+                >
+                  Acessar Minha Conta
+                </button>
+              </div>
+
+              <p className="text-[11px] text-[#738178] mt-4 leading-relaxed">
+                Seu número será utilizado para identificar seu cadastro na clínica CuidarX.
+              </p>
+            </div>
+          </div>
+        </main>
+
+        <footer className="max-w-6xl mx-auto px-4 sm:px-8 pt-8 pb-4 text-center text-[12px] text-[#55695E] border-t border-[#E4D8C4]/60 mt-8 w-full">
+          <p>
+            © 2026 CuidarX Podologia Clínica. Todos os direitos reservados.
+          </p>
+        </footer>
+      </div>
+    );
+  }
+
+  // Patient not found
+  if (!currentPatient) {
+    return (
+      <div className="min-h-screen bg-[#FBF3E7] text-[#24312E] flex flex-col font-inter selection:bg-[#0F766E] selection:text-white">
+        <header className="bg-[#FFFDF9]/95 backdrop-blur-md border-b border-[#E4D8C4] px-4 sm:px-8 py-3.5">
+          <div className="max-w-6xl mx-auto flex items-center justify-between">
+            <div className="flex items-center gap-3">
+              <BrandLogo />
+              <div className="border-l border-[#E4D8C4] pl-3 hidden sm:block">
+                <span className="text-[11px] uppercase tracking-wider font-bold text-[#0F766E] block">
+                  Portal do Paciente
+                </span>
+                <span className="text-[12px] text-[#5B665F]">
+                  Acompanhamento & Agendamento Online
+                </span>
+              </div>
+            </div>
+          </div>
+        </header>
+
+        <main className="flex-1 flex items-center justify-center px-4 py-12">
+          <div className="w-full max-w-md">
+            <div className="bg-[#FFFDF9] border border-[#E4D8C4] rounded-[24px] p-6 sm:p-8 shadow-xs text-center">
+              <div className="w-16 h-16 rounded-2xl bg-[#FEE2E2] text-[#DC2626] flex items-center justify-center mx-auto mb-4">
+                <AlertCircle size={28} />
+              </div>
+              <h1 className="font-fraunces text-[20px] font-bold text-[#24312E] mb-1">
+                Cadastro não encontrado
+              </h1>
+              <p className="text-[13px] text-[#5B665F] mb-4">
+                O número <b>{verifiedPhone}</b> não está cadastrado na clínica.
+              </p>
+              <p className="text-[12px] text-[#5B665F] mb-5">
+                Entre em contato com a clínica para realizar seu cadastro, ou tente outro número.
+              </p>
+              <div className="flex flex-col gap-2">
+                <button
+                  type="button"
+                  onClick={() => { setVerifiedPhone(''); setPhoneInput(''); }}
+                  className="w-full bg-[#133023] hover:bg-[#1A402F] text-white py-3 rounded-xl text-[13px] font-bold transition-all cursor-pointer"
+                >
+                  Tentar outro número
+                </button>
+                <a
+                  href="https://wa.me/5511998765432?text=Olá,%20gostaria%20de%20realizar%20meu%20cadastro%20na%20CuidarX."
+                  target="_blank"
+                  rel="noreferrer"
+                  className="w-full bg-[#25D366] hover:bg-[#1EBE5D] text-white py-3 rounded-xl text-[13px] font-bold transition-all text-center"
+                >
+                  Cadastrar via WhatsApp
+                </a>
+              </div>
+            </div>
+          </div>
+        </main>
+
+        <footer className="max-w-6xl mx-auto px-4 sm:px-8 pt-8 pb-4 text-center text-[12px] text-[#55695E] border-t border-[#E4D8C4]/60 mt-8 w-full">
+          <p>
+            © 2026 CuidarX Podologia Clínica. Todos os direitos reservados.
+          </p>
+        </footer>
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen bg-[#FBF3E7] text-[#24312E] flex flex-col font-inter selection:bg-[#0F766E] selection:text-white pb-16">

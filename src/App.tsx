@@ -377,7 +377,6 @@ export default function App() {
     return (
       <ClientPortal
         patients={patients}
-        selectedPatientId={selectedPatientId}
         appointments={appointments}
         professionals={professionals}
         onBackToClinic={handleBackToClinic}
