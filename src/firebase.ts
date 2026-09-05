@@ -17,6 +17,8 @@ import {
   getAuth,
   createUserWithEmailAndPassword,
   signInWithEmailAndPassword,
+  signInWithPopup,
+  GoogleAuthProvider,
   signOut as firebaseSignOut,
   onAuthStateChanged,
   User,
@@ -179,6 +181,14 @@ export async function logoutProfessional(): Promise<void> {
 
 export function onAuthChange(callback: (user: User | null) => void) {
   return onAuthStateChanged(auth, callback);
+}
+
+export async function loginWithGoogle(): Promise<User> {
+  const provider = new GoogleAuthProvider();
+  provider.addScope('email');
+  provider.addScope('profile');
+  const result = await signInWithPopup(auth, provider);
+  return result.user;
 }
 
 // ===================== FIRESTORE PROFESSIONALS =====================
